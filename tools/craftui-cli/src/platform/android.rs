@@ -1,8 +1,8 @@
+use crate::doctor::find_in_path;
+use crate::manifest::{AppManifest, xml_escape};
+use craftui_core::{CraftError, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use craftui_core::{CraftError, Result};
-use crate::manifest::{AppManifest, xml_escape};
-use crate::doctor::find_in_path;
 
 fn is_valid_ndk_root(dir: &Path) -> bool {
     dir.join("toolchains")
@@ -129,7 +129,6 @@ pub fn configure_android_ndk_env(cmd: &mut Command, ndk_root: &Path) -> Option<(
     }
     Some((cc, cxx))
 }
-
 
 #[allow(dead_code)]
 pub fn emit_android_template(
@@ -541,12 +540,35 @@ class MainActivity : GameActivity() {{
         grants: Map<String, Boolean>,
         rationales: Map<String, Boolean>
     ) {{
-        // Dispatched into AndroidBridgeState::push_permission_results via JNI bridge
+        val names = grants.keys.toTypedArray()
+        val results = grants.values.map {{ if (it) 0 else -1 }}.toIntArray()
+        val ratList = rationales.values.map {{ it }}.toBooleanArray()
+        try {{
+            nativeOnPermissionResults(requestId, names, results, ratList)
+        }} catch (_: UnsatisfiedLinkError) {{
+            // Native library not yet initialized or bridge unavailable
+        }}
     }}
 
     private fun onNativeFileDialogResults(requestId: Long, uris: List<String>) {{
-        // Dispatched into AndroidBridgeState::push_file_dialog_result via JNI bridge
+        try {{
+            nativeOnFileDialogResults(requestId, uris.toTypedArray())
+        }} catch (_: UnsatisfiedLinkError) {{
+            // Native library not yet initialized or bridge unavailable
+        }}
     }}
+
+    private external fun nativeOnPermissionResults(
+        requestId: Long,
+        permissions: Array<String>,
+        grantResults: IntArray,
+        rationales: BooleanArray
+    )
+
+    private external fun nativeOnFileDialogResults(
+        requestId: Long,
+        uris: Array<String>
+    )
 }}
 "#
     );

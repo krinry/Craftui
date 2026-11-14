@@ -1,7 +1,7 @@
-use std::path::Path;
-use craftui_core::{CraftError, Permission, Result};
 use crate::doctor::json_escape;
-use crate::manifest::{find_project_manifest, AppManifest, web_permission_name};
+use crate::manifest::{AppManifest, find_project_manifest, web_permission_name};
+use craftui_core::{CraftError, Permission, Result};
+use std::path::Path;
 
 pub fn format_permissions_list_json() -> String {
     let items: Vec<String> = Permission::all_standard()
@@ -153,4 +153,3 @@ pub fn load_active_manifest(dir: &Path) -> Result<Option<AppManifest>> {
         Ok(None)
     }
 }
-

@@ -1,7 +1,6 @@
 use super::*;
 
 impl WidgetTree {
-
     /// Mount a reactive dynamic container whose subtree automatically rebuilds whenever `key_fn` changes.
     pub fn dynamic_slot<K: Clone + PartialEq + 'static>(
         &mut self,
@@ -384,5 +383,4 @@ impl WidgetTree {
             }
         }
     }
-
 }

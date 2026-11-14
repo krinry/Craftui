@@ -9,16 +9,16 @@ mod templates;
 #[cfg(test)]
 mod tests;
 
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, mpsc};
-use clap::{Parser, Subcommand, ValueEnum};
-use craftui_core::{CraftError, Result};
-use notify::{RecursiveMode, Watcher};
 use crate::dev::{check_cui_paths, render_cui_file_to_png, run_dev_watcher};
 use crate::doctor::{run_doctor, run_setup};
 use crate::permissions::{run_permissions_check, run_permissions_list};
 use crate::platform::build::{run_app_target, run_build};
 use crate::templates::{init_manifest_in_dir, scaffold_project_with_template, template_label};
+use clap::{Parser, Subcommand, ValueEnum};
+use craftui_core::{CraftError, Result};
+use notify::{RecursiveMode, Watcher};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, mpsc};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -367,4 +367,3 @@ fn run() -> Result<()> {
         ),
     }
 }
-

@@ -1,8 +1,8 @@
-use std::ffi::{c_char, c_void};
-use craftui_core::{BatteryState, Permission, PermissionStatus, PointerPhase, UiDispatcher};
 use crate::host::{IosAppHost, IosMetalLayerDescriptor};
 use crate::services::*;
 use crate::types::*;
+use craftui_core::{BatteryState, Permission, PermissionStatus, PointerPhase, UiDispatcher};
+use std::ffi::{c_char, c_void};
 
 // === C-ABI / UIKit Entrypoints callable directly from Swift/ObjC `UIViewController` ===
 
@@ -437,4 +437,3 @@ pub unsafe extern "C" fn craftui_ios_app_set_battery(
         };
     }
 }
-

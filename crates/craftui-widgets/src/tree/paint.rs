@@ -550,7 +550,8 @@ impl WidgetTree {
                             theme.on_primary
                         };
                         if builtin_icon_svg(&txt).is_some() {
-                            let icon_sz = (rect.width - 8.0).min(rect.height - 8.0).clamp(12.0, 24.0);
+                            let icon_sz =
+                                (rect.width - 8.0).min(rect.height - 8.0).clamp(12.0, 24.0);
                             let ix = rect.x + (rect.width - icon_sz) * 0.5;
                             let iy = rect.y + (rect.height - icon_sz) * 0.5;
                             let icon_rect = Rect::new(ix, iy, icon_sz, icon_sz);
@@ -1978,8 +1979,9 @@ impl WidgetTree {
                 if let Some(trail) = trailing {
                     let trail_str = trail.get();
                     if !trail_str.is_empty() {
-                        let trail_st =
-                            TextStyle::default().with_size(18.0).with_color(theme.text_secondary);
+                        let trail_st = TextStyle::default()
+                            .with_size(18.0)
+                            .with_color(theme.text_secondary);
                         let tsz = self.text_engine.measure(&trail_str, &trail_st, None);
                         trailing_w = tsz.width + 16.0;
                         let trail_x = rect.x + rect.width - pad_x - tsz.width;
@@ -2005,12 +2007,19 @@ impl WidgetTree {
                     let sub_st = TextStyle::default()
                         .with_size(13.0)
                         .with_color(theme.text_secondary);
-                    let t_sz = self.text_engine.measure(&title_str, &title_st, Some(avail_w));
+                    let t_sz = self
+                        .text_engine
+                        .measure(&title_str, &title_st, Some(avail_w));
                     let s_sz = self.text_engine.measure(&sub_str, &sub_st, Some(avail_w));
                     let total_h = t_sz.height + s_sz.height + 2.0;
                     let start_y = rect.y + (rect.height - total_h) * 0.5;
 
-                    scene.draw_text(Point::new(cur_x, start_y), title_str, title_st, Some(avail_w));
+                    scene.draw_text(
+                        Point::new(cur_x, start_y),
+                        title_str,
+                        title_st,
+                        Some(avail_w),
+                    );
                     scene.draw_text(
                         Point::new(cur_x, start_y + t_sz.height + 2.0),
                         sub_str,
@@ -2018,9 +2027,16 @@ impl WidgetTree {
                         Some(avail_w),
                     );
                 } else {
-                    let t_sz = self.text_engine.measure(&title_str, &title_st, Some(avail_w));
+                    let t_sz = self
+                        .text_engine
+                        .measure(&title_str, &title_st, Some(avail_w));
                     let start_y = rect.y + (rect.height - t_sz.height) * 0.5;
-                    scene.draw_text(Point::new(cur_x, start_y), title_str, title_st, Some(avail_w));
+                    scene.draw_text(
+                        Point::new(cur_x, start_y),
+                        title_str,
+                        title_st,
+                        Some(avail_w),
+                    );
                 }
             }
             WidgetKind::Chip {
@@ -2040,16 +2056,14 @@ impl WidgetTree {
                     theme.surface
                 };
                 scene.fill_rect(rect, bg, rad);
-                let border_color = if is_sel {
-                    theme.primary
-                } else {
-                    theme.border
-                };
+                let border_color = if is_sel { theme.primary } else { theme.border };
                 scene.stroke_rect(rect, border_color, 1.0, rad);
 
                 let mut cur_x = rect.x + 10.0;
                 if is_sel && icon.is_none() {
-                    let check_st = TextStyle::default().with_size(14.0).with_color(theme.primary);
+                    let check_st = TextStyle::default()
+                        .with_size(14.0)
+                        .with_color(theme.primary);
                     let csz = self.text_engine.measure("✓", &check_st, None);
                     let cy = rect.y + (rect.height - csz.height) * 0.5;
                     scene.draw_text(Point::new(cur_x, cy), "✓", check_st, None);
@@ -2057,13 +2071,11 @@ impl WidgetTree {
                 } else if let Some(ic) = icon {
                     let ic_str = ic.get();
                     if !ic_str.is_empty() {
-                        let ic_st = TextStyle::default().with_size(14.0).with_color(
-                            if is_sel {
-                                theme.primary
-                            } else {
-                                theme.text_secondary
-                            },
-                        );
+                        let ic_st = TextStyle::default().with_size(14.0).with_color(if is_sel {
+                            theme.primary
+                        } else {
+                            theme.text_secondary
+                        });
                         let isz = self.text_engine.measure(&ic_str, &ic_st, None);
                         let iy = rect.y + (rect.height - isz.height) * 0.5;
                         scene.draw_text(Point::new(cur_x, iy), ic_str, ic_st, None);
@@ -2117,8 +2129,9 @@ impl WidgetTree {
                 if let Some(lead) = leading_icon {
                     let lead_str = lead.get();
                     if !lead_str.is_empty() {
-                        let lead_st =
-                            TextStyle::default().with_size(22.0).with_color(theme.text_primary);
+                        let lead_st = TextStyle::default()
+                            .with_size(22.0)
+                            .with_color(theme.text_primary);
                         let lsz = self.text_engine.measure(&lead_str, &lead_st, None);
                         let ly = rect.y + (rect.height - lsz.height) * 0.5;
                         scene.draw_text(Point::new(cur_x, ly), lead_str, lead_st, None);
@@ -2261,5 +2274,4 @@ impl WidgetTree {
                 .map_or(point, |inv| inv.transform_point(point))
         }
     }
-
 }

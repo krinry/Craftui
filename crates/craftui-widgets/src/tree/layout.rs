@@ -1,7 +1,6 @@
 use super::*;
 
 impl WidgetTree {
-
     /// Update tree window metrics and notify reactive listeners.
     pub fn set_metrics(&mut self, metrics: WindowMetrics) {
         self.metrics = metrics;
@@ -475,26 +474,36 @@ impl WidgetTree {
 
         for host_id in v_ids {
             let rect = self.layout_engine.rect(host_id);
-            let Some(node) = self.nodes.get(host_id) else {
-                continue;
-            };
-            let WidgetKind::VirtualList {
-                axis,
-                columns,
-                item_extent,
-                item_count,
-                offset,
-                ..
-            } = &node.kind
-            else {
-                continue;
-            };
+            let (axis, total_count, cols, extent, off) = {
+                let Some(node) = self.nodes.get_mut(host_id) else {
+                    continue;
+                };
+                let WidgetKind::VirtualList {
+                    axis,
+                    columns,
+                    item_extent,
+                    item_count,
+                    offset,
+                    ..
+                } = &mut node.kind
+                else {
+                    continue;
+                };
 
-            let axis = *axis;
-            let total_count = item_count.get();
-            let cols = (*columns).max(1);
-            let extent = *item_extent;
-            let off = *offset;
+                let axis = *axis;
+                let total_count = item_count.get();
+                let cols = (*columns).max(1);
+                let extent = *item_extent;
+                let viewport = match axis {
+                    Axis::Vertical => rect.height.max(extent),
+                    Axis::Horizontal => rect.width.max(extent),
+                };
+                let total_rows = total_count.div_ceil(cols);
+                let max_offset = (total_rows as f32 * extent - viewport).max(0.0);
+                let clamped_off = offset.clamp(0.0, max_offset);
+                *offset = clamped_off;
+                (axis, total_count, cols, extent, clamped_off)
+            };
             let viewport = match axis {
                 Axis::Vertical => rect.height.max(extent),
                 Axis::Horizontal => rect.width.max(extent),
@@ -855,6 +864,4 @@ impl WidgetTree {
         let max_y = (self.metrics.logical_size.height - h - 8.0).max(8.0);
         Rect::new(base.x.clamp(8.0, max_x), base.y.clamp(8.0, max_y), w, h)
     }
-
-
 }

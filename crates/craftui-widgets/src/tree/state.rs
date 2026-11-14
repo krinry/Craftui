@@ -1,7 +1,6 @@
 use super::*;
 
 impl WidgetTree {
-
     /// Capture transient focus, scroll offsets, text cursor positions, and open selects for hot-reload preservation.
     pub fn capture_ui_state(&self) -> TreeUiSnapshot {
         let mut snap = TreeUiSnapshot {

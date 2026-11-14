@@ -18,17 +18,17 @@ mod tests;
 
 pub use clipboard::DesktopClipboard;
 pub use events::{
-    translate_modifiers, translate_mouse_button, translate_scroll_delta, translate_winit_cursor,
-    translate_winit_key, DesktopUserEvent,
+    DesktopUserEvent, translate_modifiers, translate_mouse_button, translate_scroll_delta,
+    translate_winit_cursor, translate_winit_key,
 };
-pub use file_dialog::{build_rfd_dialog, DesktopFileDialog};
+pub use file_dialog::{DesktopFileDialog, build_rfd_dialog};
 #[cfg(feature = "hot-reload")]
 pub use hot_reload::should_trigger_hot_reload;
 pub use permissions::DesktopPermissionBackend;
 pub use presenter::pack_rgba8_to_softbuffer_0rgb;
+pub use runner::{AppContext, WindowConfig, WindowLauncher, run_app};
 #[cfg(feature = "hot-reload")]
 pub use runner::{run_hot_reload_cui, run_live_preview_cui};
-pub use runner::{run_app, AppContext, WindowConfig, WindowLauncher};
 pub use services::{
-    default_desktop_services, DesktopDeviceCapabilities, DesktopSecureStorage, DesktopShareBackend,
+    DesktopDeviceCapabilities, DesktopSecureStorage, DesktopShareBackend, default_desktop_services,
 };

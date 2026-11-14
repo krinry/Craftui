@@ -2,13 +2,21 @@
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_runner {
-    use super::*;
+    use crate::dom::*;
+    use crate::host::*;
+    use crate::route::*;
+    use craftui_a11y::A11yRole;
+    use craftui_core::*;
     use craftui_core::{NodeId, set_monotonic_ms_provider};
+    use craftui_reactive::Scope;
     #[cfg(any(feature = "gpu-sdf", feature = "gpu-vello"))]
     use craftui_render::GpuSurfacePipeline;
+    use craftui_render::TextureRegistry;
+    use craftui_widgets::WidgetTree;
     use std::any::Any;
     use std::cell::{Cell, RefCell};
     use std::rc::{Rc, Weak};
+    use std::result::Result;
     use wasm_bindgen::JsCast;
     use wasm_bindgen::closure::Closure;
     use web_sys::{
@@ -929,4 +937,3 @@ pub mod wasm_runner {
         Ok(out)
     }
 }
-

@@ -221,4 +221,3 @@ impl DynamicStore {
             .insert(name.into(), Rc::new(RefCell::new(cb)));
     }
 }
-

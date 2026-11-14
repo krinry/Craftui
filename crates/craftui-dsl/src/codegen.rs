@@ -541,7 +541,11 @@ fn emit_element(
         }
         "Divider" | "HorizontalDivider" | "VerticalDivider" => {
             let is_vertical = el.kind == "VerticalDivider";
-            let default_axis = if is_vertical { "Axis::Vertical" } else { "Axis::Horizontal" };
+            let default_axis = if is_vertical {
+                "Axis::Vertical"
+            } else {
+                "Axis::Horizontal"
+            };
             let axis = find_prop(el, &["direction"])
                 .map(|p| expr_to_axis(&p.value, ctx, false))
                 .unwrap_or_else(|| default_axis.into());
@@ -655,7 +659,8 @@ fn emit_element(
                 }
                 _ => {
                     if let Some(fg) = custom_fg {
-                        let _ = writeln!(out, "{indent}    {tr}.set_button_foreground(__btn, {fg});");
+                        let _ =
+                            writeln!(out, "{indent}    {tr}.set_button_foreground(__btn, {fg});");
                     }
                 }
             }
@@ -1339,10 +1344,7 @@ fn emit_element(
                     })
                     .unwrap_or("CardVariant::Elevated"),
             };
-            let _ = writeln!(
-                out,
-                "{indent}let {var} = {tr}.card({cx}, {variant});"
-            );
+            let _ = writeln!(out, "{indent}let {var} = {tr}.card({cx}, {variant});");
         }
         "ListTile" => {
             let title_rv = find_prop(el, &["title"])
@@ -2300,7 +2302,11 @@ fn emit_common_props_and_events(
     }
 
     // 7. Gesture & pointer handlers supported on all nodes (skip Button variants' and ListTile's primary on_tap unless subcomponent)
-    if (is_subcomponent || (!el.kind.ends_with("Button") && !el.kind.ends_with("button") && el.kind != "ListTile" && el.kind != "list_tile"))
+    if (is_subcomponent
+        || (!el.kind.ends_with("Button")
+            && !el.kind.ends_with("button")
+            && el.kind != "ListTile"
+            && el.kind != "list_tile"))
         && let Some(h) = find_handler(el, &["on_tap", "on_click"])
         && (!is_subcomponent
             || !ctx
@@ -3550,12 +3556,18 @@ fn expr_to_typed_rust_inner(expr: &Expr, ty: &str, ctx: &EmitCtx<'_>, tracked: b
                         "width" => format!("__metrics_sig.{get}().logical_size.width"),
                         "height" => format!("__metrics_sig.{get}().logical_size.height"),
                         "scale_factor" => format!("__metrics_sig.{get}().scale_factor"),
-                        "is_compact" => format!("(__metrics_sig.{get}().logical_size.width < 600.0)"),
+                        "is_compact" => {
+                            format!("(__metrics_sig.{get}().logical_size.width < 600.0)")
+                        }
                         "is_medium" => format!(
                             "(__metrics_sig.{get}().logical_size.width >= 600.0 && __metrics_sig.{get}().logical_size.width <= 1024.0)"
                         ),
-                        "is_expanded" => format!("(__metrics_sig.{get}().logical_size.width > 1024.0)"),
-                        "breakpoint" => format!("format!(\"{{:?}}\", __metrics_sig.{get}().breakpoint())"),
+                        "is_expanded" => {
+                            format!("(__metrics_sig.{get}().logical_size.width > 1024.0)")
+                        }
+                        "breakpoint" => {
+                            format!("format!(\"{{:?}}\", __metrics_sig.{get}().breakpoint())")
+                        }
                         _ => "0.0".into(),
                     };
                     let field_ty = match field.as_str() {

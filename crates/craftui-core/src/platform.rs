@@ -376,11 +376,17 @@ impl Permission {
             "background_refresh" | "background_fetch" => Self::BackgroundRefresh,
             "media_projection" | "screen_capture" | "screen_record" => Self::MediaProjection,
             "clipboard_read" | "clipboard" | "pasteboard" => Self::ClipboardRead,
-            "device_admin" | "admin" | "device_policy" | "device_policy_manager" => Self::DeviceAdmin,
-            "accessibility_service" | "accessibility" | "a11y_service" | "a11y" => Self::AccessibilityService,
+            "device_admin" | "admin" | "device_policy" | "device_policy_manager" => {
+                Self::DeviceAdmin
+            }
+            "accessibility_service" | "accessibility" | "a11y_service" | "a11y" => {
+                Self::AccessibilityService
+            }
             "write_settings" | "modify_system_settings" => Self::WriteSettings,
             "package_usage_stats" | "usage_stats" | "app_usage" => Self::PackageUsageStats,
-            "ignore_battery_optimizations" | "battery_optimization" | "battery_saver" => Self::IgnoreBatteryOptimizations,
+            "ignore_battery_optimizations" | "battery_optimization" | "battery_saver" => {
+                Self::IgnoreBatteryOptimizations
+            }
             "notification_listener" | "notification_access" => Self::NotificationListener,
             "vpn_service" | "vpn" => Self::VpnService,
             "admin_privileges" | "root" | "sudo" | "uac" | "elevated" => Self::AdminPrivileges,
@@ -866,7 +872,8 @@ impl PermissionBackend for MockPermissionBackend {
     }
 
     fn open_accessibility_settings(&self) -> bool {
-        self.accessibility_settings_opened.fetch_add(1, Ordering::SeqCst);
+        self.accessibility_settings_opened
+            .fetch_add(1, Ordering::SeqCst);
         true
     }
 
@@ -1707,8 +1714,14 @@ mod tests {
         assert_eq!(Permission::from_key("face_id"), Permission::Biometrics);
         assert_eq!(Permission::from_key("biometric"), Permission::Biometrics);
         assert_eq!(Permission::from_key("admin"), Permission::DeviceAdmin);
-        assert_eq!(Permission::from_key("a11y"), Permission::AccessibilityService);
-        assert_eq!(Permission::from_key("accessibility"), Permission::AccessibilityService);
+        assert_eq!(
+            Permission::from_key("a11y"),
+            Permission::AccessibilityService
+        );
+        assert_eq!(
+            Permission::from_key("accessibility"),
+            Permission::AccessibilityService
+        );
         assert_eq!(Permission::from_key("root"), Permission::AdminPrivileges);
         assert_eq!(Permission::from_key("sudo"), Permission::AdminPrivileges);
         assert_eq!(Permission::from_key("uac"), Permission::AdminPrivileges);

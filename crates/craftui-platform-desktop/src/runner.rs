@@ -17,25 +17,24 @@ use craftui_widgets::WidgetTree;
 use notify::{Event as NotifyEvent, RecursiveMode, Watcher};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{
-    ElementState, Ime as WinitIme, TouchPhase, WindowEvent,
-};
+use winit::event::{ElementState, Ime as WinitIme, TouchPhase, WindowEvent};
 use winit::event_loop::{
     ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy, OwnedDisplayHandle,
 };
 use winit::window::{CursorIcon as WinitCursorIcon, Window, WindowAttributes, WindowId};
 
 use crate::events::{
-    translate_modifiers, translate_mouse_button, translate_scroll_delta, translate_winit_cursor,
-    translate_winit_key, DesktopUserEvent,
+    DesktopUserEvent, translate_modifiers, translate_mouse_button, translate_scroll_delta,
+    translate_winit_cursor, translate_winit_key,
 };
 #[cfg(feature = "hot-reload")]
-use crate::hot_reload::{paint_live_preview_overlays, should_trigger_hot_reload, HotReloadSpec};
+use crate::hot_reload::{HotReloadSpec, paint_live_preview_overlays, should_trigger_hot_reload};
 use crate::presenter::{DesktopPresenter, SoftbufferPresenter};
 use crate::services::default_desktop_services;
 
@@ -68,15 +67,19 @@ pub(crate) struct PendingWindowRequest {
     pub(crate) builder: BuildUiFn,
 }
 
+static NEXT_WINDOW_REQ_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 thread_local! {
-    static PENDING_WINDOW_QUEUE: RefCell<(u64, HashMap<u64, PendingWindowRequest>)> =
-        RefCell::new((1, HashMap::new()));
+    static PENDING_WINDOW_QUEUE: RefCell<HashMap<u64, PendingWindowRequest>> =
+        RefCell::new(HashMap::new());
 }
 
 /// Cloneable handle enabling button click handlers and effects to spawn additional desktop windows.
+/// Bound to the event-loop thread.
 #[derive(Clone)]
 pub struct WindowLauncher {
     proxy: EventLoopProxy<DesktopUserEvent>,
+    _not_send: PhantomData<*const ()>,
 }
 
 impl WindowLauncher {
@@ -85,18 +88,15 @@ impl WindowLauncher {
     where
         F: FnOnce(Scope, &mut WidgetTree, &mut AppContext) -> NodeId + 'static,
     {
-        let id = PENDING_WINDOW_QUEUE.with(|cell| {
-            let mut guard = cell.borrow_mut();
-            let id = guard.0;
-            guard.0 = guard.0.wrapping_add(1).max(1);
-            guard.1.insert(
+        let id = NEXT_WINDOW_REQ_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        PENDING_WINDOW_QUEUE.with(|cell| {
+            cell.borrow_mut().insert(
                 id,
                 PendingWindowRequest {
                     config,
                     builder: Box::new(build_ui),
                 },
             );
-            id
         });
         self.proxy
             .send_event(DesktopUserEvent::OpenWindow(id))
@@ -410,6 +410,7 @@ impl DesktopRunner {
             services: self.services.clone(),
             launcher: WindowLauncher {
                 proxy: self.proxy.clone(),
+                _not_send: PhantomData,
             },
         };
 
@@ -589,7 +590,7 @@ impl ApplicationHandler<DesktopUserEvent> for DesktopRunner {
                 self.reload_cui_from_disk();
             }
             DesktopUserEvent::OpenWindow(req_id) => {
-                let req = PENDING_WINDOW_QUEUE.with(|cell| cell.borrow_mut().1.remove(&req_id));
+                let req = PENDING_WINDOW_QUEUE.with(|cell| cell.borrow_mut().remove(&req_id));
                 if let Some(req) = req {
                     let child_scope = Scope::root().child_scope();
                     let child_tree = WidgetTree::new(child_scope);

@@ -1181,12 +1181,7 @@ impl WidgetTree {
         let layout = LayoutStyle::column().with_padding(Insets::all(16.0));
         let mut box_style = BoxStyle::default();
         box_style.radius = CornerRadii::all(12.0);
-        let id = self.spawn_node(
-            "Card",
-            WidgetKind::Card { variant },
-            layout,
-            scope,
-        );
+        let id = self.spawn_node("Card", WidgetKind::Card { variant }, layout, scope);
         if let Some(n) = self.nodes.get_mut(id) {
             n.box_style = box_style;
             n.a11y.role = A11yRole::Container;
@@ -1348,26 +1343,29 @@ impl WidgetTree {
         if let Some(ab) = app_bar {
             self.append_child(root, ab);
         }
-        if let Some(body_node) = self.nodes.get_mut(body) {
-            body_node.layout.flex_grow = 1.0;
+        if let Some(mut layout) = self.nodes.get(body).map(|n| n.layout.clone()) {
+            layout.flex_grow = 1.0;
+            self.set_layout(body, layout);
         }
         self.append_child(root, body);
         if let Some(bnb) = bottom_nav_bar {
             self.append_child(root, bnb);
         }
         if let Some(fab) = floating_action_button {
-            if let Some(fab_node) = self.nodes.get_mut(fab) {
-                fab_node.layout.absolute = true;
-                fab_node.layout.inset_bottom = Some(24.0);
-                fab_node.layout.inset_right = Some(24.0);
+            if let Some(mut layout) = self.nodes.get(fab).map(|n| n.layout.clone()) {
+                layout.absolute = true;
+                layout.inset_bottom = Some(24.0);
+                layout.inset_right = Some(24.0);
+                self.set_layout(fab, layout);
             }
             self.append_child(root, fab);
         }
         if let Some(dr) = drawer {
-            if let Some(dr_node) = self.nodes.get_mut(dr) {
-                dr_node.layout.absolute = true;
-                dr_node.layout.use_inset = true;
-                dr_node.layout.inset = Insets::ZERO;
+            if let Some(mut layout) = self.nodes.get(dr).map(|n| n.layout.clone()) {
+                layout.absolute = true;
+                layout.use_inset = true;
+                layout.inset = Insets::ZERO;
+                self.set_layout(dr, layout);
             }
             self.append_child(root, dr);
         }
@@ -1409,5 +1407,4 @@ impl WidgetTree {
         }
         st
     }
-
 }

@@ -1,6 +1,6 @@
-use std::path::Path;
-use craftui_core::{CraftError, Result};
 use crate::manifest::{AppManifest, xml_escape};
+use craftui_core::{CraftError, Result};
+use std::path::Path;
 
 #[allow(dead_code)]
 pub fn emit_ios_template(out_dir: &Path, app_name: &str, rust_lib_name: &str) -> Result<()> {
@@ -99,6 +99,7 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
     private var locationManager: CLLocationManager?
     private var pendingLocationCompletion: ((CraftUIPermissionCode) -> Void)?
     private var bluetoothManager: CBCentralManager?
+    private var pendingBluetoothCompletion: ((CraftUIPermissionCode) -> Void)?
 
     func pushStatus(_ code: CraftUIPermissionCode, forKey key: String, app: OpaquePointer) {
         var bytes = Array(key.utf8)
@@ -204,8 +205,23 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
                 deliverResult(requestId: requestId, key: key, code: .unsupported, app: app)
             }
         case "bluetooth", "bluetooth_scan", "bluetooth_connect", "bluetooth_advertise":
+            if #available(iOS 13.1, *) {
+                let auth = CBCentralManager.authorization
+                if auth == .allowedAlways {
+                    deliverResult(requestId: requestId, key: key, code: .granted, app: app)
+                    return
+                } else if auth == .denied {
+                    deliverResult(requestId: requestId, key: key, code: .permanentlyDenied, app: app)
+                    return
+                } else if auth == .restricted {
+                    deliverResult(requestId: requestId, key: key, code: .restricted, app: app)
+                    return
+                }
+            }
+            pendingBluetoothCompletion = { code in
+                self.deliverResult(requestId: requestId, key: key, code: code, app: app)
+            }
             bluetoothManager = CBCentralManager(delegate: self, queue: nil)
-            deliverResult(requestId: requestId, key: key, code: .granted, app: app)
         case "motion_activity", "sensors":
             let pedometer = CMPedometer()
             pedometer.queryPedometerData(from: Date().addingTimeInterval(-60), to: Date()) { _, error in
@@ -231,7 +247,33 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
     }
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        _ = central.state
+        let code: CraftUIPermissionCode
+        if #available(iOS 13.1, *) {
+            code = switch CBCentralManager.authorization {
+            case .allowedAlways: .granted
+            case .denied: .permanentlyDenied
+            case .restricted: .restricted
+            case .notDetermined:
+                switch central.state {
+                case .poweredOn: .granted
+                case .unauthorized: .permanentlyDenied
+                case .unsupported: .unsupported
+                default: .notDetermined
+                }
+            @unknown default: .notDetermined
+            }
+        } else {
+            code = switch central.state {
+            case .poweredOn: .granted
+            case .unauthorized: .permanentlyDenied
+            case .unsupported: .unsupported
+            default: .notDetermined
+            }
+        }
+        if code != .notDetermined {
+            pendingBluetoothCompletion?(code)
+            pendingBluetoothCompletion = nil
+        }
     }
 
     func saveKeychainSecret(key: String, value: String) {

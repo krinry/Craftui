@@ -12,7 +12,7 @@ use crate::arena::{
 /// Lazy memoized derived reactive handle (`Copy`).
 pub struct Computed<T: 'static> {
     pub(crate) key: ComputedKey,
-    pub(crate) _marker: PhantomData<fn() -> T>,
+    pub(crate) _marker: PhantomData<(fn() -> T, *const ())>,
 }
 
 impl<T: 'static> Copy for Computed<T> {}

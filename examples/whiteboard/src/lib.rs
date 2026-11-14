@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use craftui::prelude::*;
 
-use crate::canvas::{attach_whiteboard_canvas, WhiteboardController};
+use crate::canvas::{WhiteboardController, attach_whiteboard_canvas};
 use crate::export::{elements_from_json, elements_to_json, elements_to_svg};
 use crate::model::Tool;
 
@@ -34,7 +34,9 @@ pub fn mount_whiteboard_app(
     // Initial state setup
     screen.active_tool.set("Select".to_string());
     screen.zoom_level.set("100%".to_string());
-    screen.status_text.set(format!("{} shapes", ctrl.elements.get().len()));
+    screen
+        .status_text
+        .set(format!("{} shapes", ctrl.elements.get().len()));
     screen.mode_name.set("Native CUI".to_string());
     screen.is_hybrid.set(false);
     screen.drawer_open.set(false);
@@ -148,7 +150,10 @@ pub fn mount_whiteboard_app(
     let svc_share = services.clone();
     let ctrl_share = ctrl.clone();
     screen.set_on_share(move || {
-        let svg = elements_to_svg(&ctrl_share.elements.get(), Rect::new(0.0, 0.0, 1200.0, 800.0));
+        let svg = elements_to_svg(
+            &ctrl_share.elements.get(),
+            Rect::new(0.0, 0.0, 1200.0, 800.0),
+        );
         if let Some(svc) = &svc_share {
             svc.write_clipboard(&svg);
             svc.share(&SharePayload {
@@ -288,9 +293,7 @@ use wasm_bindgen::prelude::*;
 pub fn start() -> Result<(), JsValue> {
     craftui_platform_web::start_web_app(
         craftui_platform_web::WebBridgeConfig::default(),
-        |cx, tree, _textures, _dispatcher| {
-            mount_whiteboard_app(cx, tree, None)
-        },
+        |cx, tree, _textures, _dispatcher| mount_whiteboard_app(cx, tree, None),
     )
 }
 
@@ -437,8 +440,10 @@ mod tests {
         let root = mount_whiteboard_app(cx, &mut tree, Some(services));
         assert!(tree.nodes.contains_key(root));
         // Verify canvas was mounted and attached
-        let canvas_node = tree.node_by_id("whiteboard_canvas").expect("canvas must exist");
-        
+        let canvas_node = tree
+            .node_by_id("whiteboard_canvas")
+            .expect("canvas must exist");
+
         // 1. Desktop viewport (1200x800, expanded)
         let desktop_metrics = WindowMetrics {
             logical_size: Size::new(1200.0, 800.0),
@@ -478,7 +483,10 @@ mod tests {
         assert_eq!(canvas_rect_mob.height, 844.0);
 
         let top_nav_rect_mob = tree.layout_engine.rect(top_nav);
-        assert!(top_nav_rect_mob.width <= 390.0, "Top nav must fit within mobile screen width");
+        assert!(
+            top_nav_rect_mob.width <= 390.0,
+            "Top nav must fit within mobile screen width"
+        );
     }
 }
 
@@ -517,4 +525,3 @@ pub fn android_main(app: craftui::platform_android::android_activity::AndroidApp
     );
     android_log(">>> EXITED WHITEBOARD ANDROID_MAIN <<<");
 }
-

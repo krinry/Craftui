@@ -1,8 +1,8 @@
 use craftui_core::{
     AndroidPermissionSpec, AppLifecycleEvent, BatteryState, DeviceCapabilitiesBackend, DeviceInfo,
-    FileDialogBackend, FileDialogRequest, HapticStyle, HapticsBackend,
-    NetworkStatus, Permission, PermissionBackend,
-    PermissionOutcome, PermissionStatus, SecureStorageBackend, ShareBackend, SharePayload,
+    FileDialogBackend, FileDialogRequest, HapticStyle, HapticsBackend, NetworkStatus, Permission,
+    PermissionBackend, PermissionOutcome, PermissionStatus, SecureStorageBackend, ShareBackend,
+    SharePayload,
 };
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -649,4 +649,3 @@ impl FileDialogBackend for AndroidFileDialogBridge {
         self.wait_result(request_id).into_iter().next()
     }
 }
-

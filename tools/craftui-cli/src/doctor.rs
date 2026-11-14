@@ -1,9 +1,9 @@
+use crate::dev::{CheckStats, check_cui_paths};
+use crate::manifest::{AppManifest, ManifestDiagnostic, find_project_manifest};
+use crate::platform::android::{discover_adb, discover_android_ndk};
+use craftui_core::{CraftError, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use craftui_core::{CraftError, Result};
-use crate::dev::{check_cui_paths, CheckStats};
-use crate::manifest::{find_project_manifest, AppManifest, ManifestDiagnostic};
-use crate::platform::android::{discover_adb, discover_android_ndk};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DoctorReport {
@@ -56,7 +56,6 @@ pub fn find_in_path(name: &str) -> Option<PathBuf> {
     }
     None
 }
-
 
 pub fn run_setup(check_only: bool, skip_ios: bool) -> Result<()> {
     let report = collect_doctor_report(Path::new("."))?;
@@ -144,7 +143,6 @@ pub fn run_setup(check_only: bool, skip_ios: bool) -> Result<()> {
     }
     Ok(())
 }
-
 
 pub fn collect_doctor_report(project_dir: &Path) -> Result<DoctorReport> {
     let rustc_version = command_stdout("rustc", &["--version"]);
@@ -407,4 +405,3 @@ pub fn run_doctor(path: &Path, json: bool) -> Result<()> {
     }
     Ok(())
 }
-

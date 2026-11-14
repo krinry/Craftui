@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
-use craftui_core::{CraftError, Permission, Result};
 use crate::ProjectTemplate;
 use crate::manifest::{self, AppManifest};
+use craftui_core::{CraftError, Permission, Result};
+use std::path::{Path, PathBuf};
 
 pub fn template_label(template: ProjectTemplate) -> &'static str {
     match template {
@@ -535,4 +535,3 @@ pub fn detect_cargo_package_name(cargo_toml: &Path) -> Option<String> {
     }
     None
 }
-

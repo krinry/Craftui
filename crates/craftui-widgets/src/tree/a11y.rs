@@ -1,7 +1,6 @@
 use super::*;
 
 impl WidgetTree {
-
     /// Reset incremental AccessKit cache so the next [`build_a11y_update`](Self::build_a11y_update)
     /// emits a full initial tree snapshot.
     pub fn invalidate_a11y(&mut self) {
@@ -53,7 +52,7 @@ impl WidgetTree {
                 })
                 .collect()
         };
-        let bounds = self.layout_engine.rect(id);
+        let bounds = self.node_visual_rect(id);
         out.push(A11ySnapshotNode {
             id,
             bounds,
@@ -178,5 +177,4 @@ impl WidgetTree {
         }
         Some(cur)
     }
-
 }

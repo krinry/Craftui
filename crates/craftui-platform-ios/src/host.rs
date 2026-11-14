@@ -1,7 +1,6 @@
 use craftui_core::{
-    ImeEvent, Insets, KeyCode, KeyEvent, Modifiers, NodeId, PlatformServices,
-    Point, PointerButton, PointerEvent, PointerId, PointerPhase, Size, TextureId,
-    UiDispatcher, UiEvent, WindowMetrics,
+    ImeEvent, Insets, KeyCode, KeyEvent, Modifiers, NodeId, PlatformServices, Point, PointerButton,
+    PointerEvent, PointerId, PointerPhase, Size, TextureId, UiDispatcher, UiEvent, WindowMetrics,
 };
 use craftui_reactive::Scope;
 use craftui_render::{PaintScene, TextureHandle, TextureRegistry};
@@ -409,4 +408,3 @@ pub mod ios_metal {
         Ok(())
     }
 }
-

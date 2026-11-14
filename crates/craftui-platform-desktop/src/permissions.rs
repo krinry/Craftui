@@ -148,7 +148,11 @@ impl PermissionBackend for DesktopPermissionBackend {
                 .spawn()
                 .is_ok()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows", all(unix, not(target_os = "macos")))))]
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            all(unix, not(target_os = "macos"))
+        )))]
         {
             false
         }
@@ -161,7 +165,9 @@ impl PermissionBackend for DesktopPermissionBackend {
         #[cfg(target_os = "macos")]
         {
             std::process::Command::new("open")
-                .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                .arg(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                )
                 .spawn()
                 .is_ok()
         }
@@ -184,7 +190,11 @@ impl PermissionBackend for DesktopPermissionBackend {
                 })
                 .is_ok()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows", all(unix, not(target_os = "macos")))))]
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            all(unix, not(target_os = "macos"))
+        )))]
         {
             false
         }
@@ -215,7 +225,11 @@ impl PermissionBackend for DesktopPermissionBackend {
                 .spawn()
                 .is_ok()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows", all(unix, not(target_os = "macos")))))]
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            all(unix, not(target_os = "macos"))
+        )))]
         {
             false
         }
@@ -236,7 +250,10 @@ impl PermissionBackend for DesktopPermissionBackend {
         #[cfg(target_os = "macos")]
         {
             std::process::Command::new("osascript")
-                .args(["-e", "do shell script \"echo admin\" with administrator privileges"])
+                .args([
+                    "-e",
+                    "do shell script \"echo admin\" with administrator privileges",
+                ])
                 .output()
                 .map(|out| out.status.success())
                 .unwrap_or(false)
@@ -253,7 +270,11 @@ impl PermissionBackend for DesktopPermissionBackend {
                 .map(|out| out.status.success())
                 .unwrap_or(false)
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows", all(unix, not(target_os = "macos")))))]
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            all(unix, not(target_os = "macos"))
+        )))]
         {
             false
         }

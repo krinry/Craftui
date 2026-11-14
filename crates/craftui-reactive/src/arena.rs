@@ -279,7 +279,11 @@ pub fn untrack<R>(f: impl FnOnce() -> R) -> R {
     result
 }
 
-pub(crate) fn detach_subscriber(arena: &mut ReactiveArena, sub: SubscriberId, sources: &[SourceId]) {
+pub(crate) fn detach_subscriber(
+    arena: &mut ReactiveArena,
+    sub: SubscriberId,
+    sources: &[SourceId],
+) {
     for src in sources {
         match *src {
             SourceId::Signal(sk) => {
@@ -333,7 +337,10 @@ pub(crate) fn record_dependency(source: SourceId) {
     });
 }
 
-pub(crate) fn propagate_dirty(subscribers: Vec<SubscriberId>, node_bindings: Vec<(NodeId, DirtyFlags)>) {
+pub(crate) fn propagate_dirty(
+    subscribers: Vec<SubscriberId>,
+    node_bindings: Vec<(NodeId, DirtyFlags)>,
+) {
     let should_flush = ARENA.with(|a| {
         let mut arena = a.borrow_mut();
         for (node, flags) in node_bindings {
@@ -423,6 +430,9 @@ pub(crate) fn flush_effects() {
 pub(crate) fn run_effect(ek: EffectKey) {
     let prepared = ARENA.with(|a| {
         let mut arena = a.borrow_mut();
+        if arena.observer_stack.contains(&SubscriberId::Effect(ek)) {
+            return None;
+        }
         let eff = arena.effects.get_mut(ek)?;
         if eff.disposed {
             return None;

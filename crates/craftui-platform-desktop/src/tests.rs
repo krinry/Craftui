@@ -83,15 +83,15 @@ fn translates_mouse_buttons_cursors_scroll_deltas_and_clipboard() {
 fn filters_hot_reload_notify_events_to_cui_mutations() {
     use notify::Event as NotifyEvent;
 
-    let access_ev = NotifyEvent::new(notify::EventKind::Access(
-        notify::event::AccessKind::Open(notify::event::AccessMode::Read),
-    ))
+    let access_ev = NotifyEvent::new(notify::EventKind::Access(notify::event::AccessKind::Open(
+        notify::event::AccessMode::Read,
+    )))
     .add_path(PathBuf::from("ui/main.cui"));
     assert!(!should_trigger_hot_reload(&access_ev));
 
-    let modify_cui = NotifyEvent::new(notify::EventKind::Modify(
-        notify::event::ModifyKind::Data(notify::event::DataChange::Content),
-    ))
+    let modify_cui = NotifyEvent::new(notify::EventKind::Modify(notify::event::ModifyKind::Data(
+        notify::event::DataChange::Content,
+    )))
     .add_path(PathBuf::from("ui/main.cui"));
     assert!(should_trigger_hot_reload(&modify_cui));
 

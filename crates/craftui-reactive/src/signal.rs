@@ -2,14 +2,12 @@ use std::marker::PhantomData;
 
 use craftui_core::{DirtyFlags, NodeId};
 
-use crate::arena::{
-    ARENA, SignalKey, SourceId, propagate_dirty, record_dependency, untrack,
-};
+use crate::arena::{ARENA, SignalKey, SourceId, propagate_dirty, record_dependency, untrack};
 
 /// Generational `Copy` handle to a reactive state cell.
 pub struct Signal<T: 'static> {
     pub(crate) key: SignalKey,
-    pub(crate) _marker: PhantomData<fn() -> T>,
+    pub(crate) _marker: PhantomData<(fn() -> T, *const ())>,
 }
 
 impl<T: 'static> Copy for Signal<T> {}
@@ -33,7 +31,7 @@ impl<T: 'static> std::fmt::Debug for Signal<T> {
 /// Read-only `Copy` view of a [`Signal<T>`].
 pub struct ReadSignal<T: 'static> {
     pub(crate) key: SignalKey,
-    pub(crate) _marker: PhantomData<fn() -> T>,
+    pub(crate) _marker: PhantomData<(fn() -> T, *const ())>,
 }
 
 impl<T: 'static> Copy for ReadSignal<T> {}

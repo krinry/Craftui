@@ -1,6 +1,6 @@
+use crate::host::IosAppHost;
 use craftui_core::{Insets, PlatformViewId};
 use std::ffi::c_void;
-use crate::host::IosAppHost;
 
 /// iOS native view hosting strategy inside CraftUI `PlatformView`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,4 +102,3 @@ pub enum IosImeCommand {
 
 /// C-ABI callback invoked by UIKit launcher to populate the root CraftUI [`WidgetTree`].
 pub type IosBuildUiCallback = extern "C" fn(host: *mut IosAppHost, user_data: *mut c_void);
-

@@ -93,7 +93,13 @@ pub fn sketch_arrow_path(start: Point, end: Point, roughness: f32, seed: u64) ->
 }
 
 /// Generate hand-drawn rectangle with characteristic sketchy corner overshoots.
-pub fn sketch_rect_path(origin: Point, width: f32, height: f32, roughness: f32, seed: u64) -> BezPath {
+pub fn sketch_rect_path(
+    origin: Point,
+    width: f32,
+    height: f32,
+    roughness: f32,
+    seed: u64,
+) -> BezPath {
     let mut path = BezPath::new();
     let r = (roughness * 1.4).clamp(0.2, 4.0);
 
@@ -140,7 +146,13 @@ pub fn sketch_rect_path(origin: Point, width: f32, height: f32, roughness: f32, 
 }
 
 /// Generate hand-drawn diamond with corner overshoots.
-pub fn sketch_diamond_path(origin: Point, width: f32, height: f32, roughness: f32, seed: u64) -> BezPath {
+pub fn sketch_diamond_path(
+    origin: Point,
+    width: f32,
+    height: f32,
+    roughness: f32,
+    seed: u64,
+) -> BezPath {
     let mut path = BezPath::new();
     let (x, y) = (origin.x, origin.y);
     let (w, h) = (width, height);

@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use craftui_core::{UiDispatcher, monotonic_ms};
 
 use crate::arena::{
-    ARENA, ComputedSlot, EffectSlot, ScopeKey, ScopeSlot, SignalSlot, UiTimer,
-    complete_ui_job, dispose_scope_recursive, run_effect, ui_dispatcher,
+    ARENA, ComputedSlot, EffectSlot, ScopeKey, ScopeSlot, SignalSlot, UiTimer, complete_ui_job,
+    dispose_scope_recursive, run_effect, ui_dispatcher,
 };
 use crate::computed::Computed;
 use crate::effect::Effect;
@@ -66,6 +66,10 @@ impl Scope {
 
     /// Create an isolated child scope owned by this scope.
     pub fn child_scope(self) -> Self {
+        assert!(
+            self.is_alive(),
+            "cannot create child scope from disposed or invalid scope"
+        );
         let key = ARENA.with(|a| {
             let mut arena = a.borrow_mut();
             let child = arena.scopes.insert(ScopeSlot {
@@ -88,6 +92,10 @@ impl Scope {
 
     /// Allocate a reactive [`Signal<T>`] owned by this scope.
     pub fn signal<T: 'static>(self, initial: T) -> Signal<T> {
+        assert!(
+            self.is_alive(),
+            "cannot allocate signal in disposed or invalid scope"
+        );
         let key = ARENA.with(|a| {
             let mut arena = a.borrow_mut();
             let sig_key = arena.signals.insert(SignalSlot {
@@ -108,6 +116,10 @@ impl Scope {
 
     /// Allocate a lazy memoized [`Computed<T>`] owned by this scope.
     pub fn computed<T: 'static>(self, mut compute: impl FnMut() -> T + 'static) -> Computed<T> {
+        assert!(
+            self.is_alive(),
+            "cannot allocate computed in disposed or invalid scope"
+        );
         let key = ARENA.with(|a| {
             let mut arena = a.borrow_mut();
             let comp_key = arena.computeds.insert(ComputedSlot {
@@ -131,6 +143,10 @@ impl Scope {
 
     /// Register an auto-tracking reactive [`Effect`] owned by this scope.
     pub fn effect(self, callback: impl FnMut() + 'static) -> Effect {
+        assert!(
+            self.is_alive(),
+            "cannot allocate effect in disposed or invalid scope"
+        );
         let key = ARENA.with(|a| {
             let mut arena = a.borrow_mut();
             let eff_key = arena.effects.insert(EffectSlot {
@@ -149,6 +165,9 @@ impl Scope {
 
     /// Register a cleanup closure executed when this scope is disposed.
     pub fn on_cleanup(self, cleanup: impl FnOnce() + 'static) {
+        if !self.is_alive() {
+            return;
+        }
         ARENA.with(|a| {
             let mut arena = a.borrow_mut();
             if let Some(scope) = arena.scopes.get_mut(self.key) {
@@ -213,6 +232,11 @@ impl Scope {
         W: FnOnce() -> T + Send + 'static,
         C: FnOnce(T) + 'static,
     {
+        if !self.is_alive() {
+            return TaskHandle {
+                cancelled: Arc::new(AtomicBool::new(true)),
+            };
+        }
         let cancelled = Arc::new(AtomicBool::new(false));
         let job_id = ARENA.with(|a| {
             let mut arena = a.borrow_mut();
@@ -284,6 +308,11 @@ impl Scope {
         delay_ms: u64,
         on_fire: impl FnOnce() + 'static,
     ) -> TaskHandle {
+        if !self.is_alive() {
+            return TaskHandle {
+                cancelled: Arc::new(AtomicBool::new(true)),
+            };
+        }
         let cancelled = Arc::new(AtomicBool::new(false));
         let mut opt = Some(on_fire);
         ARENA.with(|a| {
@@ -315,6 +344,11 @@ impl Scope {
         interval_ms: u64,
         on_tick: impl FnMut() + 'static,
     ) -> TaskHandle {
+        if !self.is_alive() {
+            return TaskHandle {
+                cancelled: Arc::new(AtomicBool::new(true)),
+            };
+        }
         let cancelled = Arc::new(AtomicBool::new(false));
         let step = interval_ms.max(1);
         ARENA.with(|a| {

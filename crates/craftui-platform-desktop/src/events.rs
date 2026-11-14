@@ -1,6 +1,4 @@
-use craftui_core::{
-    CursorIcon, KeyEvent, KeyCode, Modifiers, PointerButton,
-};
+use craftui_core::{CursorIcon, KeyCode, KeyEvent, Modifiers, PointerButton};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta};
 use winit::keyboard::{Key, KeyCode as WinitKeyCode, ModifiersState, NamedKey, PhysicalKey};
 use winit::window::CursorIcon as WinitCursorIcon;

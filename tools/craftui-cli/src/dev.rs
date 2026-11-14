@@ -1,12 +1,14 @@
-use std::path::{Path, PathBuf};
-use std::time::Instant;
-use std::sync::mpsc;
 use notify::{Event, RecursiveMode, Watcher};
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::time::Instant;
 
 use craftui_core::{CraftError, Result, Size, WindowMetrics};
 use craftui_dsl::{Severity, generate_rust, resolve_file};
 use craftui_reactive::Scope;
-use craftui_render::{BackendKind, PaintScene, TextureRegistry, render_scene_to_rgba, write_rgba_png};
+use craftui_render::{
+    BackendKind, PaintScene, TextureRegistry, render_scene_to_rgba, write_rgba_png,
+};
 use craftui_runtime::HotReloadSession;
 use craftui_widgets::WidgetTree;
 
@@ -200,4 +202,3 @@ pub fn run_dev_watcher(entry: &Path, dir: &Path) -> Result<()> {
     }
     Ok(())
 }
-

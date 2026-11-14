@@ -3,12 +3,8 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use craftui_core::{
-    CraftError, NodeId, Result,
-};
-use craftui_dsl::{
-    CuiFile, Diagnostic, Severity, resolve_file, resolve_source,
-};
+use craftui_core::{CraftError, NodeId, Result};
+use craftui_dsl::{CuiFile, Diagnostic, Severity, resolve_file, resolve_source};
 use craftui_reactive::Scope;
 use craftui_widgets::WidgetTree;
 

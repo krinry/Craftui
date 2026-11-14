@@ -1,7 +1,6 @@
 use super::*;
 
 impl WidgetTree {
-
     /// Hit-test the deepest interactive/visible node under `point`, respecting open dropdowns,
     /// active transforms, scroll offsets, and `hit_slop`.
     pub fn hit_test(&self, point: Point) -> Option<NodeId> {
@@ -31,7 +30,12 @@ impl WidgetTree {
         self.hit_test_recursive(root, point, Point::ZERO)
     }
 
-    pub(crate) fn hit_test_recursive(&self, id: NodeId, point: Point, scroll_offset: Point) -> Option<NodeId> {
+    pub(crate) fn hit_test_recursive(
+        &self,
+        id: NodeId,
+        point: Point,
+        scroll_offset: Point,
+    ) -> Option<NodeId> {
         let node = self.nodes.get(id)?;
         if node.layout.hidden || node.taffy_hidden_by_parent {
             return None;
@@ -360,7 +364,9 @@ impl WidgetTree {
                 }) => {
                     if let Ok(mut func) = cb.try_borrow_mut() {
                         func(rect, &local_pe);
-                        if !matches!(local_pe.phase, PointerPhase::Move) || local_pe.button.is_some() {
+                        if !matches!(local_pe.phase, PointerPhase::Move)
+                            || local_pe.button.is_some()
+                        {
                             changed = true;
                         }
                     }
@@ -868,18 +874,14 @@ impl WidgetTree {
                     action = on_tap.clone();
                 }
                 WidgetKind::Chip {
-                    selected,
-                    on_tap,
-                    ..
+                    selected, on_tap, ..
                 } => {
                     let next = !selected.get_untracked();
                     selected.set(next);
                     node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
                     action = on_tap.clone();
                 }
-                WidgetKind::AppBar {
-                    on_leading_tap, ..
-                } => {
+                WidgetKind::AppBar { on_leading_tap, .. } => {
                     action = on_leading_tap.clone();
                 }
                 WidgetKind::Drawer {
@@ -1916,5 +1918,4 @@ impl WidgetTree {
         self.reset_caret_blink(craftui_core::monotonic_ms());
         true
     }
-
 }

@@ -216,4 +216,3 @@ pub(crate) fn clamp_char_boundary(s: &str, idx: usize) -> usize {
     }
     i
 }
-

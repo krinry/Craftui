@@ -1,7 +1,6 @@
 use super::*;
 
 impl WidgetTree {
-
     pub fn rect(&self, node: NodeId) -> Rect {
         self.layout_engine.rect(node)
     }
@@ -182,5 +181,4 @@ impl WidgetTree {
             _ => false,
         })
     }
-
 }

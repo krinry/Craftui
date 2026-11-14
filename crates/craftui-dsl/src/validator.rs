@@ -521,7 +521,15 @@ pub fn props_for_widget(kind: &str) -> Vec<&'static str> {
         }
         "Chip" | "FilterChip" | "ActionChip" | "ChoiceChip" | "InputChip" => {
             out.extend_from_slice(CONTAINER_PROPS);
-            out.extend_from_slice(&["label", "text", "selected", "value", "icon", "leading_icon", "disabled"]);
+            out.extend_from_slice(&[
+                "label",
+                "text",
+                "selected",
+                "value",
+                "icon",
+                "leading_icon",
+                "disabled",
+            ]);
         }
         "AppBar" => {
             out.extend_from_slice(CONTAINER_PROPS);

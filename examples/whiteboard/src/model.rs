@@ -137,12 +137,22 @@ impl WhiteboardElement {
             ElementKind::Rectangle { width, height, .. } => {
                 let min_x = self.origin.x.min(self.origin.x + width);
                 let min_y = self.origin.y.min(self.origin.y + height);
-                Rect::new(min_x - pad, min_y - pad, width.abs() + pad * 2.0, height.abs() + pad * 2.0)
+                Rect::new(
+                    min_x - pad,
+                    min_y - pad,
+                    width.abs() + pad * 2.0,
+                    height.abs() + pad * 2.0,
+                )
             }
             ElementKind::Diamond { width, height } => {
                 let min_x = self.origin.x.min(self.origin.x + width);
                 let min_y = self.origin.y.min(self.origin.y + height);
-                Rect::new(min_x - pad, min_y - pad, width.abs() + pad * 2.0, height.abs() + pad * 2.0)
+                Rect::new(
+                    min_x - pad,
+                    min_y - pad,
+                    width.abs() + pad * 2.0,
+                    height.abs() + pad * 2.0,
+                )
             }
             ElementKind::Ellipse { radius_x, radius_y } => {
                 let rx = radius_x.abs();
@@ -159,11 +169,21 @@ impl WhiteboardElement {
                 let max_x = self.origin.x.max(end.x);
                 let min_y = self.origin.y.min(end.y);
                 let max_y = self.origin.y.max(end.y);
-                Rect::new(min_x - pad, min_y - pad, (max_x - min_x).max(1.0) + pad * 2.0, (max_y - min_y).max(1.0) + pad * 2.0)
+                Rect::new(
+                    min_x - pad,
+                    min_y - pad,
+                    (max_x - min_x).max(1.0) + pad * 2.0,
+                    (max_y - min_y).max(1.0) + pad * 2.0,
+                )
             }
             ElementKind::Freehand { points } => {
                 if points.is_empty() {
-                    return Rect::new(self.origin.x - pad, self.origin.y - pad, pad * 2.0, pad * 2.0);
+                    return Rect::new(
+                        self.origin.x - pad,
+                        self.origin.y - pad,
+                        pad * 2.0,
+                        pad * 2.0,
+                    );
                 }
                 let mut min_x = self.origin.x;
                 let mut max_x = self.origin.x;
@@ -175,12 +195,22 @@ impl WhiteboardElement {
                     min_y = min_y.min(p.y);
                     max_y = max_y.max(p.y);
                 }
-                Rect::new(min_x - pad, min_y - pad, (max_x - min_x).max(1.0) + pad * 2.0, (max_y - min_y).max(1.0) + pad * 2.0)
+                Rect::new(
+                    min_x - pad,
+                    min_y - pad,
+                    (max_x - min_x).max(1.0) + pad * 2.0,
+                    (max_y - min_y).max(1.0) + pad * 2.0,
+                )
             }
             ElementKind::Text { content, font_size } => {
                 let approx_w = content.chars().count() as f32 * font_size * 0.6;
                 let approx_h = *font_size * 1.3;
-                Rect::new(self.origin.x - pad, self.origin.y - pad, approx_w + pad * 2.0, approx_h + pad * 2.0)
+                Rect::new(
+                    self.origin.x - pad,
+                    self.origin.y - pad,
+                    approx_w + pad * 2.0,
+                    approx_h + pad * 2.0,
+                )
             }
         }
     }
@@ -193,23 +223,26 @@ impl WhiteboardElement {
         }
 
         match &self.kind {
-            ElementKind::Rectangle { .. } | ElementKind::Diamond { .. } | ElementKind::Text { .. } => {
-                b.contains(pt)
-            }
+            ElementKind::Rectangle { .. }
+            | ElementKind::Diamond { .. }
+            | ElementKind::Text { .. } => b.contains(pt),
             ElementKind::Ellipse { radius_x, radius_y } => {
                 let dx = (pt.x - self.origin.x) / radius_x.max(1.0);
                 let dy = (pt.y - self.origin.y) / radius_y.max(1.0);
                 (dx * dx + dy * dy) <= 1.25
             }
             ElementKind::Arrow { end } | ElementKind::Line { end } => {
-                Self::dist_to_line_segment(pt, self.origin, *end) <= (self.stroke_width * 0.5 + tolerance)
+                Self::dist_to_line_segment(pt, self.origin, *end)
+                    <= (self.stroke_width * 0.5 + tolerance)
             }
             ElementKind::Freehand { points } => {
                 if points.is_empty() {
                     return pt.distance_to(self.origin) <= tolerance;
                 }
                 for window in points.windows(2) {
-                    if Self::dist_to_line_segment(pt, window[0], window[1]) <= (self.stroke_width * 0.5 + tolerance) {
+                    if Self::dist_to_line_segment(pt, window[0], window[1])
+                        <= (self.stroke_width * 0.5 + tolerance)
+                    {
                         return true;
                     }
                 }
@@ -275,10 +308,7 @@ impl ViewTransform {
     }
 
     pub fn world_to_screen(&self, pt: Point) -> Point {
-        Point::new(
-            pt.x * self.zoom + self.pan.x,
-            pt.y * self.zoom + self.pan.y,
-        )
+        Point::new(pt.x * self.zoom + self.pan.x, pt.y * self.zoom + self.pan.y)
     }
 
     pub fn zoom_at(&mut self, factor: f32, focal_screen: Point) {

@@ -117,9 +117,8 @@ pub struct IpcResponse {
     pub error: Option<String>,
 }
 
-type IpcHandlerFn =
-    Box<dyn Fn(serde_json::Value) -> Result<serde_json::Value, String> + Send + Sync>;
-type IpcListenerFn = Box<dyn Fn(serde_json::Value) + Send + Sync>;
+type IpcHandlerFn = Box<dyn Fn(serde_json::Value) -> Result<serde_json::Value, String>>;
+type IpcListenerFn = Box<dyn Fn(serde_json::Value)>;
 
 /// Bidirectional IPC Command & Event Router compatible with Tauri 2.0.
 #[derive(Default)]
@@ -137,7 +136,7 @@ impl IpcRouter {
     /// Register a command handler that can be invoked from JS (`window.craftui.invoke("cmd", args)`).
     pub fn register<F>(&mut self, cmd: impl Into<String>, handler: F)
     where
-        F: Fn(serde_json::Value) -> Result<serde_json::Value, String> + Send + Sync + 'static,
+        F: Fn(serde_json::Value) -> Result<serde_json::Value, String> + 'static,
     {
         self.handlers.insert(cmd.into(), Box::new(handler));
     }
@@ -145,7 +144,7 @@ impl IpcRouter {
     /// Register a Rust listener for events emitted from JavaScript (`window.craftui.emit("event", payload)`).
     pub fn listen<F>(&mut self, event: impl Into<String>, callback: F)
     where
-        F: Fn(serde_json::Value) + Send + Sync + 'static,
+        F: Fn(serde_json::Value) + 'static,
     {
         self.listeners
             .entry(event.into())
@@ -353,7 +352,11 @@ impl IpcRouter {
 
         let svc = services.clone();
         self.register("haptic", move |args| {
-            let style = match args.get("style").and_then(|v| v.as_str()).unwrap_or("medium") {
+            let style = match args
+                .get("style")
+                .and_then(|v| v.as_str())
+                .unwrap_or("medium")
+            {
                 "light" => HapticStyle::Light,
                 "heavy" => HapticStyle::Heavy,
                 "success" => HapticStyle::Success,
@@ -366,9 +369,18 @@ impl IpcRouter {
 
         let svc = services.clone();
         self.register("share", move |args| {
-            let title = args.get("title").and_then(|v| v.as_str()).map(ToString::to_string);
-            let text = args.get("text").and_then(|v| v.as_str()).map(ToString::to_string);
-            let url = args.get("url").and_then(|v| v.as_str()).map(ToString::to_string);
+            let title = args
+                .get("title")
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
+            let text = args
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
+            let url = args
+                .get("url")
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
             let payload = SharePayload {
                 title,
                 text,
@@ -771,7 +783,8 @@ mod tests {
             "args": { "permission": "device_admin" }
         })
         .to_string();
-        let resp2: IpcResponse = serde_json::from_str(&router.handle_invoke_json(&req_raw)).unwrap();
+        let resp2: IpcResponse =
+            serde_json::from_str(&router.handle_invoke_json(&req_raw)).unwrap();
         assert_eq!(resp2.id, "perm-2");
         assert_eq!(resp2.result.unwrap()["status"], "granted");
 
@@ -782,7 +795,8 @@ mod tests {
             "args": {}
         })
         .to_string();
-        let resp_admin: IpcResponse = serde_json::from_str(&router.handle_invoke_json(&admin_check)).unwrap();
+        let resp_admin: IpcResponse =
+            serde_json::from_str(&router.handle_invoke_json(&admin_check)).unwrap();
         assert_eq!(resp_admin.result.unwrap()["active"], false);
 
         let admin_req = serde_json::json!({
@@ -791,7 +805,8 @@ mod tests {
             "args": {}
         })
         .to_string();
-        let resp_req_admin: IpcResponse = serde_json::from_str(&router.handle_invoke_json(&admin_req)).unwrap();
+        let resp_req_admin: IpcResponse =
+            serde_json::from_str(&router.handle_invoke_json(&admin_req)).unwrap();
         assert_eq!(resp_req_admin.result.unwrap()["success"], true);
 
         // Verify that is_admin_active is now true
@@ -804,7 +819,8 @@ mod tests {
             "args": {}
         })
         .to_string();
-        let resp_open: IpcResponse = serde_json::from_str(&router.handle_invoke_json(&open_admin)).unwrap();
+        let resp_open: IpcResponse =
+            serde_json::from_str(&router.handle_invoke_json(&open_admin)).unwrap();
         assert_eq!(resp_open.result.unwrap()["success"], true);
         assert_eq!(mock_backend.admin_settings_open_count(), 1);
 
@@ -814,7 +830,8 @@ mod tests {
             "args": {}
         })
         .to_string();
-        let resp_a11y: IpcResponse = serde_json::from_str(&router.handle_invoke_json(&open_a11y)).unwrap();
+        let resp_a11y: IpcResponse =
+            serde_json::from_str(&router.handle_invoke_json(&open_a11y)).unwrap();
         assert_eq!(resp_a11y.result.unwrap()["success"], true);
         assert_eq!(mock_backend.accessibility_settings_open_count(), 1);
     }

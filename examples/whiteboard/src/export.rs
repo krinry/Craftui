@@ -30,7 +30,10 @@ fn bezpath_to_svg_d(path: &BezPath) -> String {
                 d.push_str(&format!("L {:.2} {:.2} ", p.x, p.y));
             }
             PathEl::QuadTo(p1, p2) => {
-                d.push_str(&format!("Q {:.2} {:.2} {:.2} {:.2} ", p1.x, p1.y, p2.x, p2.y));
+                d.push_str(&format!(
+                    "Q {:.2} {:.2} {:.2} {:.2} ",
+                    p1.x, p1.y, p2.x, p2.y
+                ));
             }
             PathEl::CurveTo(p1, p2, p3) => {
                 d.push_str(&format!(
@@ -65,14 +68,23 @@ pub fn elements_to_svg(elements: &[WhiteboardElement], bounds: Rect) -> String {
             elem.stroke_color.r, elem.stroke_color.g, elem.stroke_color.b
         );
         let fill_str = if let Some(fill) = elem.fill_color {
-            format!("#{format_hex:02x}{format_hex2:02x}{format_hex3:02x}", format_hex=fill.r, format_hex2=fill.g, format_hex3=fill.b)
+            format!(
+                "#{format_hex:02x}{format_hex2:02x}{format_hex3:02x}",
+                format_hex = fill.r,
+                format_hex2 = fill.g,
+                format_hex3 = fill.b
+            )
         } else {
             "none".to_string()
         };
         let seed = elem.id.wrapping_mul(31);
 
         match &elem.kind {
-            ElementKind::Rectangle { width: w, height: h, .. } => {
+            ElementKind::Rectangle {
+                width: w,
+                height: h,
+                ..
+            } => {
                 let path = sketch_rect_path(elem.origin, *w, *h, elem.roughness, seed);
                 let d = bezpath_to_svg_d(&path);
                 svg.push_str(&format!(
@@ -81,7 +93,10 @@ pub fn elements_to_svg(elements: &[WhiteboardElement], bounds: Rect) -> String {
                     sep = "\n"
                 ));
             }
-            ElementKind::Diamond { width: w, height: h } => {
+            ElementKind::Diamond {
+                width: w,
+                height: h,
+            } => {
                 let path = sketch_diamond_path(elem.origin, *w, *h, elem.roughness, seed);
                 let d = bezpath_to_svg_d(&path);
                 svg.push_str(&format!(
@@ -91,7 +106,8 @@ pub fn elements_to_svg(elements: &[WhiteboardElement], bounds: Rect) -> String {
                 ));
             }
             ElementKind::Ellipse { radius_x, radius_y } => {
-                let path = sketch_ellipse_path(elem.origin, *radius_x, *radius_y, elem.roughness, seed);
+                let path =
+                    sketch_ellipse_path(elem.origin, *radius_x, *radius_y, elem.roughness, seed);
                 let d = bezpath_to_svg_d(&path);
                 svg.push_str(&format!(
                     r#"    <path d="{d}" stroke="{hex_stroke}" stroke-width="{}" fill="{fill_str}" />{sep}"#,

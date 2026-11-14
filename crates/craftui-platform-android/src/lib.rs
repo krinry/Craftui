@@ -17,20 +17,20 @@ mod tests;
 
 pub use host::AndroidHost;
 pub use input::{
-    map_android_digit, map_android_punctuation, AndroidImeCommand, AndroidKeyCode,
-    AndroidPlatformViewMode, AndroidPunctuationKey, ExternalSurfaceTextureBridge,
+    AndroidImeCommand, AndroidKeyCode, AndroidPlatformViewMode, AndroidPunctuationKey,
+    ExternalSurfaceTextureBridge, map_android_digit, map_android_punctuation,
 };
 pub use services::{
-    AndroidBridgeState, AndroidDeviceCapabilities, AndroidFileDialogBridge, AndroidHapticsBackend,
-    AndroidPermissionBackend, AndroidPlatformCommand, AndroidSecureStorage, AndroidShareBackend,
-    ANDROID_PERMISSION_GRANTED,
+    ANDROID_PERMISSION_GRANTED, AndroidBridgeState, AndroidDeviceCapabilities,
+    AndroidFileDialogBridge, AndroidHapticsBackend, AndroidPermissionBackend,
+    AndroidPlatformCommand, AndroidSecureStorage, AndroidShareBackend,
 };
 
 #[cfg(all(target_os = "android", feature = "builtin-main"))]
 #[unsafe(no_mangle)]
 pub fn android_main(app: android_activity::AndroidApp) {
     android_runtime::run_android_app(app, |cx, tree, _textures, _disp| {
-        use craftui_core::{pct, Insets};
+        use craftui_core::{Insets, pct};
         use craftui_layout::LayoutStyle;
         use craftui_text::TextStyle;
         use craftui_widgets::BoxStyle;

@@ -10,15 +10,16 @@ pub mod types;
 mod tests;
 
 pub use ffi::*;
-pub use host::{IosAppHost, IosMetalLayerDescriptor};
 #[cfg(all(target_os = "ios", any(feature = "gpu-sdf", feature = "gpu-vello")))]
 pub use host::ios_metal;
+pub use host::{IosAppHost, IosMetalLayerDescriptor};
 pub use services::{
-    lifecycle_event_from_code, network_status_from_code, permission_status_from_code,
-    permission_status_to_code, IosBridgeState, IosDeviceCapabilities, IosHapticsBackend,
-    IosPermissionBackend, IosPlatformCommand, IosSecureStorage, IosShareBackend,
+    IosBridgeState, IosDeviceCapabilities, IosHapticsBackend, IosPermissionBackend,
+    IosPlatformCommand, IosSecureStorage, IosShareBackend, lifecycle_event_from_code,
+    network_status_from_code, permission_status_from_code, permission_status_to_code,
 };
 pub use types::{
-    bgra_frame_to_packed_rgba, CvPixelBufferBridge, CvPixelBufferFormat, CvPixelBufferFrame,
-    IosBuildUiCallback, IosImeCommand, IosKeyboardFrame, IosPlatformViewMode, IosSafeAreaInsets,
+    CvPixelBufferBridge, CvPixelBufferFormat, CvPixelBufferFrame, IosBuildUiCallback,
+    IosImeCommand, IosKeyboardFrame, IosPlatformViewMode, IosSafeAreaInsets,
+    bgra_frame_to_packed_rgba,
 };

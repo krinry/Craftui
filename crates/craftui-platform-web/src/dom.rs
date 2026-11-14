@@ -1,7 +1,7 @@
 use craftui_a11y::A11yRole;
 use craftui_core::{
-    ClipboardBackend, CursorIcon, ImeEvent, KeyCode, KeyEvent, Modifiers, Point,
-    PointerButton, PointerEvent, PointerId, PointerPhase, Rect, ScrollDelta, UiEvent,
+    ClipboardBackend, CursorIcon, ImeEvent, KeyCode, KeyEvent, Modifiers, Point, PointerButton,
+    PointerEvent, PointerId, PointerPhase, Rect, ScrollDelta, UiEvent,
 };
 use std::sync::{Arc, Mutex};
 
@@ -313,4 +313,3 @@ pub fn dom_composition_to_ime(phase_end: bool, data: String) -> UiEvent {
         UiEvent::Ime(ImeEvent::Preedit(data, Some((len, len))))
     }
 }
-

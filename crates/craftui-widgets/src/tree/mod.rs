@@ -4,9 +4,9 @@ use crate::inspector::InspectorState;
 use crate::router::{Router, RouterTransition};
 use crate::toast::{ToastItem, ToastManager, ToastSeverity};
 use crate::widgets::{
-    BoolCallback, BoxStyle, CanvasPointerFn, CardVariant, CustomWidget, FloatCallback, HoverCallback,
-    IndexCallback, PinchRotateCallback, ReactiveValue, TapHandler, ToastDismissCallback,
-    WidgetKind,
+    BoolCallback, BoxStyle, CanvasPointerFn, CardVariant, CustomWidget, FloatCallback,
+    HoverCallback, IndexCallback, PinchRotateCallback, ReactiveValue, TapHandler,
+    ToastDismissCallback, WidgetKind,
 };
 use craftui_a11y::{A11yAction, A11yBridge, A11yMetadata, A11yRole, A11ySnapshotNode};
 use craftui_core::{
@@ -1025,7 +1025,10 @@ impl WidgetTree {
                         if let Some(ref t) = trailing {
                             let _ = t.get();
                         }
-                        mark_node_dirty(id, DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y);
+                        mark_node_dirty(
+                            id,
+                            DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y,
+                        );
                     });
                 }
             }
@@ -1044,7 +1047,10 @@ impl WidgetTree {
                         if let Some(ref i) = icon {
                             let _ = i.get();
                         }
-                        mark_node_dirty(id, DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y);
+                        mark_node_dirty(
+                            id,
+                            DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y,
+                        );
                     });
                 }
             }
@@ -1269,8 +1275,6 @@ impl WidgetTree {
         }
         self.layout_engine.rect(id).translate(off.x, off.y)
     }
-
-
 }
 
 pub mod a11y;

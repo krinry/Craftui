@@ -573,14 +573,28 @@ pub fn default_usage_description(perm: &Permission) -> &'static str {
         Permission::BackgroundRefresh => "Background refresh keeps application state synchronized.",
         Permission::MediaProjection => "Screen capture records or shares visible app content.",
         Permission::ClipboardRead => "Clipboard access pastes copied text or snippets on demand.",
-        Permission::DeviceAdmin => "Device administrator permission enforces enterprise policies and device management.",
-        Permission::AccessibilityService => "Accessibility service assists users with screen reading, automation, and UI navigation.",
-        Permission::WriteSettings => "System settings permission modifies system preferences and display attributes.",
-        Permission::PackageUsageStats => "Package usage statistics track application usage and active intervals.",
-        Permission::IgnoreBatteryOptimizations => "Battery optimization exemption allows uninterrupted background processing.",
-        Permission::NotificationListener => "Notification listener service reads and routes system notifications.",
+        Permission::DeviceAdmin => {
+            "Device administrator permission enforces enterprise policies and device management."
+        }
+        Permission::AccessibilityService => {
+            "Accessibility service assists users with screen reading, automation, and UI navigation."
+        }
+        Permission::WriteSettings => {
+            "System settings permission modifies system preferences and display attributes."
+        }
+        Permission::PackageUsageStats => {
+            "Package usage statistics track application usage and active intervals."
+        }
+        Permission::IgnoreBatteryOptimizations => {
+            "Battery optimization exemption allows uninterrupted background processing."
+        }
+        Permission::NotificationListener => {
+            "Notification listener service reads and routes system notifications."
+        }
         Permission::VpnService => "VPN service establishes secure encrypted network tunnels.",
-        Permission::AdminPrivileges => "Administrator privileges execute elevated system management tasks.",
+        Permission::AdminPrivileges => {
+            "Administrator privileges execute elevated system management tasks."
+        }
         Permission::Custom(_) => "Requested to enable a custom application capability.",
     }
 }

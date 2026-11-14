@@ -14,15 +14,15 @@ pub mod services;
 mod tests;
 
 pub use dom::{
-    craft_cursor_to_css, craft_role_to_aria, dom_button_to_craft, dom_composition_to_ime,
-    dom_input_to_events, dom_key_to_craft, dom_pointer_event, dom_wheel_event, WebAriaNode,
-    WebClipboard,
+    WebAriaNode, WebClipboard, craft_cursor_to_css, craft_role_to_aria, dom_button_to_craft,
+    dom_composition_to_ime, dom_input_to_events, dom_key_to_craft, dom_pointer_event,
+    dom_wheel_event,
 };
 pub use host::WebAppHost;
 pub use route::{BrowserRouteSync, HiddenImeInputState, RouteBridge, WebBridgeConfig};
 #[cfg(target_arch = "wasm32")]
-pub use runner::wasm_runner::{mount_web_app, start_web_app, WebRunnerHandle};
+pub use runner::wasm_runner::{WebRunnerHandle, mount_web_app, start_web_app};
 pub use services::{
-    parse_web_permission_state, web_permission_descriptor, WebBridgeState, WebDeviceCapabilities,
-    WebHapticsBackend, WebPermissionBackend, WebSecureStorage, WebShareBackend,
+    WebBridgeState, WebDeviceCapabilities, WebHapticsBackend, WebPermissionBackend,
+    WebSecureStorage, WebShareBackend, parse_web_permission_state, web_permission_descriptor,
 };

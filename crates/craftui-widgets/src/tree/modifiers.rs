@@ -1,7 +1,6 @@
 use super::*;
 
 impl WidgetTree {
-
     pub fn set_layout(&mut self, node: NodeId, mut layout: LayoutStyle) {
         if let Some(n) = self.nodes.get_mut(node) {
             if matches!(n.kind, WidgetKind::SafeArea) {
@@ -495,7 +494,11 @@ impl WidgetTree {
         self.cursor_for_node_at(hit, Some(point))
     }
 
-    pub(crate) fn cursor_for_node_at(&self, start: Option<NodeId>, point_opt: Option<Point>) -> CursorIcon {
+    pub(crate) fn cursor_for_node_at(
+        &self,
+        start: Option<NodeId>,
+        point_opt: Option<Point>,
+    ) -> CursorIcon {
         for n in self.nodes.values() {
             if let WidgetKind::SplitPane {
                 axis,
@@ -807,5 +810,4 @@ impl WidgetTree {
             n.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
         }
     }
-
 }

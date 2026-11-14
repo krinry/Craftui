@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
-use slotmap::Key;
 use craftui_core::NodeId;
+use slotmap::Key;
+use std::collections::{HashMap, HashSet};
 
 use crate::types::{A11yAction, A11yRole, A11ySnapshotNode, CachedA11yNode};
 

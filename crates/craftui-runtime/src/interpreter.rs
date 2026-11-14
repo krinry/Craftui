@@ -3,8 +3,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use craftui_core::{
-    Alignment, Axis, BlendMode, Border, BoxShadow, Brush, Color, CornerRadii,
-    CursorIcon, DirtyFlags, Fit, Insets, Justify, Length, NodeId, PlatformViewId, Point, ThemeOverride, ThemeTokens, Transform2D, WindowMetrics,
+    Alignment, Axis, BlendMode, Border, BoxShadow, Brush, Color, CornerRadii, CursorIcon,
+    DirtyFlags, Fit, Insets, Justify, Length, NodeId, PlatformViewId, Point, ThemeOverride,
+    ThemeTokens, Transform2D, WindowMetrics,
 };
 use craftui_dsl::{
     AnimateSpec, AssignOp, BinOp, ChildItem, ComponentDecl, CuiFile, ElementNode, Expr,
@@ -77,7 +78,12 @@ fn find_prop<'a>(el: &'a ElementNode, names: &[&str]) -> Option<&'a PropBinding>
     el.props.iter().find(|p| names.iter().any(|n| p.name == *n))
 }
 
-pub(crate) fn build_element(scope: Scope, el: &ElementNode, env: &DynEnv, tree: &mut WidgetTree) -> NodeId {
+pub(crate) fn build_element(
+    scope: Scope,
+    el: &ElementNode,
+    env: &DynEnv,
+    tree: &mut WidgetTree,
+) -> NodeId {
     if let Some(sub_comp) = env
         .file
         .components
@@ -3044,4 +3050,3 @@ pub(crate) fn eval_expr_tracked(expr: &Expr, env: &DynEnv, track: bool) -> DynVa
         }
     }
 }
-

@@ -1,9 +1,11 @@
+use crate::dom::WebClipboard;
+#[cfg(target_arch = "wasm32")]
+use crate::runner::wasm_runner;
 use craftui_core::{
     AppLifecycleEvent, BatteryState, ClipboardBackend, DeviceCapabilitiesBackend, DeviceInfo,
     HapticStyle, HapticsBackend, NetworkStatus, Permission, PermissionBackend, PermissionStatus,
     SecureStorageBackend, ShareBackend, SharePayload,
 };
-use crate::dom::WebClipboard;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -658,4 +660,3 @@ impl DeviceCapabilitiesBackend for WebDeviceCapabilities {
         self.bridge.battery_state()
     }
 }
-

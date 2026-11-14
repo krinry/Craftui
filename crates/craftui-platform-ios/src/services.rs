@@ -466,4 +466,3 @@ impl DeviceCapabilitiesBackend for IosDeviceCapabilities {
             .unwrap_or_default()
     }
 }
-

@@ -4,9 +4,7 @@ use std::rc::Rc;
 use craftui_core::{DirtyFlags, NodeId, UiDispatcher};
 use slotmap::SlotMap;
 
-use crate::arena::{
-    batch, drain_dirty_nodes, next_timer_delay_ms, reset_runtime, tick_timers_at,
-};
+use crate::arena::{batch, drain_dirty_nodes, next_timer_delay_ms, reset_runtime, tick_timers_at};
 use crate::scope::Scope;
 
 #[test]
@@ -177,4 +175,29 @@ fn scope_timers_and_spawn_task_respect_disposal() {
     let _ = woke_rx.recv_timeout(std::time::Duration::from_millis(50));
     disp2.drain();
     assert!(!stale_ran.get());
+}
+
+#[test]
+fn effect_reentrancy_during_initialization_preserves_subscriptions() {
+    reset_runtime();
+    let cx = Scope::root();
+    let s = cx.signal(0);
+    let run_count = Rc::new(Cell::new(0));
+    let rc = run_count.clone();
+
+    cx.effect(move || {
+        rc.set(rc.get() + 1);
+        let val = s.get();
+        if val == 0 {
+            // Write to the signal during initialization to trigger potential re-entrancy
+            s.set(1);
+        }
+    });
+
+    assert!(run_count.get() >= 1);
+    let count_after_init = run_count.get();
+
+    // Subsequent updates to the signal should still trigger the effect
+    s.set(42);
+    assert_eq!(run_count.get(), count_after_init + 1);
 }

@@ -1,7 +1,7 @@
 use craftui_a11y::A11yRole;
 use craftui_core::{
-    AppLifecycleEvent, NodeId, Permission, PermissionStatus,
-    PlatformServices, Size, UiDispatcher, UiEvent, WindowMetrics,
+    AppLifecycleEvent, NodeId, Permission, PermissionStatus, PlatformServices, Size, UiDispatcher,
+    UiEvent, WindowMetrics,
 };
 use craftui_reactive::Scope;
 use craftui_render::{BackendKind, PaintScene, TextureRegistry, render_scene_to_rgba};
@@ -285,4 +285,3 @@ impl WebAppHost {
         (pw, ph, rgba)
     }
 }
-

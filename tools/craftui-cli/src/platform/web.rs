@@ -1,10 +1,10 @@
+use crate::doctor::find_in_path;
+use crate::manifest::xml_escape;
+use craftui_core::{CraftError, Result};
 use std::io::{Read, Write as _};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
-use craftui_core::{CraftError, Result};
-use crate::doctor::find_in_path;
-use crate::manifest::xml_escape;
 
 pub fn mime_type_for_path(path: &Path) -> &'static str {
     match path
@@ -113,7 +113,6 @@ pub fn serve_web_directory(root: &Path, port: u16) -> Result<()> {
     }
     Ok(())
 }
-
 
 pub fn emit_web_bundle(out_dir: &Path, app_name: &str, built_wasm: Option<&Path>) -> Result<()> {
     std::fs::create_dir_all(out_dir)
@@ -227,4 +226,3 @@ pub fn emit_web_bundle(out_dir: &Path, app_name: &str, built_wasm: Option<&Path>
         .map_err(|e| CraftError::Platform(format!("failed writing web bundle: {e}")))?;
     Ok(())
 }
-

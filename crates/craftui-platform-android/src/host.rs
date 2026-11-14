@@ -1,8 +1,7 @@
 use craftui_core::{
     AppLifecycleEvent, BatteryState, DeviceInfo, DirtyFlags, ImeEvent, Insets, KeyCode, KeyEvent,
-    Modifiers, NetworkStatus, Permission, PermissionStatus, PlatformServices, Point,
-    PointerButton, PointerEvent, PointerId, PointerPhase, Size, TextureId,
-    UiDispatcher, UiEvent, WindowMetrics,
+    Modifiers, NetworkStatus, Permission, PermissionStatus, PlatformServices, Point, PointerButton,
+    PointerEvent, PointerId, PointerPhase, Size, TextureId, UiDispatcher, UiEvent, WindowMetrics,
 };
 use craftui_reactive::Scope;
 use craftui_render::{PaintScene, TextureHandle, TextureRegistry};
@@ -11,9 +10,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::input::*;
 use crate::remote_preview;
 use crate::services::*;
-use crate::input::*;
 
 /// Platform-neutral Android lifecycle, safe-area/IME inset, back navigation, and event translator host.
 ///
@@ -591,4 +590,3 @@ impl AndroidHost {
         (animating, cmds)
     }
 }
-

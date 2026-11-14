@@ -1,5 +1,6 @@
 use craftui_core::ClipboardBackend;
 use std::sync::{Arc, Mutex};
+#[cfg(all(unix, not(target_os = "macos")))]
 use std::time::Duration;
 
 #[derive(Default)]
@@ -153,6 +154,7 @@ fn write_os_clipboard(
         use windows_sys::Win32::System::Memory::{
             GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock,
         };
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetDesktopWindow;
 
         const CF_UNICODETEXT: u32 = 13;
         struct ClipboardCloseGuard;
@@ -169,7 +171,8 @@ fn write_os_clipboard(
         let byte_len = wide.len() * std::mem::size_of::<u16>();
         // SAFETY: Allocates movable HGLOBAL, fills UTF-16 payload, transfers ownership to clipboard on success.
         unsafe {
-            if OpenClipboard(std::ptr::null_mut()) == 0 {
+            let owner = GetDesktopWindow();
+            if OpenClipboard(owner) == 0 {
                 return false;
             }
             let _guard = ClipboardCloseGuard;
