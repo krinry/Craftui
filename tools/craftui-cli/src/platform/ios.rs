@@ -242,8 +242,10 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
         case .restricted: .restricted
         default: .notDetermined
         }
-        pendingLocationCompletion?(code)
-        pendingLocationCompletion = nil
+        if code != .notDetermined {
+            pendingLocationCompletion?(code)
+            pendingLocationCompletion = nil
+        }
     }
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
