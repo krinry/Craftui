@@ -604,7 +604,8 @@ class MainActivity : GameActivity() {{
 
     let sdk_dir = std::env::var("ANDROID_HOME")
         .or_else(|_| std::env::var("ANDROID_SDK_ROOT"))
-        .unwrap_or_else(|| {
+        // `Result::unwrap_or_else` takes the `VarError` by value.
+        .unwrap_or_else(|_| {
             std::env::var("HOME")
                 .map(|home| format!("{home}/Android/Sdk"))
                 .unwrap_or_else(|_| "Android/Sdk".to_string())
