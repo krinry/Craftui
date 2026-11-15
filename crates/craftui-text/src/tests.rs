@@ -92,7 +92,14 @@ fn richtext_spans_plain_text_and_emoji_detection() {
     assert!(is_emoji_char('🚀'));
     assert!(is_emoji_char('✨'));
     assert!(is_emoji_char('🎉'));
+    assert!(is_emoji_char('⭐')); // U+2B50 White Medium Star
+    assert!(!is_emoji_char('\u{1F700}')); // U+1F700 Alchemical Symbol is not emoji
     assert!(!is_emoji_char('A'));
     assert!(!is_emoji_char('9'));
     assert!(!is_emoji_char(' '));
+
+    let star_span = TextSpan::new("Rating: ⭐⭐⭐", TextStyle::default());
+    assert!(star_span.has_emojis());
+    let alchem_span = TextSpan::new("Formula: \u{1F700}", TextStyle::default());
+    assert!(!alchem_span.has_emojis());
 }

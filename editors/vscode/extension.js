@@ -349,7 +349,8 @@ function activate(context) {
         vscode.window.showWarningMessage('Please focus a .cui file to open live preview.');
         return;
       }
-      const cli = findExecutable('craftui') || 'craftui';
+      const rawCli = findExecutable('craftui') || 'craftui';
+      const cli = rawCli.includes(' ') ? `"${rawCli}"` : rawCli;
       const term = vscode.window.createTerminal('CraftUI Preview');
       term.show();
       term.sendText(`${cli} preview "${editor.document.fileName}"`);
@@ -357,19 +358,22 @@ function activate(context) {
     vscode.commands.registerCommand('craftui.check', () => {
       const editor = vscode.window.activeTextEditor;
       const target = editor ? editor.document.fileName : '.';
-      const cli = findExecutable('craftui') || 'craftui';
+      const rawCli = findExecutable('craftui') || 'craftui';
+      const cli = rawCli.includes(' ') ? `"${rawCli}"` : rawCli;
       const term = vscode.window.createTerminal('CraftUI Check');
       term.show();
       term.sendText(`${cli} check "${target}"`);
     }),
     vscode.commands.registerCommand('craftui.permissionsCheck', () => {
-      const cli = findExecutable('craftui') || 'craftui';
+      const rawCli = findExecutable('craftui') || 'craftui';
+      const cli = rawCli.includes(' ') ? `"${rawCli}"` : rawCli;
       const term = vscode.window.createTerminal('CraftUI Permissions');
       term.show();
       term.sendText(`${cli} permissions check craftui.toml`);
     }),
     vscode.commands.registerCommand('craftui.startMcp', () => {
-      const cli = findExecutable('craftui') || 'craftui';
+      const rawCli = findExecutable('craftui') || 'craftui';
+      const cli = rawCli.includes(' ') ? `"${rawCli}"` : rawCli;
       const term = vscode.window.createTerminal('CraftUI MCP');
       term.show();
       term.sendText(`${cli} mcp --stdio`);

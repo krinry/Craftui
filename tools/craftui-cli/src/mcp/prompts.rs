@@ -56,22 +56,15 @@ pub fn get_prompt(name: &str, args: &serde_json::Value) -> Option<Vec<PromptMess
                 .get("description")
                 .and_then(|v| v.as_str())
                 .unwrap_or("A modern mobile and desktop screen");
-            Some(vec![
-                PromptMessage {
-                    role: "system".to_string(),
-                    content: ContentItem {
-                        kind: "text".to_string(),
-                        text: "You are an expert CraftUI engineer. Generate 100% valid .cui DSL code. Never emit HTML/JSX tags. Use 'export component Name { ... }'. Use '<=>' for two-way state binding.".to_string(),
-                    },
+            Some(vec![PromptMessage {
+                role: "user".to_string(),
+                content: ContentItem {
+                    kind: "text".to_string(),
+                    text: format!(
+                        "You are an expert CraftUI engineer. Generate 100% valid .cui DSL code. Never emit HTML/JSX tags. Use 'export component Name {{ ... }}' and '<=>' for two-way state binding.\n\nPlease build the screen '{screen_name}'. Requirements: {desc}. Include both the .cui DSL file and the corresponding Rust controller pattern."
+                    ),
                 },
-                PromptMessage {
-                    role: "user".to_string(),
-                    content: ContentItem {
-                        kind: "text".to_string(),
-                        text: format!("Please build the screen '{screen_name}'. Requirements: {desc}. Include both the .cui DSL file and the corresponding Rust controller pattern."),
-                    },
-                },
-            ])
+            }])
         }
         "craftui_debug_component" => {
             let errors = args
@@ -79,22 +72,15 @@ pub fn get_prompt(name: &str, args: &serde_json::Value) -> Option<Vec<PromptMess
                 .and_then(|v| v.as_str())
                 .unwrap_or("Syntax error");
             let code = args.get("code").and_then(|v| v.as_str()).unwrap_or("");
-            Some(vec![
-                PromptMessage {
-                    role: "system".to_string(),
-                    content: ContentItem {
-                        kind: "text".to_string(),
-                        text: "You are a debugging assistant for CraftUI. Fix the errors in the provided .cui file. Do not invent properties or syntax.".to_string(),
-                    },
+            Some(vec![PromptMessage {
+                role: "user".to_string(),
+                content: ContentItem {
+                    kind: "text".to_string(),
+                    text: format!(
+                        "You are a debugging assistant for CraftUI. Fix the errors in the provided .cui file without inventing properties or syntax.\n\nThe following .cui component failed validation:\n```cui\n{code}\n```\n\nCompiler errors:\n{errors}\n\nPlease identify the exact issue and output the corrected .cui component."
+                    ),
                 },
-                PromptMessage {
-                    role: "user".to_string(),
-                    content: ContentItem {
-                        kind: "text".to_string(),
-                        text: format!("The following .cui component failed validation:\n```cui\n{code}\n```\n\nCompiler errors:\n{errors}\n\nPlease identify the exact issue and output the corrected .cui component."),
-                    },
-                },
-            ])
+            }])
         }
         _ => None,
     }

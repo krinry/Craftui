@@ -15,7 +15,7 @@ export component CraftpadStudio {
         Column {
             width: 100%;
             height: 100%;
-            align: "stretch";
+            align: Stretch;
 
             // 1. Top Navigation Bar (DartPad style)
             Container {
@@ -25,12 +25,12 @@ export component CraftpadStudio {
                 padding_y: 8px;
 
                 Row {
-                    justify: "space_between";
-                    align: "center";
+                    justify: SpaceBetween;
+                    align: Center;
 
                     Row {
                         gap: 12px;
-                        align: "center";
+                        align: Center;
 
                         // Brand Logo
                         Text {
@@ -69,7 +69,7 @@ export component CraftpadStudio {
                     // Template Switcher & Actions
                     Row {
                         gap: 8px;
-                        align: "center";
+                        align: Center;
 
                         Button {
                             text: "Counter";
@@ -136,7 +136,7 @@ export component CraftpadStudio {
             Row {
                 width: 100%;
                 flex_grow: 1.0;
-                align: "stretch";
+                align: Stretch;
 
                 // Pane A: Left Explorer Sidebar
                 Container {
@@ -146,11 +146,11 @@ export component CraftpadStudio {
 
                     Column {
                         gap: 8px;
-                        align: "stretch";
+                        align: Stretch;
 
                         Row {
-                            justify: "space_between";
-                            align: "center";
+                            justify: SpaceBetween;
+                            align: Center;
 
                             Text {
                                 text: "EXPLORER";
@@ -168,7 +168,7 @@ export component CraftpadStudio {
 
                         Column {
                             gap: 4px;
-                            align: "stretch";
+                            align: Stretch;
 
                             Text {
                                 text: "▾ 📁 lib";
@@ -219,16 +219,16 @@ export component CraftpadStudio {
                         gap: 8px;
                         width: 100%;
                         height: 100%;
-                        align: "stretch";
+                        align: Stretch;
 
                         // Tab Bar
                         Row {
-                            justify: "space_between";
-                            align: "center";
+                            justify: SpaceBetween;
+                            align: Center;
 
                             Row {
                                 gap: 6px;
-                                align: "center";
+                                align: Center;
                                 Container {
                                     background: #121824;
                                     padding_x: 10px;
@@ -280,11 +280,11 @@ export component CraftpadStudio {
 
                             Column {
                                 gap: 4px;
-                                align: "stretch";
+                                align: Stretch;
 
                                 Row {
                                     gap: 12px;
-                                    align: "center";
+                                    align: Center;
                                     Text {
                                         text: "Problems (0)";
                                         font_size: 12px;
@@ -318,14 +318,14 @@ export component CraftpadStudio {
                         gap: 12px;
                         width: 100%;
                         height: 100%;
-                        align: "center";
-                        justify: "center";
+                        align: Center;
+                        justify: Center;
 
                         // Top Preview Toolbar
                         Row {
                             width: 100%;
-                            justify: "space_between";
-                            align: "center";
+                            justify: SpaceBetween;
+                            align: Center;
 
                             Text {
                                 text: "Preview • Mobile Chassis";
@@ -352,7 +352,7 @@ export component CraftpadStudio {
                             Column {
                                 width: 100%;
                                 height: 100%;
-                                align: "stretch";
+                                align: Stretch;
 
                                 // Light Purple AppBar (Flutter/DartPad style)
                                 Container {
@@ -362,8 +362,8 @@ export component CraftpadStudio {
                                     padding_y: 12px;
 
                                     Row {
-                                        justify: "space_between";
-                                        align: "center";
+                                        justify: SpaceBetween;
+                                        align: Center;
                                         Text {
                                             text: "Flutter Demo Home Page";
                                             font_size: 15px;
@@ -382,8 +382,8 @@ export component CraftpadStudio {
                                 // Centered Content
                                 Column {
                                     flex_grow: 1.0;
-                                    align: "center";
-                                    justify: "center";
+                                    align: Center;
+                                    justify: Center;
                                     gap: 8px;
 
                                     Text {
@@ -402,7 +402,7 @@ export component CraftpadStudio {
 
                                 // Floating Action Button in bottom right
                                 Row {
-                                    justify: "end";
+                                    justify: End;
                                     padding: 20px;
 
                                     Button {
@@ -431,12 +431,12 @@ export component CraftpadStudio {
                 padding_y: 4px;
 
                 Row {
-                    justify: "space_between";
-                    align: "center";
+                    justify: SpaceBetween;
+                    align: Center;
 
                     Row {
                         gap: 12px;
-                        align: "center";
+                        align: Center;
                         Text { text: "⌨️ Shortcuts"; font_size: 11px; color: #94a3b8; }
                         Text { text: "Privacy notice ↗"; font_size: 11px; color: #94a3b8; }
                         Text { text: "Feedback ↗"; font_size: 11px; color: #94a3b8; }
@@ -444,7 +444,7 @@ export component CraftpadStudio {
 
                     Row {
                         gap: 14px;
-                        align: "center";
+                        align: Center;
                         Text { text: "Starting analyzer 0.1s"; font_size: 11px; color: #0284c7; }
                         Text { text: "CraftUI 0.1.0 • Pure Rust"; font_size: 11px; color: #94a3b8; }
                         Text { text: "Beta channel"; font_size: 11px; color: #64748b; }

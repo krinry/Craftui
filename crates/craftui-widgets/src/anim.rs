@@ -438,10 +438,13 @@ impl SpringSimulation {
                 decay * ((wd * c2 - zeta * w0 * c1) * cos_wt - (wd * c1 + zeta * w0 * c2) * sin_wt);
             (pos, vel)
         } else {
-            // Over-damped (zeta > 1.0): two distinct decaying real exponential roots
-            let wh = w0 * (zeta * zeta - 1.0).sqrt();
-            let r1 = -w0 * zeta + wh;
-            let r2 = -w0 * zeta - wh;
+            // Over-damped (zeta > 1.0): two distinct decaying real exponential roots.
+            // Using r1 = -w0 / (zeta + sqrt(zeta^2 - 1)) avoids catastrophic cancellation
+            // when zeta >> 1.0 (where f32 sqrt(zeta^2 - 1) rounds to zeta, yielding r1 = 0).
+            let sqrt_term = (zeta * zeta - 1.0).sqrt();
+            let sum_term = zeta + sqrt_term;
+            let r1 = -w0 / sum_term;
+            let r2 = -w0 * sum_term;
             let c1 = (v0 - r2 * x0) / (r1 - r2);
             let c2 = x0 - c1;
             let e1 = (r1 * t).exp();
@@ -557,6 +560,20 @@ mod tests {
             "Under-damped bouncy spring should overshoot target"
         );
         assert!(sim_bouncy.is_settled(2.0));
+    }
+
+    #[test]
+    fn overdamped_spring_stable_cancellation_test() {
+        // High damping ratio zeta = 32768 / (2 * sqrt(1 * 1)) = 16384.0
+        let cfg = SpringConfig::new(1.0, 1.0, 32768.0);
+        let sim = SpringSimulation::new(cfg, 0.0, 1.0, 0.0);
+        let (pos, _) = sim.sample(32768.0);
+        // At t = 32768, pos should be approx 1 - e^(-1) ≈ 0.632
+        assert!(
+            (pos - 0.632).abs() < 0.05,
+            "Overdamped spring should reach ~0.632 at t=32768, got {}",
+            pos
+        );
     }
 
     #[test]

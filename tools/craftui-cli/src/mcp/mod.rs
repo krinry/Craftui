@@ -9,11 +9,12 @@ mod tests;
 
 use craftui_core::Result;
 
-pub fn run_mcp_server(stdio: bool, _port: Option<u16>) -> Result<()> {
+pub fn run_mcp_server(stdio: bool) -> Result<()> {
     if stdio {
         server::run_stdio_server()
     } else {
-        // Default to stdio for CLI MCP integrations
-        server::run_stdio_server()
+        Err(craftui_core::CraftError::Platform(
+            "Only stdio transport is currently supported for CraftUI MCP server. Run with `craftui mcp --stdio`.".into(),
+        ))
     }
 }

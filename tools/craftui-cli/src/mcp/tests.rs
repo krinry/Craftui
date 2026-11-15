@@ -81,7 +81,15 @@ fn test_mcp_widget_catalog_tool() {
 
 #[test]
 fn test_mcp_scaffold_tool_generates_valid_cui() {
-    let templates = ["counter", "login_form", "settings_card"];
+    let templates = [
+        "counter",
+        "login_form",
+        "settings_card",
+        "master_detail",
+        "search_filter",
+        "todo_list",
+        "custom_card",
+    ];
     for t in templates {
         let res = call_tool(
             "craftui_scaffold",
@@ -103,6 +111,65 @@ fn test_mcp_scaffold_tool_generates_valid_cui() {
             validation.content[0].text
         );
     }
+
+    // Unsupported template returns error
+    let bad_res = call_tool(
+        "craftui_scaffold",
+        json!({ "template": "nonexistent_template", "name": "BadView" }),
+    );
+    assert!(bad_res.is_error);
+    assert!(bad_res.content[0].text.contains("Unsupported template"));
+}
+
+#[test]
+fn test_mcp_explain_topics_and_rejections() {
+    let topics = [
+        "reactivity",
+        "layout",
+        "two_way_binding",
+        "animations",
+        "virtual_list",
+        "theming",
+    ];
+    for topic in topics {
+        let res = call_tool("craftui_explain", json!({ "topic": topic }));
+        assert!(!res.is_error, "Failed explain topic {topic}");
+        assert!(!res.content[0].text.is_empty());
+    }
+
+    let bad_topic = call_tool("craftui_explain", json!({ "topic": "unknown_topic" }));
+    assert!(bad_topic.is_error);
+    assert!(bad_topic.content[0].text.contains("not found"));
+}
+
+#[test]
+fn test_mcp_render_preview_validation() {
+    let valid_cui = "export component SimpleCard { Text { text: \"Hello\"; } }";
+
+    // Invalid dimensions are rejected
+    let bad_width = call_tool(
+        "craftui_render_preview",
+        json!({ "code": valid_cui, "width": 99999 }),
+    );
+    assert!(bad_width.is_error);
+
+    let zero_height = call_tool(
+        "craftui_render_preview",
+        json!({ "code": valid_cui, "height": 0 }),
+    );
+    assert!(zero_height.is_error);
+
+    // Non-existent component requested is rejected
+    let missing_comp = call_tool(
+        "craftui_render_preview",
+        json!({ "code": valid_cui, "component": "NonExistent" }),
+    );
+    assert!(missing_comp.is_error);
+    assert!(
+        missing_comp.content[0]
+            .text
+            .contains("Requested component 'NonExistent' not found")
+    );
 }
 
 #[test]
@@ -123,6 +190,7 @@ fn test_mcp_resources_and_prompts() {
     );
     assert!(prompt.is_some());
     let msgs = prompt.unwrap();
-    assert_eq!(msgs.len(), 2);
-    assert!(msgs[1].content.text.contains("HomeScreen"));
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].role, "user");
+    assert!(msgs[0].content.text.contains("HomeScreen"));
 }

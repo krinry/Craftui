@@ -466,8 +466,8 @@ fn tool_scaffold(args: Value) -> CallToolResult {
         Column {{
             gap: 20px;
             width: 380px;
-            align: "stretch";
-            justify: "center";
+            align: Stretch;
+            justify: Center;
 
             Text {{
                 text: "Welcome Back";
@@ -522,8 +522,8 @@ fn tool_scaffold(args: Value) -> CallToolResult {
             }}
 
             Row {{
-                justify: "space_between";
-                align: "center";
+                justify: SpaceBetween;
+                align: Center;
                 Checkbox {{
                     label: "Remember me";
                     checked <=> remember_me;
@@ -559,7 +559,7 @@ fn tool_scaffold(args: Value) -> CallToolResult {
 
         Column {{
             gap: 16px;
-            align: "stretch";
+            align: Stretch;
 
             Text {{
                 text: "Preferences";
@@ -569,8 +569,8 @@ fn tool_scaffold(args: Value) -> CallToolResult {
             }}
 
             Row {{
-                justify: "space_between";
-                align: "center";
+                justify: SpaceBetween;
+                align: Center;
                 Text {{
                     text: "Push Notifications";
                     color: #cbd5e1;
@@ -585,8 +585,8 @@ fn tool_scaffold(args: Value) -> CallToolResult {
             }}
 
             Row {{
-                justify: "space_between";
-                align: "center";
+                justify: SpaceBetween;
+                align: Center;
                 Text {{
                     text: "Dark Theme";
                     color: #cbd5e1;
@@ -620,7 +620,194 @@ fn tool_scaffold(args: Value) -> CallToolResult {
     }}
 }}"#
         ),
-        _ => format!(
+        "master_detail" => format!(
+            r#"export component {name} {{
+    in-out property <int> selected_index: 0;
+    in-out property <string> active_title: "Dashboard Overview";
+    callback on_select_item(int);
+
+    Row {{
+        width: 100%;
+        height: 100%;
+        gap: 16px;
+
+        Container {{
+            width: 240px;
+            height: 100%;
+            background: #1e293b;
+            padding: 16px;
+            border_radius: 8px;
+
+            Column {{
+                gap: 12px;
+                align: Stretch;
+                Text {{
+                    text: "Navigation";
+                    font_size: 18px;
+                    font_weight: "bold";
+                    color: #ffffff;
+                }}
+                Button {{
+                    text: "Overview";
+                    background: #3b82f6;
+                    foreground: #ffffff;
+                    on_tap => {{
+                        on_select_item(0);
+                    }}
+                }}
+                Button {{
+                    text: "Analytics";
+                    background: #334155;
+                    foreground: #cbd5e1;
+                    on_tap => {{
+                        on_select_item(1);
+                    }}
+                }}
+                Button {{
+                    text: "Settings";
+                    background: #334155;
+                    foreground: #cbd5e1;
+                    on_tap => {{
+                        on_select_item(2);
+                    }}
+                }}
+            }}
+        }}
+
+        Container {{
+            flex_grow: 1.0;
+            height: 100%;
+            background: #0f172a;
+            padding: 24px;
+            border_radius: 8px;
+
+            Column {{
+                gap: 16px;
+                Text {{
+                    text: active_title;
+                    font_size: 24px;
+                    font_weight: "bold";
+                    color: #ffffff;
+                }}
+                Text {{
+                    text: "Select a navigation view to inspect live telemetry and properties.";
+                    color: #94a3b8;
+                    font_size: 14px;
+                }}
+            }}
+        }}
+    }}
+}}"#
+        ),
+        "search_filter" => format!(
+            r#"export component {name} {{
+    in-out property <string> search_term: "";
+    callback on_search_change(string);
+
+    Container {{
+        padding: 20px;
+        background: #0f172a;
+        border_radius: 8px;
+
+        Column {{
+            gap: 16px;
+            align: Stretch;
+
+            Row {{
+                gap: 12px;
+                align: Center;
+
+                TextInput {{
+                    placeholder: "Search items...";
+                    value <=> search_term;
+                    background: #1e293b;
+                    color: #ffffff;
+                    padding: 10px;
+                    border_radius: 6px;
+                    flex_grow: 1.0;
+                }}
+
+                Button {{
+                    text: "Filter";
+                    background: #3b82f6;
+                    foreground: #ffffff;
+                    padding: 10px;
+                    on_tap => {{
+                        on_search_change(search_term);
+                    }}
+                }}
+            }}
+
+            Text {{
+                text: "Query: " + search_term;
+                color: #94a3b8;
+                font_size: 14px;
+            }}
+        }}
+    }}
+}}"#
+        ),
+        "todo_list" => format!(
+            r#"export component {name} {{
+    in-out property <string> new_item_text: "";
+    in-out property <int> item_count: 3;
+    callback on_add_item(string);
+
+    Container {{
+        padding: 24px;
+        background: #0f172a;
+        border_radius: 8px;
+
+        Column {{
+            gap: 16px;
+            align: Stretch;
+
+            Text {{
+                text: "Task Board";
+                font_size: 22px;
+                font_weight: "bold";
+                color: #ffffff;
+            }}
+
+            Row {{
+                gap: 12px;
+                align: Center;
+
+                TextInput {{
+                    placeholder: "Add a new task...";
+                    value <=> new_item_text;
+                    background: #1e293b;
+                    color: #ffffff;
+                    padding: 10px;
+                    border_radius: 6px;
+                    flex_grow: 1.0;
+                }}
+
+                Button {{
+                    text: "Add";
+                    background: #10b981;
+                    foreground: #ffffff;
+                    padding: 10px;
+                    on_tap => {{
+                        on_add_item(new_item_text);
+                    }}
+                }}
+            }}
+
+            Row {{
+                justify: SpaceBetween;
+                align: Center;
+                Text {{
+                    text: "Active Tasks: " + item_count;
+                    color: #64748b;
+                    font_size: 13px;
+                }}
+            }}
+        }}
+    }}
+}}"#
+        ),
+        "custom_card" => format!(
             r#"export component {name} {{
     in-out property <string> title: "{name}";
 
@@ -641,6 +828,11 @@ fn tool_scaffold(args: Value) -> CallToolResult {
     }}
 }}"#
         ),
+        _ => {
+            return CallToolResult::err(format!(
+                "Unsupported template '{template}'. Available templates: counter, login_form, master_detail, settings_card, search_filter, todo_list, custom_card"
+            ));
+        }
     };
 
     let controller_code = format!(
@@ -684,20 +876,69 @@ fn tool_render_preview(args: Value) -> CallToolResult {
         None => return CallToolResult::err("missing required 'code' argument"),
     };
     let component = args.get("component").and_then(Value::as_str);
-    let width = args.get("width").and_then(Value::as_u64).unwrap_or(800) as u32;
-    let height = args.get("height").and_then(Value::as_u64).unwrap_or(600) as u32;
+
+    let width = match args.get("width") {
+        Some(v) => match v.as_u64() {
+            Some(w) if (1..=8192).contains(&w) => w as u32,
+            _ => {
+                return CallToolResult::err(
+                    "Invalid 'width': must be a positive integer between 1 and 8192",
+                );
+            }
+        },
+        None => 800,
+    };
+    let height = match args.get("height") {
+        Some(v) => match v.as_u64() {
+            Some(h) if (1..=8192).contains(&h) => h as u32,
+            _ => {
+                return CallToolResult::err(
+                    "Invalid 'height': must be a positive integer between 1 and 8192",
+                );
+            }
+        },
+        None => 600,
+    };
     let out_path = args.get("out_path").and_then(Value::as_str);
+
+    let resolved = resolve_source(code, None);
+    if resolved.merged.components.is_empty() {
+        return CallToolResult::err("No component definition found in .cui source code");
+    }
+
+    let target_component = if let Some(req_comp) = component {
+        if !resolved
+            .merged
+            .components
+            .iter()
+            .any(|c| c.name == req_comp)
+        {
+            let available: Vec<_> = resolved
+                .merged
+                .components
+                .iter()
+                .map(|c| c.name.as_str())
+                .collect();
+            return CallToolResult::err(format!(
+                "Requested component '{req_comp}' not found in source. Available: {available:?}"
+            ));
+        }
+        Some(req_comp)
+    } else {
+        // Default to the first exported component
+        resolved.merged.components.first().map(|c| c.name.as_str())
+    };
 
     let cx = Scope::root();
     let mut tree = WidgetTree::new(cx);
     let mut session = HotReloadSession::new(cx);
 
-    if let Err(e) = session.reload_with_base(code, None, component, &mut tree) {
+    if let Err(e) = session.reload_with_base(code, None, target_component, &mut tree) {
         return CallToolResult::err(format!("Failed to mount .cui code for rendering: {e}"));
     }
 
     let metrics = WindowMetrics {
-        logical_size: Size::new(width.max(1) as f32, height.max(1) as f32),
+        logical_size: Size::new(width as f32, height as f32),
         scale_factor: 1.0,
         ..Default::default()
     };
@@ -709,15 +950,15 @@ fn tool_render_preview(args: Value) -> CallToolResult {
     let rgba = render_scene_to_rgba(
         BackendKind::VelloCpu,
         &scene,
-        width.max(1),
-        height.max(1),
+        width,
+        height,
         1.0,
         tree.theme().background,
         &textures,
         &mut tree.text_engine,
     );
 
-    let png_bytes = match encode_rgba_png(width.max(1), height.max(1), &rgba) {
+    let png_bytes = match encode_rgba_png(width, height, &rgba) {
         Ok(b) => b,
         Err(e) => return CallToolResult::err(format!("Failed to encode RGBA to PNG: {e}")),
     };
@@ -795,7 +1036,33 @@ In CraftUI .cui files:
   `Switch { checked <=> is_active; }`
   `Slider { value <=> volume_level; min: 0.0; max: 100.0; }`"#
         }
-        _ => "Topic not found. Available topics: reactivity, layout, animations, two_way_binding.",
+        "virtual_list" => {
+            r#"# CraftUI VirtualList
+- Efficiently recycles viewport child nodes for arbitrarily large datasets (e.g. 10,000+ items).
+- Syntax:
+  `VirtualList {
+      item_count: total_items;
+      estimated_item_height: 56px;
+  }`
+- Memory footprint: O(visible) instead of O(N)."#
+        }
+        "theming" => {
+            r#"# CraftUI Theming & Design Tokens
+- Built-in dynamic theme system supporting Dark and Light modes.
+- Theme tokens:
+  - `theme.background`: Base canvas color
+  - `theme.surface`: Card & elevated container color
+  - `theme.primary`: Accent brand color
+  - `theme.text`: Primary typography color
+  - `theme.text_secondary`: Muted caption typography color
+- In Rust:
+  `tree.set_theme(Theme::dark());` or `tree.set_theme(Theme::light());`"#
+        }
+        _ => {
+            return CallToolResult::err(format!(
+                "Topic '{topic}' not found. Available topics: reactivity, layout, animations, two_way_binding, virtual_list, theming."
+            ));
+        }
     };
 
     CallToolResult::ok(explanation)

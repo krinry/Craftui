@@ -155,14 +155,17 @@ pub fn is_emoji_char(c: char) -> bool {
         0x1F600..=0x1F64F | // Emoticons
         0x1F300..=0x1F5FF | // Misc Symbols and Pictographs
         0x1F680..=0x1F6FF | // Transport and Map
-        0x1F700..=0x1F77F | // Alchemical Symbols
-        0x1F780..=0x1F7FF | // Geometric Shapes Extended
-        0x1F800..=0x1F8FF | // Supplemental Arrows-C
+        0x1F7E0..=0x1F7EB | // Colored circles and squares
         0x1F900..=0x1F9FF | // Supplemental Symbols and Pictographs
-        0x1FA00..=0x1FA6F | // Chess Symbols
         0x1FA70..=0x1FAFF | // Symbols and Pictographs Extended-A
         0x2600..=0x26FF   | // Misc symbols
         0x2700..=0x27BF   | // Dingbats
+        0x2B50            | // ⭐ White Medium Star
+        0x2B55            | // ⭕ Heavy Large Circle
+        0x231A..=0x231B   | // Watch, Hourglass
+        0x23E9..=0x23F3   | // Fast-forward, Rewind, Clocks
+        0x25AA..=0x25AB   | // Small Black/White Square
+        0x25FB..=0x25FE   | // Medium Black/White Square
         0xFE00..=0xFE0F   | // Variation Selectors
         0x1F1E6..=0x1F1FF   // Regional Indicator Symbols (Flags)
     )

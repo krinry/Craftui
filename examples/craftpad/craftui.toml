@@ -2,12 +2,10 @@
 name = "Craftpad"
 id = "dev.craftui.craftpad"
 version = "0.1.0"
-min_android_sdk = 26
-target_android_sdk = 34
 
-[window]
-title = "Craftpad — CraftUI Playground"
-width = 1100
-height = 750
+[android]
+min_sdk = 26
+target_sdk = 34
 
 [permissions]
+clipboard_read = "Allow one-click paste of component snippets into Craftpad."

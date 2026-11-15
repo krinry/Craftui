@@ -15,7 +15,7 @@ pub const COUNTER_TEMPLATE: &str = r#"export component Counter {
 
         Column {
             gap: 16px;
-            align: "center";
+            align: Center;
 
             Text {
                 text: "Reactive Counter";
@@ -59,7 +59,7 @@ pub const LOGIN_TEMPLATE: &str = r#"export component LoginForm {
         Column {
             gap: 12px;
             width: 320px;
-            align: "stretch";
+            align: Stretch;
 
             Text {
                 text: "Sign In";
@@ -97,7 +97,7 @@ pub const SETTINGS_TEMPLATE: &str = r#"export component SettingsView {
 
         Column {
             gap: 16px;
-            align: "stretch";
+            align: Stretch;
 
             Text {
                 text: "Settings";
@@ -106,8 +106,8 @@ pub const SETTINGS_TEMPLATE: &str = r#"export component SettingsView {
             }
 
             Row {
-                justify: "space_between";
-                align: "center";
+                justify: SpaceBetween;
+                align: Center;
                 Text { text: "Dark Mode"; color: #cbd5e1; }
                 Switch { checked <=> dark_mode; }
             }
@@ -130,7 +130,7 @@ pub const SLINT_TEMPLATE: &str = r#"export component Demo {
 
         Column {
             gap: 16px;
-            align: "center";
+            align: Center;
 
             Text {
                 text: "Hello World!";
@@ -221,6 +221,7 @@ pub fn mount_craftpad_app(cx: Scope, tree: &mut WidgetTree) -> (NodeId, Craftpad
     let ctrl_run = ctrl.clone();
     let studio_run = studio.clone();
     studio.set_on_run(move || {
+        ctrl_run.source_code.set(studio_run.source_code.get());
         ctrl_run.run_validation();
         studio_run.status_text.set(ctrl_run.status_text.get());
     });
@@ -228,6 +229,7 @@ pub fn mount_craftpad_app(cx: Scope, tree: &mut WidgetTree) -> (NodeId, Craftpad
     let ctrl_reload = ctrl.clone();
     let studio_reload = studio.clone();
     studio.set_on_reload(move || {
+        ctrl_reload.source_code.set(studio_reload.source_code.get());
         ctrl_reload.run_validation();
         studio_reload.status_text.set(ctrl_reload.status_text.get());
     });

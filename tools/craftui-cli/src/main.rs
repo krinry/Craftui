@@ -195,8 +195,6 @@ enum Commands {
     Mcp {
         #[arg(long, default_value_t = true)]
         stdio: bool,
-        #[arg(long)]
-        port: Option<u16>,
     },
 }
 
@@ -373,6 +371,6 @@ fn run() -> Result<()> {
             out.as_deref(),
             skip_cargo,
         ),
-        Commands::Mcp { stdio, port } => mcp::run_mcp_server(stdio, port),
+        Commands::Mcp { stdio } => mcp::run_mcp_server(stdio),
     }
 }

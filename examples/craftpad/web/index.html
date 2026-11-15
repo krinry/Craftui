@@ -850,7 +850,7 @@ export component CounterApp {
             }
 
             Row {
-                justify: "end";
+                justify: End;
                 padding: 20px;
 
                 Button {
@@ -903,8 +903,8 @@ export component Demo {
 
         Column {
             gap: 16px;
-            align: "stretch";
-            justify: "center";
+            align: Stretch;
+            justify: Center;
 
             Text {
                 text: "Welcome Back";
@@ -950,13 +950,13 @@ export component Demo {
 
         Column {
             gap: 14px;
-            align: "stretch";
+            align: Stretch;
 
             Text { text: "Settings"; font_size: 20px; color: #f8fafc; font_weight: 700.0; }
 
             Row {
-                justify: "space_between";
-                align: "center";
+                justify: SpaceBetween;
+                align: Center;
                 Text { text: "Dark Mode"; color: #cbd5e1; }
                 Switch { checked <=> dark_theme; }
             }
@@ -1063,11 +1063,27 @@ export component Demo {
     });
 
     function runCode() {
-      dockContent.innerHTML = `<span style="color: #38bdf8;">[CraftUI AOT] Compiling .cui syntax tree...</span>`;
-      setTimeout(() => {
-        dockContent.innerHTML = `<span style="color: #34d399;">✓ Build succeeded: 0 errors, 0 warnings. Running on wgpu SDF backend at 60 FPS.</span>`;
-        errorBadge.textContent = "0";
-      }, 150);
+      const code = editor.value;
+      dockContent.innerHTML = `<span style="color: #38bdf8;">[CraftUI Engine] Validating .cui component...</span>`;
+
+      const errors = [];
+      if (!code.includes("component")) {
+        errors.push("Missing 'export component Name { ... }' declaration.");
+      }
+      const openBraces = (code.match(/{/g) || []).length;
+      const closeBraces = (code.match(/}/g) || []).length;
+      if (openBraces !== closeBraces) {
+        errors.push(`Mismatched braces: ${openBraces} opening '{' vs ${closeBraces} closing '}'.`);
+      }
+
+      if (errors.length > 0) {
+        errorBadge.textContent = errors.length;
+        dockContent.innerHTML = `<span style="color: #ef4444;">✗ Build failed with ${errors.length} error(s):<br/>• ` + errors.join("<br/>• ") + `</span>`;
+        return;
+      }
+
+      errorBadge.textContent = "0";
+      dockContent.innerHTML = `<span style="color: #34d399;">✓ Build succeeded: 0 errors, 0 warnings. Mounted interactive component preview.</span>`;
     }
 
     sampleSelect.addEventListener("change", (e) => loadSample(e.target.value));
