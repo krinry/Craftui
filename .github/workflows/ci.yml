@@ -35,7 +35,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-dev
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Clippy (with failure log capture)
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy.log"
+      - name: Upload clippy log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-log-${{ matrix.os }}
+          path: ${{ runner.temp }}/clippy.log
+          retention-days: 3
       - run: cargo test --workspace
       - name: Minimal-Feature Compile Check
         if: matrix.os == 'ubuntu-latest'
