@@ -369,9 +369,9 @@ pub fn mount_scancraft_app_with_services(
         });
     }
 
-    if let Ok(mut guard) = SCANAPP_TAB.lock() {
-        *guard = Some(screen.active_tab);
-    }
+    SCANAPP_TAB.with(|cell| {
+        *cell.borrow_mut() = Some(screen.active_tab);
+    });
 
     // Reactively switch Tauri Android WebView on tab 4
     cx.effect({
@@ -405,7 +405,9 @@ pub fn mount_scancraft_app_with_services(
     (root_node, state)
 }
 
-static SCANAPP_TAB: std::sync::Mutex<Option<Signal<i32>>> = std::sync::Mutex::new(None);
+thread_local! {
+    static SCANAPP_TAB: std::cell::RefCell<Option<Signal<i32>>> = const { std::cell::RefCell::new(None) };
+}
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]

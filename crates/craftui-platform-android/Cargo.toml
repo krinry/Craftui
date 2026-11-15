@@ -30,6 +30,7 @@ craftui-render.workspace = true
 craftui-text.workspace = true
 craftui-widgets.workspace = true
 craftui-runtime = { workspace = true, optional = true }
+jni.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 wgpu = { workspace = true, optional = true }

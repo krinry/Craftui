@@ -331,32 +331,51 @@ pub const WHITEBOARD_HTML: &str = r#"<!DOCTYPE html>
 </html>
 "#;
 
+thread_local! {
+    static WHITEBOARD_CTRL: RefCell<Option<WhiteboardController>> = const { RefCell::new(None) };
+}
+
 /// Create an IPC Router for bidirectional communication between the webview whiteboard and Rust.
 pub fn create_whiteboard_ipc_router(
     ctrl: WhiteboardController,
     services: Option<Arc<PlatformServices>>,
 ) -> Rc<RefCell<IpcRouter>> {
-    let mut router = IpcRouter::new();
-
-    let ctrl_get = ctrl.clone();
-    router.register("get_whiteboard_status", move |_payload| {
-        let count = ctrl_get.elements.get().len();
-        let tool = ctrl_get.tool.get().name();
-        let zoom = ctrl_get.view.get().zoom;
-        Ok(json!({
-            "status": "ok",
-            "element_count": count,
-            "tool": tool,
-            "zoom": zoom,
-            "hybrid_bridge": "Tauri-Compatible CraftUI IPC",
-        }))
+    WHITEBOARD_CTRL.with(|c| {
+        *c.borrow_mut() = Some(ctrl);
     });
 
-    let ctrl_sync = ctrl.clone();
-    router.register("sync_elements", move |payload| {
+    let mut router = IpcRouter::new();
+
+    router.register("get_whiteboard_status", |_payload| {
+        WHITEBOARD_CTRL.with(|cell| {
+            if let Some(ctrl) = cell.borrow().as_ref() {
+                let count = ctrl.elements.get().len();
+                let tool = ctrl.tool.get().name();
+                let zoom = ctrl.view.get().zoom;
+                Ok(json!({
+                    "status": "ok",
+                    "element_count": count,
+                    "tool": tool,
+                    "zoom": zoom,
+                    "hybrid_bridge": "Tauri-Compatible CraftUI IPC",
+                }))
+            } else {
+                Err("Whiteboard controller not initialized".into())
+            }
+        })
+    });
+
+    router.register("sync_elements", |payload| {
         let count = payload.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
         let _ = count;
-        Ok(json!({ "acknowledged": true, "synced_elements": ctrl_sync.elements.get().len() }))
+        WHITEBOARD_CTRL.with(|cell| {
+            let count = cell
+                .borrow()
+                .as_ref()
+                .map(|c| c.elements.get().len())
+                .unwrap_or(0);
+            Ok(json!({ "acknowledged": true, "synced_elements": count }))
+        })
     });
 
     let services_perm = services.clone();
