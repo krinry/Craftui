@@ -533,15 +533,18 @@ fn text_input_undo_redo_word_nav_and_demand_caret_blink() {
     assert!(!tree.tick_blink_timers(1600));
 
     // Word delete backward ("world" -> "hello ")
+    // Word-jump is Ctrl everywhere except macOS/iOS, where it is Option/Alt.
+    let word_jump_mods = if cfg!(any(target_os = "macos", target_os = "ios")) {
+        Modifiers { alt: true, ..Default::default() }
+    } else {
+        Modifiers { ctrl: true, ..Default::default() }
+    };
     tree.handle_event(&UiEvent::Key(KeyEvent {
         code: KeyCode::Backspace,
         text: None,
         pressed: true,
         repeat: false,
-        modifiers: Modifiers {
-            ctrl: true,
-            ..Default::default()
-        },
+        modifiers: word_jump_mods,
     }));
     assert_eq!(text_sig.get(), "hello ");
 
