@@ -40,37 +40,11 @@ jobs:
         run: |
           cargo clippy --workspace --all-targets --message-format json > clippy.jsonl 2>&1
           code=$?
-          python3 - clippy.jsonl <<'PY'
-          import json, sys
-
-          def esc(s):
-              return (s.replace('%', '%25').replace('\r', '').replace('\n', '%0A'))
-
-          emitted = 0
-          for line in open(sys.argv[1], errors='replace'):
-              line = line.strip()
-              if not line.startswith('{'):
-                  continue
-              try:
-                  obj = json.loads(line)
-              except Exception:
-                  continue
-              if obj.get('reason') != 'compiler-message':
-                  continue
-              m = obj.get('message', {})
-              if m.get('level') not in ('error', 'failure-note'):
-                  continue
-              msg = esc((m.get('message') or '').replace('\n', ' ')[:900])
-              primary = [s for s in (m.get('spans') or []) if s.get('is_primary')]
-              if primary:
-                  for s in primary[:6]:
-                      print(f"::error file={s.get('file_name')},line={s.get('line_start')},col={s.get('column_start')}::{msg}")
-                      emitted += 1
-              else:
-                  print(f"::error::{msg}")
-                  emitted += 1
-          print(f"::notice::emitted {emitted} error annotations")
-          PY
+          echo "::notice::clippy exit=$code jsonl_bytes=$(wc -c < clippy.jsonl | tr -d ' ') jsonl_lines=$(wc -l < clippy.jsonl | tr -d ' ') python3=$(command -v python3 || echo MISSING)"
+          errlines=$(wc -l < clippy.jsonl | tr -d ' ')
+          echo "::notice::first_lines=$(head -c 1500 clippy.jsonl | tr '\n' '|' | sed 's/%/%25/g' | tr '\r' ' ')"
+          blob=$(grep -E '"level":"(error|ice|failure-note)"' clippy.jsonl | head -40 | tr '\n' '|' | tail -c 1500 | sed 's/%/%25/g' | tr '\r' ' ')
+          echo "::error::error_lines(latest<=1500B): $blob"
           exit $code
       - run: cargo test --workspace
       - name: Minimal-Feature Compile Check
