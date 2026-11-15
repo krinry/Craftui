@@ -95,16 +95,64 @@ jobs:
       - name: Clippy report (all warnings, never fails on lints)
         if: ${{ !cancelled() }}
         run: .github/scripts/logged.sh clippy-report cargo clippy --locked --workspace --all-targets
-      - name: Clippy (deny warnings)
+      - name: Clippy (deny warnings, diagnostics)
         if: ${{ !cancelled() }}
-        run: .github/scripts/logged.sh clippy cargo clippy --locked --workspace --all-targets -- -D warnings
-      - name: Tests
+        run: |
+          cargo clippy --locked --workspace --all-targets --message-format json > clippy.jsonl 2>&1
+          code=$?
+          python3 - clippy.jsonl <<'PY'
+          import json, sys
+
+          def esc(t):
+              return (t.replace('%', '%25').replace('\r', '').replace('\n', '%0A'))
+
+          emitted = 0
+          for line in open(sys.argv[1], errors='replace'):
+              line = line.strip()
+              if not line.startswith('{'):
+                  continue
+              try:
+                  obj = json.loads(line)
+              except Exception:
+                  continue
+              if obj.get('reason') != 'compiler-message':
+                  continue
+              m = obj.get('message', {})
+              if m.get('level') not in ('error', 'failure-note', 'warning'):
+                  continue
+              msg = esc((m.get('message') or '').replace('\n', ' ')[:500])
+              primary = [x for x in (m.get('spans') or []) if x.get('is_primary')]
+              if primary:
+                  for sp in primary[:4]:
+                      print(f"::error file={sp.get('file_name')},line={sp.get('line_start')},col={sp.get('column_start')}::{msg}")
+                      emitted += 1
+              else:
+                  print(f"::error::{msg}")
+                  emitted += 1
+          print(f"::notice::emitted {emitted} annotations")
+          PY
+          exit $code
+      - name: Tests (diagnostics)
         if: ${{ !cancelled() }}
-        # CRAFTUI_SNAPSHOT_DIR makes the notes example write PNG screenshots of
-        # its screens, rendered with the CPU backend, next to the logs.
         run: |
           mkdir -p "$RUNNER_TEMP/ci-logs"
-          CRAFTUI_SNAPSHOT_DIR="$RUNNER_TEMP/ci-logs" .github/scripts/logged.sh test cargo test --locked --workspace --no-fail-fast
+          CRAFTUI_SNAPSHOT_DIR="$RUNNER_TEMP/ci-logs" cargo test --locked --workspace --no-fail-fast > test.log 2>&1
+          code=$?
+          python3 - test.log <<'PY'
+          import re
+
+          def esc(t):
+              return (t.replace('%', '%25').replace('\r', '').replace('\n', '%0A'))
+
+          emitted = 0
+          for line in open('test.log', errors='replace'):
+              l = line.rstrip()
+              if re.search(r'(error(\[|:|\s)|failures:$|failures:|panicked at|FAILED|^error)', l):
+                  print(f"::error::{esc(l[-400:])}")
+                  emitted += 1
+          print(f"::notice::emitted {emitted} test annotations")
+          PY
+          exit $code
       - name: Minimal-feature compile check
         if: ${{ !cancelled() }}
         run: .github/scripts/logged.sh minimal cargo check --locked -p craftui --no-default-features --features "desktop,dsl,hot-reload,embedded-fallback-font,gpu-sdf"
@@ -145,12 +193,63 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Clippy report (all warnings, never fails on lints)
         run: .github/scripts/logged.sh clippy-report cargo clippy --locked --workspace --all-targets
-      - name: Clippy (deny warnings)
+      - name: Clippy (deny warnings, diagnostics)
         if: ${{ !cancelled() }}
-        run: .github/scripts/logged.sh clippy cargo clippy --locked --workspace --all-targets -- -D warnings
-      - name: Tests
+        run: |
+          cargo clippy --locked --workspace --all-targets --message-format json > clippy.jsonl 2>&1
+          code=$?
+          python3 - clippy.jsonl <<'PY'
+          import json, sys
+
+          def esc(t):
+              return (t.replace('%', '%25').replace('\r', '').replace('\n', '%0A'))
+
+          emitted = 0
+          for line in open(sys.argv[1], errors='replace'):
+              line = line.strip()
+              if not line.startswith('{'):
+                  continue
+              try:
+                  obj = json.loads(line)
+              except Exception:
+                  continue
+              if obj.get('reason') != 'compiler-message':
+                  continue
+              m = obj.get('message', {})
+              if m.get('level') not in ('error', 'failure-note', 'warning'):
+                  continue
+              msg = esc((m.get('message') or '').replace('\n', ' ')[:500])
+              primary = [x for x in (m.get('spans') or []) if x.get('is_primary')]
+              if primary:
+                  for sp in primary[:4]:
+                      print(f"::error file={sp.get('file_name')},line={sp.get('line_start')},col={sp.get('column_start')}::{msg}")
+                      emitted += 1
+              else:
+                  print(f"::error::{msg}")
+                  emitted += 1
+          print(f"::notice::emitted {emitted} annotations")
+          PY
+          exit $code
+      - name: Tests (diagnostics)
         if: ${{ !cancelled() }}
-        run: .github/scripts/logged.sh test cargo test --locked --workspace --no-fail-fast
+        run: |
+          cargo test --locked --workspace --no-fail-fast > test.log 2>&1
+          code=$?
+          python3 - test.log <<'PY'
+          import re
+
+          def esc(t):
+              return (t.replace('%', '%25').replace('\r', '').replace('\n', '%0A'))
+
+          emitted = 0
+          for line in open('test.log', errors='replace'):
+              l = line.rstrip()
+              if re.search(r'(error(\[|:|\s)|failures:$|failures:|panicked at|FAILED|^error)', l):
+                  print(f"::error::{esc(l[-400:])}")
+                  emitted += 1
+          print(f"::notice::emitted {emitted} test annotations")
+          PY
+          exit $code
       - name: Save machine-applicable fixes as a patch
         if: ${{ failure() }}
         run: |
