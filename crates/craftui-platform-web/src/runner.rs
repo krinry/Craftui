@@ -748,6 +748,21 @@ pub mod wasm_runner {
             let cursor_c = last_cursor.clone();
             let cb = Closure::wrap(Box::new(move |e: DomPointerEvent| {
                 let bcr = c_el.get_bounding_client_rect();
+                let html: &HtmlElement = c_el.unchecked_ref();
+                let layout_w = html.offset_width() as f32;
+                let layout_h = html.offset_height() as f32;
+                let bcr_w = bcr.width() as f32;
+                let bcr_h = bcr.height() as f32;
+                let scale_x = if bcr_w > 0.0 && layout_w > 0.0 {
+                    layout_w / bcr_w
+                } else {
+                    1.0
+                };
+                let scale_y = if bcr_h > 0.0 && layout_h > 0.0 {
+                    layout_h / bcr_h
+                } else {
+                    1.0
+                };
                 let mods = Modifiers {
                     shift: e.shift_key(),
                     ctrl: e.ctrl_key(),
@@ -777,6 +792,8 @@ pub mod wasm_runner {
                     e.client_y() as f32,
                     bcr.left() as f32,
                     bcr.top() as f32,
+                    scale_x,
+                    scale_y,
                     raw_button,
                     e.pointer_type() == "touch",
                     mods,
@@ -797,11 +814,28 @@ pub mod wasm_runner {
         let sched_w = scheduler;
         let wheel_cb = Closure::wrap(Box::new(move |e: DomWheelEvent| {
             let bcr = c_w.get_bounding_client_rect();
+            let html: &HtmlElement = c_w.unchecked_ref();
+            let layout_w = html.offset_width() as f32;
+            let layout_h = html.offset_height() as f32;
+            let bcr_w = bcr.width() as f32;
+            let bcr_h = bcr.height() as f32;
+            let scale_x = if bcr_w > 0.0 && layout_w > 0.0 {
+                layout_w / bcr_w
+            } else {
+                1.0
+            };
+            let scale_y = if bcr_h > 0.0 && layout_h > 0.0 {
+                layout_h / bcr_h
+            } else {
+                1.0
+            };
             let ev = dom_wheel_event(
                 e.client_x() as f32,
                 e.client_y() as f32,
                 bcr.left() as f32,
                 bcr.top() as f32,
+                scale_x,
+                scale_y,
                 e.delta_x() as f32,
                 e.delta_y() as f32,
             );

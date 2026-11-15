@@ -43,6 +43,8 @@ fn web_host_dpr_ime_overlay_hash_router_dom_input_and_2d_fallback_render() {
         c.y,
         0.0,
         0.0,
+        1.0,
+        1.0,
         0,
         false,
         Modifiers::default(),
@@ -55,6 +57,8 @@ fn web_host_dpr_ime_overlay_hash_router_dom_input_and_2d_fallback_render() {
         c.y,
         0.0,
         0.0,
+        1.0,
+        1.0,
         0,
         false,
         Modifiers::default(),
@@ -75,6 +79,8 @@ fn web_host_dpr_ime_overlay_hash_router_dom_input_and_2d_fallback_render() {
         c.y,
         0.0,
         0.0,
+        1.0,
+        1.0,
         -1,
         false,
         Modifiers::default(),
@@ -251,4 +257,38 @@ fn web_host_supports_permissions_haptics_share_secure_storage_and_telemetry() {
         vec![AppLifecycleEvent::Paused, AppLifecycleEvent::Resumed]
     );
     assert_eq!(WebHapticsBackend::duration_ms(HapticStyle::Medium), 25.0);
+}
+
+#[test]
+fn dom_pointer_and_wheel_events_convert_scaled_coordinates_to_logical_space() {
+    // When canvas has transform: scale(2.0), bcr is 800x600 while layout is 400x300.
+    // scale_x = 400.0 / 800.0 = 0.5, scale_y = 300.0 / 600.0 = 0.5.
+    let ev = dom_pointer_event(
+        1,
+        PointerPhase::Down,
+        220.0,
+        140.0,
+        0.0,
+        0.0,
+        0.5,
+        0.5,
+        0,
+        false,
+        Modifiers::default(),
+        10,
+    );
+    if let UiEvent::Pointer(pe) = ev {
+        assert_eq!(pe.position.x, 110.0);
+        assert_eq!(pe.position.y, 70.0);
+    } else {
+        panic!("expected pointer event");
+    }
+
+    let wheel = dom_wheel_event(220.0, 140.0, 0.0, 0.0, 0.5, 0.5, 10.0, 20.0);
+    if let UiEvent::Scroll(sd) = wheel {
+        assert_eq!(sd.position.x, 110.0);
+        assert_eq!(sd.position.y, 70.0);
+    } else {
+        panic!("expected scroll event");
+    }
 }

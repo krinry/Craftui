@@ -272,15 +272,19 @@ pub fn dom_pointer_event(
     client_y: f32,
     rect_left: f32,
     rect_top: f32,
+    scale_x: f32,
+    scale_y: f32,
     button: i16,
     is_touch: bool,
     modifiers: Modifiers,
     timestamp_ms: u64,
 ) -> UiEvent {
+    let sx = if scale_x > 0.0 { scale_x } else { 1.0 };
+    let sy = if scale_y > 0.0 { scale_y } else { 1.0 };
     UiEvent::Pointer(PointerEvent {
         id: PointerId(pointer_id as u64),
         phase,
-        position: Point::new(client_x - rect_left, client_y - rect_top),
+        position: Point::new((client_x - rect_left) * sx, (client_y - rect_top) * sy),
         button: dom_button_to_craft(button),
         modifiers,
         is_touch,
@@ -288,18 +292,23 @@ pub fn dom_pointer_event(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn dom_wheel_event(
     client_x: f32,
     client_y: f32,
     rect_left: f32,
     rect_top: f32,
+    scale_x: f32,
+    scale_y: f32,
     delta_x: f32,
     delta_y: f32,
 ) -> UiEvent {
+    let sx = if scale_x > 0.0 { scale_x } else { 1.0 };
+    let sy = if scale_y > 0.0 { scale_y } else { 1.0 };
     UiEvent::Scroll(ScrollDelta {
         x: -delta_x,
         y: -delta_y,
-        position: Point::new(client_x - rect_left, client_y - rect_top),
+        position: Point::new((client_x - rect_left) * sx, (client_y - rect_top) * sy),
     })
 }
 
