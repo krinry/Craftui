@@ -364,11 +364,7 @@ impl WidgetTree {
                 }) => {
                     if let Ok(mut func) = cb.try_borrow_mut() {
                         func(rect, &local_pe);
-                        if !matches!(local_pe.phase, PointerPhase::Move)
-                            || local_pe.button.is_some()
-                        {
-                            changed = true;
-                        }
+                        changed = true;
                     }
                 }
                 Some(WidgetKind::Custom(cw)) => {
@@ -538,6 +534,17 @@ impl WidgetTree {
         }
 
         changed
+    }
+
+    /// Programmatically activate a tap on `node_id` (e.g. for accessibility actions).
+    pub fn activate_node_tap(&mut self, node_id: NodeId) -> bool {
+        if self.nodes.contains_key(node_id) {
+            let center = self.node_visual_rect(node_id).center();
+            self.activate_tap(node_id, center, false);
+            true
+        } else {
+            false
+        }
     }
 
     pub(crate) fn activate_tap(&mut self, node_id: NodeId, pos: Point, is_screen_pos: bool) {

@@ -291,8 +291,8 @@ pub fn run_build(
     }
     let app_package = package
         .map(str::to_string)
-        .or_else(|| manifest_opt.as_ref().map(|m| m.app.name.clone()))
-        .or_else(|| crate::templates::detect_cargo_package_name(Path::new("Cargo.toml")));
+        .or_else(|| crate::templates::detect_cargo_package_name(Path::new("Cargo.toml")))
+        .or_else(|| manifest_opt.as_ref().map(|m| m.app.id.clone()));
     let app_display = manifest_opt
         .as_ref()
         .map(|m| m.app.name.clone())

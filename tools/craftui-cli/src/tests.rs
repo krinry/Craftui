@@ -138,3 +138,45 @@ fn scaffolds_all_templates_init_permissions_and_cross_platform_bundles() {
 
     let _ = std::fs::remove_dir_all(&base_tmp);
 }
+
+#[test]
+fn test_detect_cargo_package_name_handles_comments_and_quotes() {
+    let tmp = std::env::temp_dir().join(format!(
+        "craftui_cargo_name_test_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let cargo_file = tmp.join("Cargo.toml");
+    std::fs::write(
+        &cargo_file,
+        r#"
+[package]
+name = "demo-pkg" # this is a comment
+version = "0.1.0"
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        crate::templates::detect_cargo_package_name(&cargo_file).as_deref(),
+        Some("demo-pkg")
+    );
+
+    std::fs::write(
+        &cargo_file,
+        r#"
+[package]
+name = 'single-quoted-pkg'   # trailing comment
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        crate::templates::detect_cargo_package_name(&cargo_file).as_deref(),
+        Some("single-quoted-pkg")
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}

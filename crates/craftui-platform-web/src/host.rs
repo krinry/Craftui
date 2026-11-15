@@ -115,7 +115,7 @@ impl WebAppHost {
         let Some(bridge) = self.active_route_bridge() else {
             return false;
         };
-        if hash.trim().is_empty() {
+        if hash.trim().is_empty() && self.last_synced_hash.is_none() {
             let cur_hash = BrowserRouteSync::route_to_hash(&bridge.current_route());
             self.last_synced_hash = Some(cur_hash);
             return false;
@@ -145,6 +145,17 @@ impl WebAppHost {
         if let Ok(mut guard) = self.clipboard_cache.lock() {
             guard.clear();
             guard.push_str(text);
+        }
+    }
+
+    /// Dispatch an accessibility click (e.g. from screen reader or DOM ARIA element) to the widget tree.
+    pub fn handle_a11y_click(&mut self, node_id_u64: u64) -> bool {
+        let node_id = NodeId::from(slotmap::KeyData::from_ffi(node_id_u64));
+        if self.tree.activate_node_tap(node_id) {
+            self.needs_redraw = true;
+            true
+        } else {
+            false
         }
     }
 

@@ -58,7 +58,7 @@ craftui-platform-desktop = { path = "crates/craftui-platform-desktop", version =
 craftui-platform-android = { path = "crates/craftui-platform-android", version = "0.1.0", default-features = false }
 craftui-platform-ios = { path = "crates/craftui-platform-ios", version = "0.1.0", default-features = false }
 craftui-platform-web = { path = "crates/craftui-platform-web", version = "0.1.0", default-features = false }
-craftui = { path = "crates/craftui", version = "0.1.0" }
+craftui = { path = "crates/craftui", version = "0.1.0", default-features = false }
 
 # Core permissive ecosystem crates
 bitflags = "2.9"

@@ -10,7 +10,7 @@ use craftui_core::{UiDispatcher, monotonic_ms};
 
 use crate::arena::{
     ARENA, ComputedSlot, EffectSlot, ScopeKey, ScopeSlot, SignalSlot, UiTimer, complete_ui_job,
-    dispose_scope_recursive, run_effect, ui_dispatcher,
+    dispose_scope_recursive, flush_effects, ui_dispatcher,
 };
 use crate::computed::Computed;
 use crate::effect::Effect;
@@ -157,9 +157,11 @@ impl Scope {
             if let Some(scope) = arena.scopes.get_mut(self.key) {
                 scope.effects.push(eff_key);
             }
+            arena.pending_effects.push_back(eff_key);
+            arena.pending_effect_set.insert(eff_key);
             eff_key
         });
-        run_effect(key);
+        flush_effects();
         Effect { key }
     }
 

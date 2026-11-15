@@ -97,9 +97,9 @@ enum CraftUIPermissionCode: UInt8 {
 
 final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCentralManagerDelegate {
     private var locationManager: CLLocationManager?
-    private var pendingLocationCompletion: ((CraftUIPermissionCode) -> Void)?
+    private var pendingLocationCompletions: [((CraftUIPermissionCode) -> Void)] = []
     private var bluetoothManager: CBCentralManager?
-    private var pendingBluetoothCompletion: ((CraftUIPermissionCode) -> Void)?
+    private var pendingBluetoothCompletions: [((CraftUIPermissionCode) -> Void)] = []
 
     func pushStatus(_ code: CraftUIPermissionCode, forKey key: String, app: OpaquePointer) {
         var bytes = Array(key.utf8)
@@ -156,18 +156,18 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
                 }
             }
         case "location_when_in_use", "location_coarse":
-            let mgr = CLLocationManager()
+            let mgr = locationManager ?? CLLocationManager()
             mgr.delegate = self
             locationManager = mgr
-            pendingLocationCompletion = { code in
+            pendingLocationCompletions.append { code in
                 self.deliverResult(requestId: requestId, key: key, code: code, app: app)
             }
             mgr.requestWhenInUseAuthorization()
         case "location_always":
-            let mgr = CLLocationManager()
+            let mgr = locationManager ?? CLLocationManager()
             mgr.delegate = self
             locationManager = mgr
-            pendingLocationCompletion = { code in
+            pendingLocationCompletions.append { code in
                 self.deliverResult(requestId: requestId, key: key, code: code, app: app)
             }
             mgr.requestAlwaysAuthorization()
@@ -218,10 +218,12 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
                     return
                 }
             }
-            pendingBluetoothCompletion = { code in
+            pendingBluetoothCompletions.append { code in
                 self.deliverResult(requestId: requestId, key: key, code: code, app: app)
             }
-            bluetoothManager = CBCentralManager(delegate: self, queue: nil)
+            if bluetoothManager == nil {
+                bluetoothManager = CBCentralManager(delegate: self, queue: nil)
+            }
         case "motion_activity", "sensors":
             let pedometer = CMPedometer()
             pedometer.queryPedometerData(from: Date().addingTimeInterval(-60), to: Date()) { _, error in
@@ -243,8 +245,11 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
         default: .notDetermined
         }
         if code != .notDetermined {
-            pendingLocationCompletion?(code)
-            pendingLocationCompletion = nil
+            let completions = pendingLocationCompletions
+            pendingLocationCompletions.removeAll()
+            for completion in completions {
+                completion(code)
+            }
         }
     }
 
@@ -273,8 +278,11 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
             }
         }
         if code != .notDetermined {
-            pendingBluetoothCompletion?(code)
-            pendingBluetoothCompletion = nil
+            let completions = pendingBluetoothCompletions
+            pendingBluetoothCompletions.removeAll()
+            for completion in completions {
+                completion(code)
+            }
         }
     }
 

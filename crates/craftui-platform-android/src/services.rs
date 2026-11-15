@@ -6,9 +6,13 @@ use craftui_core::{
 };
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
+
+use jni::EnvUnowned;
+use jni::objects::{JBooleanArray, JClass, JIntArray, JObjectArray, JString};
+use jni::sys::jlong;
 
 /// Android manifest permission entry (`0 = PERMISSION_GRANTED`, `-1 = PERMISSION_DENIED`).
 pub const ANDROID_PERMISSION_GRANTED: i32 = 0;
@@ -57,6 +61,7 @@ struct PendingFileDialogRequest {
 #[derive(Debug)]
 pub struct AndroidBridgeState {
     next_request_id: AtomicU64,
+    terminated: AtomicBool,
     statuses: Mutex<HashMap<Permission, PermissionStatus>>,
     rationales: Mutex<HashMap<Permission, bool>>,
     commands: Mutex<VecDeque<AndroidPlatformCommand>>,
@@ -82,6 +87,7 @@ impl AndroidBridgeState {
     pub fn new() -> Self {
         Self {
             next_request_id: AtomicU64::new(1),
+            terminated: AtomicBool::new(false),
             statuses: Mutex::new(HashMap::new()),
             rationales: Mutex::new(HashMap::new()),
             commands: Mutex::new(VecDeque::new()),
@@ -106,6 +112,16 @@ impl AndroidBridgeState {
             battery_state: Mutex::new(BatteryState::default()),
             lifecycle_history: Mutex::new(Vec::new()),
         }
+    }
+
+    pub fn terminate(&self) {
+        self.terminated.store(true, Ordering::SeqCst);
+        self.file_cv.notify_all();
+        self.perm_cv.notify_all();
+    }
+
+    pub fn is_terminated(&self) -> bool {
+        self.terminated.load(Ordering::SeqCst)
     }
 
     pub fn set_request_timeout(&self, timeout: Duration) {
@@ -588,27 +604,41 @@ impl AndroidFileDialogBridge {
     }
 
     fn wait_result(&self, request_id: u64) -> Vec<PathBuf> {
+        let is_android = cfg!(target_os = "android");
         let timeout = self.state.timeout();
-        if !timeout.is_zero()
-            && let Ok(mut pending) = self.state.pending_files.lock()
-        {
-            let deadline = Instant::now() + timeout;
+        if let Ok(mut pending) = self.state.pending_files.lock() {
+            let deadline = if is_android {
+                None
+            } else if !timeout.is_zero() {
+                Some(Instant::now() + timeout)
+            } else {
+                None
+            };
+
             while pending
                 .get(&request_id)
                 .is_some_and(|entry| entry.resolved.is_none())
+                && !self.state.is_terminated()
             {
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                if remaining.is_zero() {
-                    break;
-                }
-                let Ok((next_guard, wait_res)) =
-                    self.state.file_cv.wait_timeout(pending, remaining)
-                else {
-                    return Vec::new();
-                };
-                pending = next_guard;
-                if wait_res.timed_out() {
-                    break;
+                if let Some(dl) = deadline {
+                    let remaining = dl.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        break;
+                    }
+                    let Ok((next_guard, wait_res)) =
+                        self.state.file_cv.wait_timeout(pending, remaining)
+                    else {
+                        return Vec::new();
+                    };
+                    pending = next_guard;
+                    if wait_res.timed_out() {
+                        break;
+                    }
+                } else {
+                    let Ok(next_guard) = self.state.file_cv.wait(pending) else {
+                        return Vec::new();
+                    };
+                    pending = next_guard;
                 }
             }
             if let Some(entry) = pending.remove(&request_id) {
@@ -648,4 +678,90 @@ impl FileDialogBackend for AndroidFileDialogBridge {
             });
         self.wait_result(request_id).into_iter().next()
     }
+}
+
+static ACTIVE_ANDROID_BRIDGE: RwLock<Option<Arc<AndroidBridgeState>>> = RwLock::new(None);
+
+pub fn set_active_android_bridge(bridge: Arc<AndroidBridgeState>) {
+    if let Ok(mut guard) = ACTIVE_ANDROID_BRIDGE.write() {
+        *guard = Some(bridge);
+    }
+}
+
+pub fn active_android_bridge() -> Option<Arc<AndroidBridgeState>> {
+    ACTIVE_ANDROID_BRIDGE.read().ok().and_then(|g| g.clone())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "system" fn Java_dev_craftui_app_MainActivity_nativeOnPermissionResults<
+    'frame,
+>(
+    mut unowned_env: EnvUnowned<'frame>,
+    _class: JClass<'frame>,
+    request_id: jlong,
+    permissions: JObjectArray<'frame>,
+    grant_results: JIntArray<'frame>,
+    rationales: JBooleanArray<'frame>,
+) {
+    let Some(bridge) = active_android_bridge() else {
+        return;
+    };
+
+    let _ = unowned_env.with_env(|env| {
+        let perm_len = permissions.len(env).unwrap_or(0);
+        let grant_len = grant_results.len(env).unwrap_or(0);
+        let rat_len = rationales.len(env).unwrap_or(0);
+
+        let mut grants_buf = vec![0i32; grant_len];
+        let _ = grant_results.get_region(env, 0, &mut grants_buf);
+
+        let mut rat_buf = vec![false; rat_len];
+        let _ = rationales.get_region(env, 0, &mut rat_buf);
+
+        let mut results = Vec::with_capacity(perm_len);
+        for i in 0..perm_len {
+            let perm_str: String = permissions
+                .get_element(env, i)
+                .ok()
+                .map(|obj| {
+                    let jstr = unsafe { JString::from_raw(env, obj.into_raw()) };
+                    jstr.to_string()
+                })
+                .unwrap_or_default();
+            let grant = grants_buf.get(i).copied().unwrap_or(-1);
+            let rat = rat_buf.get(i).copied().unwrap_or(false);
+            results.push((perm_str, grant, rat));
+        }
+
+        bridge.push_permission_results(request_id as u64, &results);
+        Ok::<(), jni::errors::Error>(())
+    });
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "system" fn Java_dev_craftui_app_MainActivity_nativeOnFileDialogResults<
+    'frame,
+>(
+    mut unowned_env: EnvUnowned<'frame>,
+    _class: JClass<'frame>,
+    request_id: jlong,
+    uris: JObjectArray<'frame>,
+) {
+    let Some(bridge) = active_android_bridge() else {
+        return;
+    };
+
+    let _ = unowned_env.with_env(|env| {
+        let len = uris.len(env).unwrap_or(0);
+        let mut paths = Vec::with_capacity(len);
+        for i in 0..len {
+            if let Ok(obj) = uris.get_element(env, i) {
+                let jstr = unsafe { JString::from_raw(env, obj.into_raw()) };
+                paths.push(PathBuf::from(jstr.to_string()));
+            }
+        }
+
+        bridge.push_file_dialog_result(request_id as u64, paths);
+        Ok::<(), jni::errors::Error>(())
+    });
 }

@@ -18,6 +18,7 @@ use notify::{Event as NotifyEvent, RecursiveMode, Watcher};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+#[cfg(feature = "hot-reload")]
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};

@@ -425,6 +425,27 @@ pub mod wasm_runner {
             scheduler.clone(),
         )?);
 
+        // Delegated click listener on a11y_root to route screen-reader / accessibility clicks to host
+        {
+            let h_a11y = host_rc.clone();
+            let sched_a11y = scheduler.clone();
+            let a11y_click_cb = Closure::wrap(Box::new(move |e: web_sys::MouseEvent| {
+                if let Some(target) = e.target()
+                    && let Ok(el) = target.dyn_into::<Element>()
+                    && let Some(closest) = el.closest("[data-craftui-node]").ok().flatten()
+                    && let Some(node_str) = closest.get_attribute("data-craftui-node")
+                    && let Ok(node_id) = node_str.parse::<u64>()
+                {
+                    if h_a11y.borrow_mut().handle_a11y_click(node_id) {
+                        sched_a11y.request_frame();
+                    }
+                }
+            })
+                as Box<dyn FnMut(web_sys::MouseEvent)>);
+            let a11y_target: &EventTarget = a11y_root.as_ref();
+            listeners.push(DomListener::attach(a11y_target, "click", a11y_click_cb)?);
+        }
+
         let win_target: &EventTarget = window.as_ref();
         if config.sync_url_hash {
             let h_hash = host_rc.clone();
@@ -595,6 +616,11 @@ pub mod wasm_runner {
             let bcr = cur_canvas.get_bounding_client_rect();
             let (pw, ph) = h.resize_css(bcr.width() as f32, bcr.height() as f32, dpr_now);
             if cur_canvas.width() != pw || cur_canvas.height() != ph {
+                let css_w = bcr.width();
+                let css_h = bcr.height();
+                let style = cur_canvas.style();
+                let _ = style.set_property("width", &format!("{css_w}px"));
+                let _ = style.set_property("height", &format!("{css_h}px"));
                 cur_canvas.set_width(pw);
                 cur_canvas.set_height(ph);
                 h.request_redraw();
@@ -807,18 +833,17 @@ pub mod wasm_runner {
                     alt: e.alt_key(),
                     super_key: e.meta_key(),
                 };
+                if comp_k.get() || e.is_composing() {
+                    return;
+                }
                 // Defer Cmd/Ctrl+V keydown to the trusted DOM `paste` event so live OS clipboard
                 // contents from other tabs/apps arrive synchronously without double-pasting.
-                if pressed
-                    && !comp_k.get()
-                    && mods.command()
-                    && !mods.alt
-                    && matches!(e.key().as_str(), "v" | "V")
-                {
+                if pressed && mods.command() && !mods.alt && matches!(e.key().as_str(), "v" | "V") {
                     return;
                 }
                 let ke = dom_key_to_craft(&e.key(), pressed, e.repeat(), mods);
                 if h_c.borrow_mut().handle_ui_event(&UiEvent::Key(ke)) {
+                    e.prevent_default();
                     sched_k.request_frame();
                 }
             }) as Box<dyn FnMut(DomKeyboardEvent)>);

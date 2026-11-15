@@ -481,6 +481,39 @@ export component ShowcasePhase3 {
         WidgetKind::Text { content, .. } => assert_eq!(content.get(), "0: Build!"),
         _ => unreachable!(),
     }
+
+    // Swap the two items in the reactive items signal
+    let cur_items = match session.store.props.get("items").unwrap().get() {
+        DynValue::List(list) => list,
+        _ => unreachable!(),
+    };
+    session.store.set_prop(
+        session.state_scope,
+        "items",
+        DynValue::List(vec![cur_items[1].clone(), cur_items[0].clone()]),
+    );
+
+    tree.layout(metrics);
+    let swapped_rows = tree.nodes.get(for_host).unwrap().children.clone();
+    assert_eq!(
+        swapped_rows,
+        vec![initial_rows[1], initial_rows[0]],
+        "keyed loop rows must reorder existing NodeIds when items are swapped"
+    );
+
+    // Row 0 now has Ship at index 0
+    let row0_new_txt = tree.nodes.get(swapped_rows[0]).unwrap().children[0];
+    match &tree.nodes.get(row0_new_txt).unwrap().kind {
+        WidgetKind::Text { content, .. } => assert_eq!(content.get(), "0: Ship"),
+        _ => unreachable!(),
+    }
+
+    // Row 1 now has Build! at index 1
+    let row1_new_txt = tree.nodes.get(swapped_rows[1]).unwrap().children[0];
+    match &tree.nodes.get(row1_new_txt).unwrap().kind {
+        WidgetKind::Text { content, .. } => assert_eq!(content.get(), "1: Build!"),
+        _ => unreachable!(),
+    }
 }
 
 #[test]

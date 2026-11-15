@@ -39,6 +39,7 @@ impl AndroidHost {
         let scope = Scope::root();
         let mut tree = WidgetTree::new(scope);
         let bridge = Arc::new(AndroidBridgeState::new());
+        crate::services::set_active_android_bridge(bridge.clone());
         tree.set_platform_services(
             PlatformServices::in_memory()
                 .with_permissions(AndroidPermissionBackend::new(bridge.clone()))

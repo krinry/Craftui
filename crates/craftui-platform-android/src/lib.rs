@@ -23,7 +23,8 @@ pub use input::{
 pub use services::{
     ANDROID_PERMISSION_GRANTED, AndroidBridgeState, AndroidDeviceCapabilities,
     AndroidFileDialogBridge, AndroidHapticsBackend, AndroidPermissionBackend,
-    AndroidPlatformCommand, AndroidSecureStorage, AndroidShareBackend,
+    AndroidPlatformCommand, AndroidSecureStorage, AndroidShareBackend, active_android_bridge,
+    set_active_android_bridge,
 };
 
 #[cfg(all(target_os = "android", feature = "builtin-main"))]

@@ -201,3 +201,30 @@ fn effect_reentrancy_during_initialization_preserves_subscriptions() {
     s.set(42);
     assert_eq!(run_count.get(), count_after_init + 1);
 }
+
+#[test]
+fn effect_untrack_write_during_initialization_preserves_subscriptions() {
+    reset_runtime();
+    let cx = Scope::root();
+    let s = cx.signal(0);
+    let run_count = Rc::new(Cell::new(0));
+    let rc = run_count.clone();
+
+    cx.effect(move || {
+        rc.set(rc.get() + 1);
+        let val = s.get();
+        if val == 0 {
+            // Write to the signal inside untrack during initialization
+            crate::arena::untrack(|| {
+                s.set(1);
+            });
+        }
+    });
+
+    assert_eq!(s.get(), 1);
+    assert_eq!(run_count.get(), 2);
+
+    // Subsequent updates to the signal should still trigger the effect
+    s.set(42);
+    assert_eq!(run_count.get(), 3);
+}

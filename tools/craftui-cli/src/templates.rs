@@ -527,8 +527,17 @@ pub fn detect_cargo_package_name(cargo_toml: &Path) -> Option<String> {
             && let Some((k, v)) = trimmed.split_once('=')
             && k.trim() == "name"
         {
-            let cleaned = v.trim().trim_matches('"').trim_matches('\'');
-            if !cleaned.is_empty() {
+            let val = v.trim();
+            let parsed = if let Some(stripped) = val.strip_prefix('"') {
+                stripped.split('"').next()
+            } else if let Some(stripped) = val.strip_prefix('\'') {
+                stripped.split('\'').next()
+            } else {
+                val.split('#').next().map(str::trim)
+            };
+            if let Some(cleaned) = parsed
+                && !cleaned.is_empty()
+            {
                 return Some(cleaned.to_string());
             }
         }

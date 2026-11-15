@@ -75,6 +75,7 @@ pub(crate) struct ReactiveArena {
     pub(crate) observer_stack: Vec<SubscriberId>,
     pub(crate) pending_effects: VecDeque<EffectKey>,
     pub(crate) pending_effect_set: HashSet<EffectKey>,
+    pub(crate) running_effects: HashSet<EffectKey>,
     pub(crate) dirty_nodes: HashMap<NodeId, DirtyFlags>,
     pub(crate) dispatcher: UiDispatcher,
     pub(crate) pending_jobs: HashMap<u64, PendingJobCallback>,
@@ -106,6 +107,7 @@ impl ReactiveArena {
             observer_stack: Vec::new(),
             pending_effects: VecDeque::new(),
             pending_effect_set: HashSet::new(),
+            running_effects: HashSet::new(),
             dirty_nodes: HashMap::new(),
             dispatcher: UiDispatcher::new(),
             pending_jobs: HashMap::new(),
@@ -430,15 +432,17 @@ pub(crate) fn flush_effects() {
 pub(crate) fn run_effect(ek: EffectKey) {
     let prepared = ARENA.with(|a| {
         let mut arena = a.borrow_mut();
-        if arena.observer_stack.contains(&SubscriberId::Effect(ek)) {
+        if arena.running_effects.contains(&ek) {
             return None;
         }
-        let eff = arena.effects.get_mut(ek)?;
-        if eff.disposed {
-            return None;
-        }
-        let old_sources = std::mem::take(&mut eff.sources);
-        let cb = eff.callback.clone();
+        let (old_sources, cb) = {
+            let eff = arena.effects.get_mut(ek)?;
+            if eff.disposed {
+                return None;
+            }
+            (std::mem::take(&mut eff.sources), eff.callback.clone())
+        };
+        arena.running_effects.insert(ek);
         detach_subscriber(&mut arena, SubscriberId::Effect(ek), &old_sources);
         arena.observer_stack.push(SubscriberId::Effect(ek));
         Some(cb)
@@ -454,8 +458,13 @@ pub(crate) fn run_effect(ek: EffectKey) {
 
     ARENA.with(|a| {
         let mut arena = a.borrow_mut();
+        arena.running_effects.remove(&ek);
         if arena.observer_stack.last() == Some(&SubscriberId::Effect(ek)) {
             arena.observer_stack.pop();
+        } else {
+            arena
+                .observer_stack
+                .retain(|x| x != &SubscriberId::Effect(ek));
         }
     });
 }

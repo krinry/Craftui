@@ -117,8 +117,9 @@ pub struct IpcResponse {
     pub error: Option<String>,
 }
 
-type IpcHandlerFn = Box<dyn Fn(serde_json::Value) -> Result<serde_json::Value, String>>;
-type IpcListenerFn = Box<dyn Fn(serde_json::Value)>;
+type IpcHandlerFn =
+    Box<dyn Fn(serde_json::Value) -> Result<serde_json::Value, String> + Send + Sync>;
+type IpcListenerFn = Box<dyn Fn(serde_json::Value) + Send + Sync>;
 
 /// Bidirectional IPC Command & Event Router compatible with Tauri 2.0.
 #[derive(Default)]
@@ -136,7 +137,7 @@ impl IpcRouter {
     /// Register a command handler that can be invoked from JS (`window.craftui.invoke("cmd", args)`).
     pub fn register<F>(&mut self, cmd: impl Into<String>, handler: F)
     where
-        F: Fn(serde_json::Value) -> Result<serde_json::Value, String> + 'static,
+        F: Fn(serde_json::Value) -> Result<serde_json::Value, String> + Send + Sync + 'static,
     {
         self.handlers.insert(cmd.into(), Box::new(handler));
     }
@@ -144,7 +145,7 @@ impl IpcRouter {
     /// Register a Rust listener for events emitted from JavaScript (`window.craftui.emit("event", payload)`).
     pub fn listen<F>(&mut self, event: impl Into<String>, callback: F)
     where
-        F: Fn(serde_json::Value) + 'static,
+        F: Fn(serde_json::Value) + Send + Sync + 'static,
     {
         self.listeners
             .entry(event.into())
@@ -389,6 +390,118 @@ impl IpcRouter {
             };
             Ok(serde_json::json!({ "success": svc.share(&payload) }))
         });
+    }
+}
+
+type LocalIpcHandlerFn = Box<dyn Fn(serde_json::Value) -> Result<serde_json::Value, String>>;
+type LocalIpcListenerFn = Box<dyn Fn(serde_json::Value)>;
+
+/// Thread-local IPC Command & Event Router supporting callbacks that capture non-Send UI state (such as reactive Signals).
+#[derive(Default)]
+pub struct LocalIpcRouter {
+    handlers: HashMap<String, LocalIpcHandlerFn>,
+    listeners: HashMap<String, Vec<LocalIpcListenerFn>>,
+    emitted_events: Arc<Mutex<Vec<(String, serde_json::Value)>>>,
+}
+
+impl LocalIpcRouter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a local command handler that can capture thread-bound UI closures.
+    pub fn register<F>(&mut self, cmd: impl Into<String>, handler: F)
+    where
+        F: Fn(serde_json::Value) -> Result<serde_json::Value, String> + 'static,
+    {
+        self.handlers.insert(cmd.into(), Box::new(handler));
+    }
+
+    /// Register a local listener for events emitted from JavaScript.
+    pub fn listen<F>(&mut self, event: impl Into<String>, callback: F)
+    where
+        F: Fn(serde_json::Value) + 'static,
+    {
+        self.listeners
+            .entry(event.into())
+            .or_default()
+            .push(Box::new(callback));
+    }
+
+    /// Emit an event from Rust to JavaScript listeners.
+    pub fn emit(&self, event: impl Into<String>, payload: serde_json::Value) {
+        let ev = event.into();
+        if let Ok(mut list) = self.emitted_events.lock() {
+            list.push((ev.clone(), payload.clone()));
+        }
+        if let Some(callbacks) = self.listeners.get(&ev) {
+            for cb in callbacks {
+                cb(payload.clone());
+            }
+        }
+    }
+
+    /// Drain all queued events to be sent to the Web frontend.
+    pub fn drain_emitted(&self) -> Vec<(String, serde_json::Value)> {
+        if let Ok(mut list) = self.emitted_events.lock() {
+            std::mem::take(&mut *list)
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Handle raw incoming JSON request from the Web frontend and return a JSON response string.
+    pub fn handle_invoke_json(&self, raw_json: &str) -> String {
+        let msg: IpcMessage = match serde_json::from_str(raw_json) {
+            Ok(m) => m,
+            Err(e) => {
+                let err_res = IpcResponse {
+                    id: "error".into(),
+                    result: None,
+                    error: Some(format!("Invalid IPC JSON: {}", e)),
+                };
+                return serde_json::to_string(&err_res).unwrap_or_default();
+            }
+        };
+
+        if msg.cmd == "__emit__" {
+            if let Some(ev) = msg.args.get("event").and_then(|v| v.as_str()) {
+                let payload = msg
+                    .args
+                    .get("payload")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                self.emit(ev, payload);
+            }
+            let res = IpcResponse {
+                id: msg.id,
+                result: Some(serde_json::json!({ "status": "ok" })),
+                error: None,
+            };
+            return serde_json::to_string(&res).unwrap_or_default();
+        }
+
+        let resp = match self.handlers.get(&msg.cmd) {
+            Some(handler) => match handler(msg.args) {
+                Ok(val) => IpcResponse {
+                    id: msg.id,
+                    result: Some(val),
+                    error: None,
+                },
+                Err(err) => IpcResponse {
+                    id: msg.id,
+                    result: None,
+                    error: Some(err),
+                },
+            },
+            None => IpcResponse {
+                id: msg.id,
+                result: None,
+                error: Some(format!("Unknown CraftUI IPC command: '{}'", msg.cmd)),
+            },
+        };
+
+        serde_json::to_string(&resp).unwrap_or_default()
     }
 }
 
