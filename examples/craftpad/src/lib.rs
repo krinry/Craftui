@@ -121,31 +121,73 @@ pub const SETTINGS_TEMPLATE: &str = r#"export component SettingsView {
     }
 }"#;
 
+pub const SLINT_TEMPLATE: &str = r#"export component Demo {
+    Container {
+        width: 320px;
+        background: #18181b;
+        border_radius: 6px;
+        padding: 24px;
+
+        Column {
+            gap: 16px;
+            align: "center";
+
+            Text {
+                text: "Hello World!";
+                font_size: 24px;
+                color: #ffffff;
+            }
+
+            Container {
+                background: #ffffff;
+                border_radius: 30px;
+                padding: 12px;
+                Text {
+                    text: "⚡ Slint";
+                    color: #000000;
+                    font_weight: 700.0;
+                }
+            }
+
+            Button {
+                text: "OK!";
+                border_radius: 4px;
+                background: #a855f7;
+                foreground: #ffffff;
+                padding: 8px;
+            }
+        }
+    }
+}"#;
+
 #[derive(Clone)]
 pub struct CraftpadController {
     pub selected_template: Signal<String>,
     pub source_code: Signal<String>,
     pub status_text: Signal<String>,
+    pub demo_count: Signal<i32>,
 }
 
 impl CraftpadController {
     pub fn new(cx: Scope) -> Self {
         Self {
-            selected_template: cx.signal("Counter".to_string()),
+            selected_template: cx.signal("Flutter Counter".to_string()),
             source_code: cx.signal(COUNTER_TEMPLATE.to_string()),
-            status_text: cx.signal("Ready — 0 errors".to_string()),
+            status_text: cx.signal("✓ Ready — 0 problems detected".to_string()),
+            demo_count: cx.signal(0i32),
         }
     }
 
     pub fn select_template(&self, template: &str) {
-        self.selected_template.set(template.to_string());
-        let code = match template {
-            "Login" => LOGIN_TEMPLATE,
-            "Settings" => SETTINGS_TEMPLATE,
-            _ => COUNTER_TEMPLATE,
+        let (label, code) = match template.to_ascii_lowercase().as_str() {
+            "slint" => ("Slint Dialog", SLINT_TEMPLATE),
+            "settings" => ("Settings Screen", SETTINGS_TEMPLATE),
+            "login" => ("Login Form", LOGIN_TEMPLATE),
+            _ => ("Flutter Counter", COUNTER_TEMPLATE),
         };
+        self.selected_template.set(label.to_string());
         self.source_code.set(code.to_string());
-        self.status_text.set(format!("Loaded {template} template"));
+        self.status_text.set(format!("✓ Loaded {label} template"));
     }
 
     pub fn run_validation(&self) {
@@ -153,7 +195,7 @@ impl CraftpadController {
         let resolved = resolve_source(&code, None);
         if resolved.diagnostics.is_empty() {
             self.status_text
-                .set("✓ Validated successfully: 0 errors".to_string());
+                .set("✓ Build succeeded: 0 problems detected".to_string());
         } else {
             let errors = resolved
                 .diagnostics
@@ -174,6 +216,7 @@ pub fn mount_craftpad_app(cx: Scope, tree: &mut WidgetTree) -> (NodeId, Craftpad
     studio.selected_template.set(ctrl.selected_template.get());
     studio.source_code.set(ctrl.source_code.get());
     studio.status_text.set(ctrl.status_text.get());
+    studio.demo_count.set(ctrl.demo_count.get());
 
     let ctrl_run = ctrl.clone();
     let studio_run = studio.clone();
@@ -182,18 +225,20 @@ pub fn mount_craftpad_app(cx: Scope, tree: &mut WidgetTree) -> (NodeId, Craftpad
         studio_run.status_text.set(ctrl_run.status_text.get());
     });
 
-    let ctrl_fmt = ctrl.clone();
-    let studio_fmt = studio.clone();
-    studio.set_on_format(move || {
-        ctrl_fmt.run_validation();
-        studio_fmt.status_text.set(ctrl_fmt.status_text.get());
+    let ctrl_reload = ctrl.clone();
+    let studio_reload = studio.clone();
+    studio.set_on_reload(move || {
+        ctrl_reload.run_validation();
+        studio_reload.status_text.set(ctrl_reload.status_text.get());
     });
 
     let ctrl_tmpl = ctrl.clone();
     let studio_tmpl = studio.clone();
     studio.set_on_select_template(move |tmpl: String| {
         ctrl_tmpl.select_template(&tmpl);
-        studio_tmpl.selected_template.set(tmpl);
+        studio_tmpl
+            .selected_template
+            .set(ctrl_tmpl.selected_template.get());
         studio_tmpl.source_code.set(ctrl_tmpl.source_code.get());
         studio_tmpl.status_text.set(ctrl_tmpl.status_text.get());
     });
