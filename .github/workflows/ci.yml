@@ -105,8 +105,7 @@ jobs:
               h = h.strip()
               if not h:
                   continue
-              first, _, rest = h.partition('
-')
+              first, _, rest = h.partition('\n')
               print(f"::error::{esc((first + ' :: ' + rest[:700]).replace(chr(10), ' | '))}")
           PY
           exit $code
