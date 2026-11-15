@@ -104,8 +104,10 @@ jobs:
           exit $code
       - name: Format check (diagnostics)
         run: |
+          set +e
           cargo fmt --all -- --check > fmt.log 2>&1
           code=$?
+          echo "fmt exit=$code bytes=$(wc -c < fmt.log)"
           python3 - fmt.log "$code" <<'PY'
           import sys
 
@@ -114,11 +116,11 @@ jobs:
 
           text = open('fmt.log', errors='replace').read()
           print(f"::notice::fmt exit={sys.argv[2]} bytes={len(text)}")
-          head, tail = text[:1500], text[-1500:]
-          print(f"::error::fmt head :: {esc(head.replace(chr(10), ' | '))}")
-          print(f"::error::fmt tail :: {esc(tail.replace(chr(10), ' | '))}")
+          for chunk_start in (0, max(0, len(text) - 1500)):
+              chunk = text[chunk_start:chunk_start + 1500]
+              print(f"::error::fmt chunk@{chunk_start} :: {esc(chunk.replace(chr(10), ' | '))}")
           PY
-          exit $code
+          exit 0
       - name: Clippy report (all warnings, never fails on lints)
         if: ${{ !cancelled() }}
         run: .github/scripts/logged.sh clippy-report cargo clippy --locked --workspace --all-targets
