@@ -90,8 +90,26 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-dev
-      - name: Format check
-        run: .github/scripts/logged.sh fmt cargo fmt --all -- --check
+      - name: Format check (diagnostics)
+        run: |
+          cargo fmt --all -- --check > fmt.log 2>&1
+          code=$?
+          python3 - fmt.log <<'PY'
+          import re
+
+          def esc(t):
+              return (t.replace('%', '%25').replace('\r', '').replace('\n', '%0A'))
+
+          hunks = re.split(r'(?=Diff in )', open('fmt.log', errors='replace').read())
+          for h in hunks:
+              h = h.strip()
+              if not h:
+                  continue
+              first, _, rest = h.partition('
+')
+              print(f"::error::{esc((first + ' :: ' + rest[:700]).replace(chr(10), ' | '))}")
+          PY
+          exit $code
       - name: Clippy report (all warnings, never fails on lints)
         if: ${{ !cancelled() }}
         run: .github/scripts/logged.sh clippy-report cargo clippy --locked --workspace --all-targets
