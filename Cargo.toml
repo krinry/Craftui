@@ -26,6 +26,7 @@ members = [
     "examples/scancraft",
     "examples/whiteboard",
     "examples/notes",
+    "examples/craftpad",
 ]
 
 [workspace.package]

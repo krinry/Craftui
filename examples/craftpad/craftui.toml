@@ -1,0 +1,13 @@
+[app]
+name = "Craftpad"
+id = "dev.craftui.craftpad"
+version = "0.1.0"
+min_android_sdk = 26
+target_android_sdk = 34
+
+[window]
+title = "Craftpad — CraftUI Playground"
+width = 1100
+height = 750
+
+[permissions]

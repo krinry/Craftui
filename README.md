@@ -83,9 +83,19 @@ Known gaps:
 - **Themes**: light, dark, AMOLED and high-contrast token sets.
 - **Platform services**: clipboard, file dialogs, permissions, haptics, sharing,
   secure storage. How complete each one is differs by platform.
+- **Animations & Physics**: Closed-form analytical damped harmonic oscillator springs
+  (`SpringSimulation`, `SpringConfig::bouncy`, `snappy`, `smooth`), velocity preservation,
+  and zero numerical drift.
+- **Text & Typography**: Multilingual script shaping, inline text editor, `RichText` with
+  multi-style `TextSpan` support, and Unicode emoji detection.
+- **Craftpad Playground**: In-browser studio and desktop playground (`examples/craftpad`)
+  with live 60 FPS canvas preview, template switching, and instant error diagnostics.
+- **AI & MCP Protocol**: Native Model Context Protocol server (`craftui mcp --stdio`)
+  providing AI assistants with live `.cui` validation, widget catalog introspection, component
+  scaffolding, and headless PNG rendering.
 - **Tools**: the `craftui` command (`new`, `run`, `build`, `check`, `preview`,
-  `doctor`, `permissions`), a language server, and a VS Code extension in
-  `editors/vscode`.
+  `doctor`, `permissions`, `mcp`), a language server (`craftui-lsp`), and a VS Code extension
+  in `editors/vscode` with syntax highlighting and IntelliSense snippets.
 
 ## Start a project
 

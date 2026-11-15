@@ -150,11 +150,10 @@ pub fn render_scene_to_rgba(
     }
 }
 
-/// Write straight RGBA8 pixels to a PNG file on disk.
-pub fn write_rgba_png(path: impl AsRef<Path>, width: u32, height: u32, rgba: &[u8]) -> Result<()> {
-    let file = std::fs::File::create(path)?;
-    let w = std::io::BufWriter::new(file);
-    let mut encoder = png::Encoder::new(w, width, height);
+/// Encode straight RGBA8 pixels into an in-memory PNG byte buffer.
+pub fn encode_rgba_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    let mut encoder = png::Encoder::new(&mut buf, width, height);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder
@@ -163,6 +162,14 @@ pub fn write_rgba_png(path: impl AsRef<Path>, width: u32, height: u32, rgba: &[u
     writer
         .write_image_data(rgba)
         .map_err(|e| craftui_core::CraftError::Render(e.to_string()))?;
+    drop(writer);
+    Ok(buf)
+}
+
+/// Write straight RGBA8 pixels to a PNG file on disk.
+pub fn write_rgba_png(path: impl AsRef<Path>, width: u32, height: u32, rgba: &[u8]) -> Result<()> {
+    let bytes = encode_rgba_png(width, height, rgba)?;
+    std::fs::write(path, bytes)?;
     Ok(())
 }
 

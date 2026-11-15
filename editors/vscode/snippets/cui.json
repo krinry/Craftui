@@ -1,0 +1,107 @@
+{
+  "Export Component": {
+    "prefix": "comp",
+    "body": [
+      "export component ${1:ComponentName} {",
+      "    in-out property <${2:int}> ${3:value}: ${4:0};",
+      "    callback ${5:on_change}();",
+      "",
+      "    Container {",
+      "        padding: ${6:16px};",
+      "        background: ${7:#0f172a};",
+      "        border_radius: ${8:8px};",
+      "",
+      "        Column {",
+      "            gap: 12px;",
+      "            $0",
+      "        }",
+      "    }",
+      "}"
+    ],
+    "description": "Scaffold a new exported CraftUI component"
+  },
+  "Container": {
+    "prefix": "cont",
+    "body": [
+      "Container {",
+      "    padding: ${1:16px};",
+      "    background: ${2:#1e293b};",
+      "    border_radius: ${3:8px};",
+      "    $0",
+      "}"
+    ],
+    "description": "CraftUI Container"
+  },
+  "Column Layout": {
+    "prefix": "col",
+    "body": [
+      "Column {",
+      "    gap: ${1:12px};",
+      "    align: \"${2|stretch,center,start,end|}\";",
+      "    $0",
+      "}"
+    ],
+    "description": "CraftUI Vertical Column"
+  },
+  "Row Layout": {
+    "prefix": "row",
+    "body": [
+      "Row {",
+      "    gap: ${1:12px};",
+      "    align: \"${2|center,start,end,stretch|}\";",
+      "    justify: \"${3|space_between,start,center,end|}\";",
+      "    $0",
+      "}"
+    ],
+    "description": "CraftUI Horizontal Row"
+  },
+  "Button": {
+    "prefix": "btn",
+    "body": [
+      "Button {",
+      "    text: \"${1:Click Me}\";",
+      "    background: ${2:#0284c7};",
+      "    foreground: #ffffff;",
+      "    padding: 12px;",
+      "    border_radius: 6px;",
+      "    on_tap => {",
+      "        $0",
+      "    }",
+      "}"
+    ],
+    "description": "CraftUI Push Button"
+  },
+  "TextInput": {
+    "prefix": "input",
+    "body": [
+      "TextInput {",
+      "    placeholder: \"${1:Enter text...}\";",
+      "    value <=> ${2:text_signal};",
+      "    background: #1e293b;",
+      "    color: #ffffff;",
+      "    padding: 10px;",
+      "    border_radius: 6px;",
+      "    $0",
+      "}"
+    ],
+    "description": "CraftUI Text Input"
+  },
+  "For Loop": {
+    "prefix": "for",
+    "body": [
+      "for ${1:item} in ${2:items_list} [key: ${1:item}.${3:id}] {",
+      "    $0",
+      "}"
+    ],
+    "description": "CraftUI Reactive For Loop"
+  },
+  "Spring Animation": {
+    "prefix": "anim",
+    "body": [
+      "animate ${1:opacity} {",
+      "    curve: ${2|spring(280.0, 26.0),snappy(),gentle(),tween(200ms)|};",
+      "}"
+    ],
+    "description": "CraftUI Animation Spec"
+  }
+}

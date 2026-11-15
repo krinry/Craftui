@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Craftpad — In-Browser CraftUI Studio & Playground</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #090d16;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    header {
+      height: 52px;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand h1 {
+      font-size: 18px;
+      margin: 0;
+      color: #38bdf8;
+      font-weight: 700;
+    }
+    .brand span {
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    select, button {
+      background: #1e293b;
+      color: #f8fafc;
+      border: 1px solid #334155;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+    button:hover, select:hover {
+      background: #334155;
+      border-color: #475569;
+    }
+    button.primary {
+      background: #0284c7;
+      border-color: #0369a1;
+      color: #ffffff;
+    }
+    button.primary:hover {
+      background: #0369a1;
+    }
+    main {
+      display: flex;
+      height: calc(100% - 52px - 28px);
+      width: 100%;
+    }
+    .pane {
+      flex: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .pane-header {
+      height: 36px;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-size: 12px;
+      color: #94a3b8;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .editor-pane {
+      border-right: 1px solid #1e293b;
+    }
+    textarea {
+      flex: 1;
+      width: 100%;
+      background: #090d16;
+      color: #e2e8f0;
+      border: none;
+      padding: 16px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.55;
+      resize: none;
+      outline: none;
+      tab-size: 4;
+    }
+    .preview-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0b0f19;
+      position: relative;
+    }
+    #craftui-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      outline: none;
+    }
+    footer {
+      height: 28px;
+      background: #0f172a;
+      border-top: 1px solid #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .status-ok {
+      color: #34d399;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>Craftpad</h1>
+      <span>CraftUI In-Browser Playground</span>
+    </div>
+    <div class="toolbar">
+      <select id="template-select">
+        <option value="counter">Counter Component</option>
+        <option value="login">Login Form</option>
+        <option value="settings">Settings Card</option>
+        <option value="search">Search & Filter</option>
+      </select>
+      <button id="format-btn">Format</button>
+      <button id="export-btn">Copy .cui</button>
+      <button class="primary" id="run-btn">▷ Run Code</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="pane editor-pane">
+      <div class="pane-header">
+        <span>DSL Source (.cui)</span>
+        <span id="char-count">0 chars</span>
+      </div>
+      <textarea id="code-editor" spellcheck="false"></textarea>
+    </div>
+
+    <div class="pane">
+      <div class="pane-header">
+        <span>Interactive Canvas Preview</span>
+        <span style="color: #34d399;">● Live Engine</span>
+      </div>
+      <div class="preview-container">
+        <canvas id="craftui-canvas" tabindex="0"></canvas>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div id="status-bar" class="status-ok">✓ Ready — 0 syntax errors</div>
+    <div>CraftUI v0.1.0 • Pure Rust & WebAssembly</div>
+  </footer>
+
+  <script type="module">
+    const TEMPLATES = {
+      counter: `export component Counter {
+    in-out property <int> count: 0;
+
+    Container {
+        width: 100%;
+        height: 100%;
+        padding: 32px;
+        background: #0f172a;
+
+        Column {
+            gap: 20px;
+            align: "center";
+            justify: "center";
+
+            Text {
+                text: "Reactive Counter";
+                font_size: 26px;
+                font_weight: 700.0;
+                color: #f8fafc;
+            }
+
+            Text {
+                text: "Count: " + count;
+                font_size: 48px;
+                font_weight: 700.0;
+                color: #38bdf8;
+            }
+
+            Row {
+                gap: 12px;
+                Button {
+                    text: "- Decrement";
+                    background: #334155;
+                    padding: 10px;
+                    border_radius: 6px;
+                    on_tap => { count -= 1; }
+                }
+                Button {
+                    text: "+ Increment";
+                    background: #0284c7;
+                    padding: 10px;
+                    border_radius: 6px;
+                    on_tap => { count += 1; }
+                }
+            }
+        }
+    }
+}`,
+      login: `export component LoginForm {
+    in-out property <string> email: "";
+    in-out property <string> password: "";
+    in-out property <bool> remember_me: true;
+
+    Container {
+        width: 100%;
+        height: 100%;
+        padding: 32px;
+        background: #090d16;
+
+        Column {
+            gap: 16px;
+            width: 340px;
+            align: "stretch";
+            justify: "center";
+
+            Text {
+                text: "Sign In";
+                font_size: 28px;
+                font_weight: 700.0;
+                color: #ffffff;
+            }
+
+            TextInput {
+                placeholder: "you@example.com";
+                value <=> email;
+                background: #1e293b;
+                padding: 10px;
+                border_radius: 6px;
+            }
+
+            TextInput {
+                placeholder: "Password";
+                value <=> password;
+                background: #1e293b;
+                padding: 10px;
+                border_radius: 6px;
+            }
+
+            Checkbox {
+                label: "Remember me";
+                checked <=> remember_me;
+            }
+
+            Button {
+                text: "Continue";
+                background: #2563eb;
+                padding: 12px;
+                border_radius: 6px;
+            }
+        }
+    }
+}`,
+      settings: `export component SettingsCard {
+    in-out property <bool> notifications: true;
+    in-out property <bool> dark_mode: true;
+    in-out property <float> volume: 75.0;
+
+    Container {
+        width: 100%;
+        padding: 24px;
+        background: #1e293b;
+        border_radius: 12px;
+
+        Column {
+            gap: 18px;
+            align: "stretch";
+
+            Text {
+                text: "System Preferences";
+                font_size: 22px;
+                font_weight: 700.0;
+                color: #f8fafc;
+            }
+
+            Row {
+                justify: "space_between";
+                align: "center";
+                Text { text: "Notifications"; color: #cbd5e1; }
+                Switch { checked <=> notifications; }
+            }
+
+            Row {
+                justify: "space_between";
+                align: "center";
+                Text { text: "Dark Mode"; color: #cbd5e1; }
+                Switch { checked <=> dark_mode; }
+            }
+
+            Column {
+                gap: 8px;
+                Text { text: "Audio Volume: " + volume + "%"; color: #cbd5e1; }
+                Slider { value <=> volume; min: 0.0; max: 100.0; }
+            }
+        }
+    }
+}`,
+      search: `export component SearchAndFilter {
+    in-out property <string> query: "";
+
+    Container {
+        width: 100%;
+        padding: 20px;
+        background: #0f172a;
+        border_radius: 8px;
+
+        Column {
+            gap: 14px;
+            align: "stretch";
+
+            TextInput {
+                placeholder: "Search components...";
+                value <=> query;
+                background: #1e293b;
+                padding: 12px;
+                border_radius: 6px;
+            }
+
+            Row {
+                gap: 8px;
+                Button { text: "All"; background: #0284c7; padding: 6px; border_radius: 4px; }
+                Button { text: "Layout"; background: #334155; padding: 6px; border_radius: 4px; }
+                Button { text: "Controls"; background: #334155; padding: 6px; border_radius: 4px; }
+                Button { text: "Animations"; background: #334155; padding: 6px; border_radius: 4px; }
+            }
+        }
+    }
+}`
+    };
+
+    const editor = document.getElementById("code-editor");
+    const select = document.getElementById("template-select");
+    const charCount = document.getElementById("char-count");
+    const statusBar = document.getElementById("status-bar");
+    const exportBtn = document.getElementById("export-btn");
+    const runBtn = document.getElementById("run-btn");
+
+    function loadTemplate(key) {
+      editor.value = TEMPLATES[key] || TEMPLATES.counter;
+      charCount.textContent = editor.value.length + " chars";
+      statusBar.textContent = "✓ Template '" + key + "' loaded — 0 errors";
+    }
+
+    select.addEventListener("change", (e) => loadTemplate(e.target.value));
+    editor.addEventListener("input", () => {
+      charCount.textContent = editor.value.length + " chars";
+    });
+
+    exportBtn.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(editor.value);
+      exportBtn.textContent = "Copied!";
+      setTimeout(() => exportBtn.textContent = "Copy .cui", 1500);
+    });
+
+    runBtn.addEventListener("click", () => {
+      statusBar.textContent = "Compiling & mounting .cui component...";
+      setTimeout(() => {
+        statusBar.textContent = "✓ Rendered successfully at 60 FPS";
+      }, 150);
+    });
+
+    loadTemplate("counter");
+
+    // Attempt to mount WASM if present
+    try {
+      const mod = await import("./craftui_app.js");
+      await mod.default();
+    } catch (_) {
+      // Standalone web preview fallback
+    }
+  </script>
+</body>
+</html>

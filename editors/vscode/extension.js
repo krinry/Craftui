@@ -368,6 +368,12 @@ function activate(context) {
       term.show();
       term.sendText(`${cli} permissions check craftui.toml`);
     }),
+    vscode.commands.registerCommand('craftui.startMcp', () => {
+      const cli = findExecutable('craftui') || 'craftui';
+      const term = vscode.window.createTerminal('CraftUI MCP');
+      term.show();
+      term.sendText(`${cli} mcp --stdio`);
+    }),
     vscode.commands.registerCommand('craftui.restartLsp', () => {
       startLsp(context);
       vscode.window.showInformationMessage('CraftUI Language Server restarted.');
