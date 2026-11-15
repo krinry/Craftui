@@ -535,9 +535,15 @@ fn text_input_undo_redo_word_nav_and_demand_caret_blink() {
     // Word delete backward ("world" -> "hello ")
     // Word-jump is Ctrl everywhere except macOS/iOS, where it is Option/Alt.
     let word_jump_mods = if cfg!(any(target_os = "macos", target_os = "ios")) {
-        Modifiers { alt: true, ..Default::default() }
+        Modifiers {
+            alt: true,
+            ..Default::default()
+        }
     } else {
-        Modifiers { ctrl: true, ..Default::default() }
+        Modifiers {
+            ctrl: true,
+            ..Default::default()
+        }
     };
     tree.handle_event(&UiEvent::Key(KeyEvent {
         code: KeyCode::Backspace,
