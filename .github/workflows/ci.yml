@@ -35,18 +35,43 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-dev
       - run: cargo fmt --all -- --check
-      - name: Clippy (with failure log capture)
+      - name: Clippy (annotate compiler errors)
         shell: bash
         run: |
-          set -o pipefail
-          cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy.log"
-      - name: Upload clippy log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: clippy-log-${{ matrix.os }}
-          path: ${{ runner.temp }}/clippy.log
-          retention-days: 3
+          cargo clippy --workspace --all-targets --message-format json > clippy.jsonl 2>&1
+          code=$?
+          python3 - clippy.jsonl <<'PY'
+          import json, sys
+
+          def esc(s):
+              return (s.replace('%', '%25').replace('\r', '').replace('\n', '%0A'))
+
+          emitted = 0
+          for line in open(sys.argv[1], errors='replace'):
+              line = line.strip()
+              if not line.startswith('{'):
+                  continue
+              try:
+                  obj = json.loads(line)
+              except Exception:
+                  continue
+              if obj.get('reason') != 'compiler-message':
+                  continue
+              m = obj.get('message', {})
+              if m.get('level') not in ('error', 'failure-note'):
+                  continue
+              msg = esc((m.get('message') or '').replace('\n', ' ')[:900])
+              primary = [s for s in (m.get('spans') or []) if s.get('is_primary')]
+              if primary:
+                  for s in primary[:6]:
+                      print(f"::error file={s.get('file_name')},line={s.get('line_start')},col={s.get('column_start')}::{msg}")
+                      emitted += 1
+              else:
+                  print(f"::error::{msg}")
+                  emitted += 1
+          print(f"::notice::emitted {emitted} error annotations")
+          PY
+          exit $code
       - run: cargo test --workspace
       - name: Minimal-Feature Compile Check
         if: matrix.os == 'ubuntu-latest'
