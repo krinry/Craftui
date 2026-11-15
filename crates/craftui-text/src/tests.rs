@@ -103,3 +103,46 @@ fn richtext_spans_plain_text_and_emoji_detection() {
     let alchem_span = TextSpan::new("Formula: \u{1F700}", TextStyle::default());
     assert!(!alchem_span.has_emojis());
 }
+
+#[test]
+fn rich_layout_preserves_span_styles_across_utf8_boundaries() {
+    use crate::style::{RichText, TextSpan};
+    use parley::PositionedLayoutItem;
+
+    let red = Color::rgb(220, 30, 40);
+    let blue = Color::rgb(20, 70, 220);
+    let rich = RichText::new()
+        .with_span(TextSpan::new("café ", TextStyle::default().with_color(red)))
+        .with_span(TextSpan::new(
+            "World",
+            TextStyle::default().with_weight(700.0).with_color(blue),
+        ));
+    let mut engine = TextEngine::new_without_system_fonts();
+    let layout = engine.build_rich_layout(&rich, Some(300.0));
+    assert!(layout.width() > 0.0);
+    let colors: Vec<_> = layout
+        .lines()
+        .flat_map(|line| line.items())
+        .filter_map(|item| match item {
+            PositionedLayoutItem::GlyphRun(run) => Some(run.style().brush),
+            _ => None,
+        })
+        .collect();
+    assert!(colors.contains(&red));
+    assert!(colors.contains(&blue));
+}
+
+#[test]
+fn rich_layout_supports_mixed_direction_paragraphs() {
+    use crate::style::{RichText, TextSpan};
+
+    let rich = RichText::new()
+        .with_span(TextSpan::plain("ABC "))
+        .with_span(TextSpan::plain("שלום 123"));
+    let mut engine = TextEngine::new();
+    let layout = engine.build_rich_layout(&rich, Some(200.0));
+    assert!(layout.width() > 0.0);
+    assert!(layout.lines().count() > 0);
+    let size = engine.measure_rich(&rich, Some(200.0));
+    assert!(size.width > 0.0 && size.height > 0.0);
+}

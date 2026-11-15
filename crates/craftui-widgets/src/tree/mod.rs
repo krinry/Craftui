@@ -18,7 +18,7 @@ use craftui_core::{
 use craftui_layout::{LayoutEngine, LayoutStyle};
 use craftui_reactive::{Scope, Signal, drain_dirty_nodes, mark_node_dirty};
 use craftui_render::{PaintCommand, PaintScene, builtin_icon_svg, paint_svg_icon};
-use craftui_text::{TextEditorState, TextEngine, TextStyle};
+use craftui_text::{RichText, TextEditorState, TextEngine, TextStyle};
 use slotmap::{SecondaryMap, SlotMap};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -668,6 +668,21 @@ impl WidgetTree {
                     scope.effect(move || {
                         let _ = content.get();
                         let _ = style.get();
+                        mark_node_dirty(
+                            id,
+                            DirtyFlags::LAYOUT
+                                | DirtyFlags::PAINT
+                                | DirtyFlags::TEXT
+                                | DirtyFlags::A11Y,
+                        );
+                    });
+                }
+            }
+            WidgetKind::RichText { content, .. } => {
+                let content = content.clone();
+                if content.is_dynamic() {
+                    scope.effect(move || {
+                        let _ = content.get();
                         mark_node_dirty(
                             id,
                             DirtyFlags::LAYOUT

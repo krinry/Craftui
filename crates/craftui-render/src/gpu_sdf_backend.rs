@@ -2423,23 +2423,20 @@ impl GpuSdfBackend {
                         );
                     }
                 }
-                PaintCommand::DrawText {
-                    origin,
-                    text,
-                    style,
-                    max_width,
-                } => {
-                    if text.is_empty() {
+                PaintCommand::DrawText { origin, .. }
+                | PaintCommand::DrawRichText { origin, .. } => {
+                    let Some((layout, color_override)) = cmd.shaped_text(text_engine) else {
                         continue;
-                    }
-                    let layout = text_engine.build_layout_cached(text, style, *max_width);
-                    let color = style.color.to_rgba_f32();
+                    };
                     let sf = scale_factor.max(1.0);
                     let inv_s = 1.0 / sf;
                     let mut coords_buf: Vec<i16> = Vec::new();
                     for line in layout.lines() {
                         for item in line.items() {
                             if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+                                let color = color_override
+                                    .unwrap_or(glyph_run.style().brush)
+                                    .to_rgba_f32();
                                 let run = glyph_run.run();
                                 let font = run.font();
                                 let font_size_phys = run.font_size() * sf;
@@ -2487,6 +2484,31 @@ impl GpuSdfBackend {
                                             },
                                         );
                                     }
+                                }
+                                if let Some((underline, color)) =
+                                    crate::scene::underline_rect(&glyph_run, color_override)
+                                {
+                                    self.push_quad(
+                                        QuadBatchKind::Sdf(None),
+                                        SdfQuadInstance {
+                                            xform_0: xf0,
+                                            xform_1: [xm[4], xm[5], 0.0, 0.0],
+                                            rect: [
+                                                origin.x + underline.x,
+                                                origin.y + underline.y,
+                                                underline.width,
+                                                underline.height,
+                                            ],
+                                            radii: [0.0; 4],
+                                            color0: color.to_rgba_f32(),
+                                            color1: [0.0; 4],
+                                            grad_pts: [0.0; 4],
+                                            params: [0.0, 0.0, 1.0, 1.0],
+                                            uv_rect: [0.0, 0.0, 1.0, 1.0],
+                                            clip_rect,
+                                            clip_radii,
+                                        },
+                                    );
                                 }
                             }
                         }

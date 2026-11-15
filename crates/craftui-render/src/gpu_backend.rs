@@ -913,22 +913,18 @@ fn encode_vello_scene(
                     }
                 }
             }
-            PaintCommand::DrawText {
-                origin,
-                text,
-                style,
-                max_width,
-            } => {
-                if text.is_empty() {
+            PaintCommand::DrawText { origin, .. } | PaintCommand::DrawRichText { origin, .. } => {
+                let Some((layout, color_override)) = cmd.shaped_text(text_engine) else {
                     continue;
-                }
-                let layout = text_engine.build_layout_cached(text, style, *max_width);
+                };
                 let text_xform = eff * Affine::translate((origin.x as f64, origin.y as f64));
-                let paint_color = style.color.to_peniko();
                 let mut coords_buf: Vec<i16> = Vec::new();
                 for line in layout.lines() {
                     for item in line.items() {
                         if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+                            let paint_color = color_override
+                                .unwrap_or(glyph_run.style().brush)
+                                .to_peniko();
                             let run = glyph_run.run();
                             let font = run.font();
                             let norm = run.normalized_coords();
@@ -952,6 +948,17 @@ fn encode_vello_scene(
                                 .normalized_coords(coords_slice)
                                 .brush(paint_color)
                                 .draw(peniko::Fill::NonZero, glyphs);
+                            if let Some((underline, color)) =
+                                crate::scene::underline_rect(&glyph_run, color_override)
+                            {
+                                scene.fill(
+                                    peniko::Fill::NonZero,
+                                    text_xform,
+                                    color.to_peniko(),
+                                    None,
+                                    &underline.to_kurbo(),
+                                );
+                            }
                         }
                     }
                 }

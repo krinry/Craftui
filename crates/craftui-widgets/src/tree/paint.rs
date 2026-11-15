@@ -467,6 +467,9 @@ impl WidgetTree {
                 }
                 scene.draw_text(rect.origin(), txt, st, Some(rect.width.max(1.0)));
             }
+            WidgetKind::RichText { content, .. } => {
+                scene.draw_rich_text(rect.origin(), content.get(), Some(rect.width.max(1.0)));
+            }
             WidgetKind::Icon { svg, color, .. } => {
                 let tint = color.map(|c| c.get()).unwrap_or(theme.text_primary);
                 let _ = paint_svg_icon(scene, rect, &svg.get(), tint);

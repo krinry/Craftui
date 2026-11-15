@@ -150,6 +150,10 @@ impl WidgetTree {
             || matches!(
                 node.kind,
                 WidgetKind::Button { .. }
+                    | WidgetKind::RichText {
+                        on_link: Some(_),
+                        ..
+                    }
                     | WidgetKind::Canvas {
                         on_pointer: Some(_),
                         ..
@@ -588,6 +592,7 @@ impl WidgetTree {
         }
 
         let mut action: Option<TapHandler> = None;
+        let mut link_cb: Option<(TextCallback, String)> = None;
         let mut bool_cb: Option<(BoolCallback, bool)> = None;
         let mut float_cb: Option<(FloatCallback, f32)> = None;
         let mut idx_cb: Option<(IndexCallback, usize)> = None;
@@ -653,6 +658,32 @@ impl WidgetTree {
                     node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
                     if let Some(cb) = on_change.clone() {
                         float_cb = Some((cb, next));
+                    }
+                }
+                WidgetKind::RichText {
+                    content,
+                    on_link: Some(callback),
+                } => {
+                    let rich = content.get();
+                    let layout = self
+                        .text_engine
+                        .build_rich_layout(&rich, Some(rect.width.max(1.0)));
+                    let point = Point::new(local_pos.x - rect.x, local_pos.y - rect.y);
+                    let mut start = 0;
+                    for span in &rich.spans {
+                        let end = start + span.text.len();
+                        if let Some(target) = &span.link
+                            && start != end
+                            && self
+                                .text_engine
+                                .selection_rects(&layout, start, end)
+                                .iter()
+                                .any(|bounds| bounds.contains(point))
+                        {
+                            link_cb = Some((callback.clone(), target.clone()));
+                            break;
+                        }
+                        start = end;
                     }
                 }
                 WidgetKind::TextInput {
@@ -939,6 +970,11 @@ impl WidgetTree {
 
         if reset_caret {
             self.reset_caret_blink(craftui_core::monotonic_ms());
+        }
+        if let Some((cb, target)) = link_cb
+            && let Ok(mut f) = cb.try_borrow_mut()
+        {
+            f(target);
         }
         if let Some((cb, v)) = bool_cb
             && let Ok(mut f) = cb.try_borrow_mut()

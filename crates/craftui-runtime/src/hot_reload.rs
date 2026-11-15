@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use craftui_core::{CraftError, NodeId, Result};
+use craftui_core::{CraftError, NodeId, Result, monotonic_ms};
 use craftui_dsl::{CuiFile, Diagnostic, Severity, resolve_file, resolve_source};
 use craftui_reactive::Scope;
 use craftui_widgets::WidgetTree;
@@ -56,12 +56,12 @@ impl HotReloadSession {
         let src = std::fs::read_to_string(path_ref).map_err(|e| {
             CraftError::Runtime(format!("failed reading {}: {e}", path_ref.display()))
         })?;
-        let t0 = Instant::now();
+        let t0 = monotonic_ms();
         let resolved = resolve_file(path_ref);
         let root =
             self.mount_resolved(resolved.merged, resolved.diagnostics, component_name, tree)?;
         self.last_source = src;
-        self.last_reload_duration = t0.elapsed();
+        self.last_reload_duration = Duration::from_millis(monotonic_ms().saturating_sub(t0));
         Ok(root)
     }
 
@@ -73,12 +73,12 @@ impl HotReloadSession {
         component_name: Option<&str>,
         tree: &mut WidgetTree,
     ) -> Result<NodeId> {
-        let t0 = Instant::now();
+        let t0 = monotonic_ms();
         let resolved = resolve_source(source, base_dir);
         let root =
             self.mount_resolved(resolved.merged, resolved.diagnostics, component_name, tree)?;
         self.last_source = source.to_string();
-        self.last_reload_duration = t0.elapsed();
+        self.last_reload_duration = Duration::from_millis(monotonic_ms().saturating_sub(t0));
         Ok(root)
     }
 

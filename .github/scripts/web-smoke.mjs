@@ -30,7 +30,8 @@ const bundleDir = resolve(bundleDirArg);
 const outDir = resolve(outDirArg);
 mkdirSync(outDir, { recursive: true });
 
-const VIEWPORT = { width: 390, height: 800 };
+const craftpad = process.env.CRAFTUI_SMOKE_APP === "craftpad";
+const VIEWPORT = craftpad ? { width: 1400, height: 900 } : { width: 390, height: 800 };
 const WELCOME = "Welcome to CraftUI Notes";
 const TYPED_TITLE = "Smoke test note";
 const STORAGE_KEY = "craftui-notes/v1";
@@ -223,6 +224,43 @@ const check = async (name, body) => {
   }
 };
 
+if (craftpad) {
+  await check("Craftpad mounts the counter from source", async () => {
+    await load();
+    await waitFor("counter", () => rectOf(label("Count: 0")));
+    await waitFor("successful mount", () => evaluate('document.querySelector("#error-badge").textContent === "0"'));
+  });
+  await check("editing preserves state, errors keep the previous preview, restart resets state", async () => {
+    await click(label("+ Increment"));
+    await waitFor("incremented counter", () => rectOf(label("Count: 1")));
+    await evaluate(`(() => {
+      const editor = document.querySelector('#code-editor');
+      editor.value = editor.value.replace('Reactive Counter', 'Updated Counter');
+      editor.dispatchEvent(new Event('input', {bubbles: true}));
+    })()`);
+    await waitFor("updated text", () => rectOf(label("Updated Counter")));
+    if (!await rectOf(label("Count: 1"))) throw new Error("state was lost after reload");
+    await evaluate(`(() => {
+      const editor = document.querySelector('#code-editor');
+      editor.value = 'invalid source';
+      editor.dispatchEvent(new Event('input', {bubbles: true}));
+    })()`);
+    await waitFor("validation error", () => evaluate('document.querySelector("#error-badge").textContent === "!"'));
+    if (!await rectOf(label("Count: 1"))) throw new Error("invalid edit destroyed the preview");
+    // Reset to the sample, then increment and explicitly restart.
+    await evaluate(`(() => {
+      const select = document.querySelector('#sample-select');
+      select.value = 'counter';
+      select.dispatchEvent(new Event('change', {bubbles: true}));
+    })()`);
+    await waitFor("reset sample", () => rectOf(label("Count: 0")));
+    await click(label("+ Increment"));
+    await waitFor("incremented counter", () => rectOf(label("Count: 1")));
+    await evaluate(`document.querySelector('#restart-btn').click()`);
+    await waitFor("restarted counter", () => rectOf(label("Count: 0")));
+    await screenshot("craftpad.png");
+  });
+} else {
 await check("the app starts and shows the welcome note", async () => {
   await load();
   await waitFor("the welcome note", () => rectOf(label(WELCOME)));
@@ -268,6 +306,8 @@ await check("the note is still there after a reload", async () => {
   await waitFor("the typed note in the list", () => rectOf(label(TYPED_TITLE)));
   await screenshot("web-4-after-reload.png");
 });
+
+}
 
 // --- Report -----------------------------------------------------------------
 

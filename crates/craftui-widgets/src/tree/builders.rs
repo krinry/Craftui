@@ -125,6 +125,28 @@ impl WidgetTree {
         id
     }
 
+    /// Create a reactive rich-text paragraph. The full plain text is exposed
+    /// to accessibility services as a single label.
+    pub fn rich_text(
+        &mut self,
+        scope: Scope,
+        content: impl Into<ReactiveValue<RichText>>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "RichText",
+            WidgetKind::RichText {
+                content: content.into(),
+                on_link: None,
+            },
+            LayoutStyle::column(),
+            scope,
+        );
+        if let Some(node) = self.nodes.get_mut(id) {
+            node.a11y.role = A11yRole::Label;
+        }
+        id
+    }
+
     pub fn icon(
         &mut self,
         scope: Scope,

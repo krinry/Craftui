@@ -8,7 +8,7 @@ use parley::{
 };
 
 use crate::cache::{DEFAULT_LAYOUT_CACHE_CAPACITY, LayoutCacheKey, ShapedLayoutCache};
-use crate::style::{TextAlign, TextStyle};
+use crate::style::{RichText, TextAlign, TextStyle};
 
 #[cfg(feature = "embedded-fallback-font")]
 const EMBEDDED_FALLBACK_FONT: &[u8] = include_bytes!("../assets/Vera.ttf");
@@ -137,6 +137,69 @@ impl TextEngine {
         };
         layout.align(parley_align, AlignmentOptions::default());
         layout
+    }
+
+    /// Shape all spans together so bidirectional ordering, line breaking, and
+    /// font fallback operate across span boundaries. Unlike the plain-text
+    /// cache, the returned layout retains each span's brush color.
+    ///
+    /// `max_lines` and ellipsis are not applied by this low-level layout API.
+    pub fn build_rich_layout(&mut self, rich: &RichText, max_width: Option<f32>) -> Layout<Color> {
+        let text = rich.plain_text();
+        let mut builder = self
+            .layout_cx
+            .ranged_builder(&mut self.font_cx, &text, 1.0, true);
+        let mut start = 0;
+        for span in &rich.spans {
+            let end = start + span.text.len();
+            if start != end {
+                let range = start..end;
+                let style = &span.style;
+                builder.push(StyleProperty::FontSize(style.font_size), range.clone());
+                builder.push(
+                    StyleProperty::FontWeight(FontWeight::new(style.font_weight)),
+                    range.clone(),
+                );
+                builder.push(
+                    StyleProperty::FontStyle(if style.italic {
+                        FontStyle::Italic
+                    } else {
+                        FontStyle::Normal
+                    }),
+                    range.clone(),
+                );
+                builder.push(StyleProperty::Brush(style.color), range.clone());
+                builder.push(
+                    StyleProperty::LineHeight(LineHeight::FontSizeRelative(style.line_height)),
+                    range.clone(),
+                );
+                builder.push(StyleProperty::Underline(style.underline), range.clone());
+                let family = style
+                    .font_family
+                    .as_deref()
+                    .filter(|family| !family.trim().is_empty())
+                    .map(FontFamily::from)
+                    .unwrap_or_else(|| FontFamily::from(GenericFamily::SansSerif));
+                builder.push(StyleProperty::FontFamily(family), range);
+            }
+            start = end;
+        }
+        let mut layout = builder.build(&text);
+        layout.break_all_lines(max_width);
+        let align = match rich.align {
+            TextAlign::Start => Alignment::Start,
+            TextAlign::Center => Alignment::Center,
+            TextAlign::End => Alignment::End,
+            TextAlign::Justify => Alignment::Justify,
+        };
+        layout.align(align, AlignmentOptions::default());
+        layout
+    }
+
+    /// Measure a rich paragraph using its shaped line metrics.
+    pub fn measure_rich(&mut self, rich: &RichText, max_width: Option<f32>) -> Size {
+        let layout = self.build_rich_layout(rich, max_width);
+        Size::new(layout.width().ceil(), layout.height().ceil())
     }
 
     /// Shape and break text lines into a cached shared [`Arc<parley::Layout<Color>>`].

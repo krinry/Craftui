@@ -169,6 +169,7 @@ pub mod wasm_runner {
     /// RAII lifecycle handle returned by [`mount_web_app`]; unmounts all DOM listeners, hidden IME
     /// input, ARIA mirror container, animation frames, and timers automatically on [`Drop`].
     pub struct WebRunnerHandle {
+        host: Rc<RefCell<WebAppHost>>,
         scheduler: Rc<WebScheduler>,
         listeners: Vec<DomListener>,
         pointer_listeners: Rc<RefCell<Vec<DomListener>>>,
@@ -177,6 +178,19 @@ pub mod wasm_runner {
     }
 
     impl WebRunnerHandle {
+        /// Update the mounted widget tree and schedule a new frame.
+        /// The callback must not re-enter this handle while the tree is borrowed.
+        pub fn with_tree<R>(&self, update: impl FnOnce(&mut WidgetTree) -> R) -> R {
+            let result = {
+                let mut host = self.host.borrow_mut();
+                let result = update(&mut host.tree);
+                host.request_redraw();
+                result
+            };
+            self.scheduler.request_frame();
+            result
+        }
+
         /// Explicitly retain the CraftUI web instance for the entire browser page lifetime.
         pub fn leak(self) {
             std::mem::forget(self);
@@ -526,6 +540,10 @@ pub mod wasm_runner {
                 &last_cursor,
             ) {
                 *backend_slot.borrow_mut() = WebRenderBackend::Canvas2d(c2d);
+            } else {
+                return Err(wasm_bindgen::JsValue::from_str(
+                    "Unable to initialize the 2D canvas renderer",
+                ));
             }
         } else {
             #[cfg(any(feature = "gpu-sdf", feature = "gpu-vello"))]
@@ -586,6 +604,7 @@ pub mod wasm_runner {
         }
 
         let sched_raf = scheduler.clone();
+        let host_raf = host_rc.clone();
         let canvas_raf = canvas_slot;
         let window_raf = window;
         let doc_raf = document;
@@ -610,7 +629,7 @@ pub mod wasm_runner {
                 .map(|p| p.now() as u64)
                 .unwrap_or(ts.max(0.0) as u64);
 
-            let mut h = host_rc.borrow_mut();
+            let mut h = host_raf.borrow_mut();
             let dpr_now = window_raf.device_pixel_ratio() as f32;
             let cur_canvas = canvas_raf.borrow().clone();
             let bcr = cur_canvas.get_bounding_client_rect();
@@ -708,6 +727,7 @@ pub mod wasm_runner {
 
         scheduler.request_frame();
         Ok(WebRunnerHandle {
+            host: host_rc,
             scheduler,
             listeners,
             pointer_listeners,

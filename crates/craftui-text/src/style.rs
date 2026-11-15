@@ -89,6 +89,9 @@ impl TextStyle {
 pub struct TextSpan {
     pub text: String,
     pub style: TextStyle,
+    /// Application-defined link target. Activating it never opens a URL automatically.
+    #[serde(default)]
+    pub link: Option<String>,
 }
 
 impl TextSpan {
@@ -96,6 +99,7 @@ impl TextSpan {
         Self {
             text: text.into(),
             style,
+            link: None,
         }
     }
 
@@ -103,7 +107,14 @@ impl TextSpan {
         Self {
             text: text.into(),
             style: TextStyle::default(),
+            link: None,
         }
+    }
+
+    /// Mark this span as a link; the application decides how to handle the target.
+    pub fn with_link(mut self, target: impl Into<String>) -> Self {
+        self.link = Some(target.into());
+        self
     }
 
     /// Check if this text span contains any Unicode emoji characters.

@@ -2176,3 +2176,114 @@ fn text_fields_use_their_placeholder_as_the_accessible_name() {
     assert_eq!(label(body).as_deref(), Some("Start writing..."));
     assert_eq!(label(unnamed), None);
 }
+
+#[test]
+fn rich_text_widget_reacts_and_updates_accessibility_and_paint() {
+    use craftui_text::{RichText, TextSpan};
+
+    reset_runtime();
+    let cx = Scope::root();
+    let initial = RichText::new()
+        .with_span(TextSpan::plain("Hello "))
+        .with_span(TextSpan::new(
+            "world",
+            TextStyle::default().with_weight(700.0),
+        ));
+    let content = cx.signal(initial.clone());
+    let mut tree = WidgetTree::new(cx);
+    let root = tree.column(cx);
+    let paragraph = tree.rich_text(cx, content);
+    tree.append_child(root, paragraph);
+    tree.set_root(root);
+    let metrics = WindowMetrics {
+        logical_size: Size::new(320.0, 200.0),
+        ..Default::default()
+    };
+    tree.layout(metrics);
+    assert!(tree.rect(paragraph).width > 0.0);
+    assert!(tree.rect(paragraph).height > 0.0);
+    assert_eq!(
+        tree.nodes[paragraph].a11y.label.as_deref(),
+        Some("Hello world")
+    );
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    assert!(
+        scene
+            .commands
+            .iter()
+            .any(|cmd| matches!(cmd, PaintCommand::DrawRichText { text, .. } if text == &initial))
+    );
+
+    let updated = RichText::new().with_span(TextSpan::plain("Updated paragraph"));
+    content.set(updated.clone());
+    assert!(tree.layout(metrics) > 0);
+    assert_eq!(
+        tree.nodes[paragraph].a11y.label.as_deref(),
+        Some("Updated paragraph")
+    );
+    scene.clear();
+    tree.paint(&mut scene);
+    assert!(
+        scene
+            .commands
+            .iter()
+            .any(|cmd| matches!(cmd, PaintCommand::DrawRichText { text, .. } if text == &updated))
+    );
+}
+
+#[test]
+fn rich_text_link_dispatches_only_for_its_shaped_range() {
+    use craftui_text::{RichText, TextSpan};
+
+    reset_runtime();
+    let cx = Scope::root();
+    let rich = RichText::new()
+        .with_span(TextSpan::plain("café "))
+        .with_span(TextSpan::plain("open link").with_link("help:guide"));
+    let mut tree = WidgetTree::new(cx);
+    let root = tree.column(cx);
+    let paragraph = tree.rich_text(cx, rich.clone());
+    tree.append_child(root, paragraph);
+    tree.set_root(root);
+    let clicked = Rc::new(RefCell::new(Vec::<String>::new()));
+    let output = clicked.clone();
+    tree.set_on_link(paragraph, move |target| output.borrow_mut().push(target));
+    tree.layout(WindowMetrics {
+        logical_size: Size::new(320.0, 200.0),
+        ..Default::default()
+    });
+
+    let rect = tree.rect(paragraph);
+    let layout = tree
+        .text_engine
+        .build_rich_layout(&rich, Some(rect.width.max(1.0)));
+    let start = "café ".len();
+    let link_bounds = tree
+        .text_engine
+        .selection_rects(&layout, start, rich.plain_text().len());
+    let link_point = link_bounds[0].center();
+    let point = Point::new(rect.x + link_point.x, rect.y + link_point.y);
+    assert_eq!(tree.hit_test(point), Some(paragraph));
+    for phase in [PointerPhase::Down, PointerPhase::Up] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            phase,
+            position: point,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: if phase == PointerPhase::Down { 10 } else { 20 },
+        }));
+    }
+    assert_eq!(clicked.borrow().as_slice(), &["help:guide".to_string()]);
+
+    let plain_bounds = tree.text_engine.selection_rects(&layout, 0, "café".len());
+    let plain_point = plain_bounds[0].center();
+    tree.activate_tap(
+        paragraph,
+        Point::new(rect.x + plain_point.x, rect.y + plain_point.y),
+        true,
+    );
+    assert_eq!(clicked.borrow().len(), 1);
+}

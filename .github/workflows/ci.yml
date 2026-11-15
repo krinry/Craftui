@@ -189,6 +189,9 @@ jobs:
       - name: Minimal-feature check
         if: ${{ !cancelled() }}
         run: .github/scripts/logged.sh minimal cargo check --locked -p craftui-platform-web --target wasm32-unknown-unknown --no-default-features --features gpu-sdf
+      - name: Check Craftpad WASM entry point
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh craftpad-wasm cargo check --locked -p craftui-example-craftpad --lib --no-default-features --target wasm32-unknown-unknown
       - name: Save machine-applicable fixes as a patch
         if: ${{ failure() }}
         run: |
@@ -292,6 +295,12 @@ jobs:
           test -s dist/notes-web/craftui_app_bg.wasm
       - name: Run the app in headless Chrome
         run: .github/scripts/logged.sh notes-web-smoke node .github/scripts/web-smoke.mjs dist/notes-web "$RUNNER_TEMP/ci-logs"
+      - name: Test Craftpad editor controls
+        run: node --test examples/craftpad/web/test/editor.test.cjs
+      - name: Build Craftpad web bundle
+        run: .github/scripts/logged.sh craftpad-web-build scripts/build-craftpad-web.sh dist/craftpad-web
+      - name: Run Craftpad in headless Chrome
+        run: CRAFTUI_SMOKE_APP=craftpad .github/scripts/logged.sh craftpad-web-smoke node .github/scripts/web-smoke.mjs dist/craftpad-web "$RUNNER_TEMP/ci-logs/craftpad"
       - name: Upload the web bundle
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

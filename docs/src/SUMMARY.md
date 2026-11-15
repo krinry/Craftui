@@ -18,6 +18,7 @@
 - [Building the Notes app](guides/notes-app.md)
 - [UI Cookbook & Patterns](guides/cookbook.md)
 - [Craftpad: Web Studio & Playground](guides/craftpad.md)
+- [Rich text](guides/rich-text.md)
 
 # AI & Tooling
 - [Developing with AI & MCP](guides/ai-and-mcp.md)

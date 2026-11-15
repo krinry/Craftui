@@ -6,7 +6,7 @@ use craftui_core::{
 };
 use craftui_reactive::{Computed, ReadSignal, Signal};
 use craftui_render::PaintScene;
-use craftui_text::{TextEditorState, TextEngine, TextStyle};
+use craftui_text::{RichText, TextEditorState, TextEngine, TextStyle};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -216,6 +216,11 @@ pub enum WidgetKind {
     Text {
         content: ReactiveValue<String>,
         style: ReactiveValue<TextStyle>,
+    },
+    /// A paragraph shaped as a single unit with independently styled spans.
+    RichText {
+        content: ReactiveValue<RichText>,
+        on_link: Option<TextCallback>,
     },
     Icon {
         svg: ReactiveValue<String>,

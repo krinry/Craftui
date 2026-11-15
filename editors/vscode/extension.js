@@ -22,6 +22,12 @@ function findExecutable(binName) {
     return customPath;
   }
 
+  // Platform-specific VSIX builds bundle the matching executable here.
+  const bundled = path.join(__dirname, 'bin', binName + (process.platform === 'win32' ? '.exe' : ''));
+  if (fs.existsSync(bundled)) {
+    return bundled;
+  }
+
   const workspaceFolders = vscode.workspace.workspaceFolders || [];
   for (const folder of workspaceFolders) {
     const candidates = [
@@ -341,6 +347,16 @@ function activate(context) {
     })
   );
 
+  // Start the executable directly, avoiding shell-specific quoting and injection.
+  function launchCli(name, args) {
+    const terminal = vscode.window.createTerminal({
+      name,
+      shellPath: findExecutable('craftui') || 'craftui',
+      shellArgs: args
+    });
+    terminal.show();
+  }
+
   // Commands
   context.subscriptions.push(
     vscode.commands.registerCommand('craftui.preview', () => {
@@ -349,34 +365,17 @@ function activate(context) {
         vscode.window.showWarningMessage('Please focus a .cui file to open live preview.');
         return;
       }
-      const rawCli = findExecutable('craftui') || 'craftui';
-      const cli = rawCli.includes(' ') ? `"${rawCli}"` : rawCli;
-      const term = vscode.window.createTerminal('CraftUI Preview');
-      term.show();
-      term.sendText(`${cli} preview "${editor.document.fileName}"`);
+      launchCli('CraftUI Preview', ['preview', editor.document.fileName]);
     }),
     vscode.commands.registerCommand('craftui.check', () => {
       const editor = vscode.window.activeTextEditor;
-      const target = editor ? editor.document.fileName : '.';
-      const rawCli = findExecutable('craftui') || 'craftui';
-      const cli = rawCli.includes(' ') ? `"${rawCli}"` : rawCli;
-      const term = vscode.window.createTerminal('CraftUI Check');
-      term.show();
-      term.sendText(`${cli} check "${target}"`);
+      launchCli('CraftUI Check', ['check', editor ? editor.document.fileName : '.']);
     }),
     vscode.commands.registerCommand('craftui.permissionsCheck', () => {
-      const rawCli = findExecutable('craftui') || 'craftui';
-      const cli = rawCli.includes(' ') ? `"${rawCli}"` : rawCli;
-      const term = vscode.window.createTerminal('CraftUI Permissions');
-      term.show();
-      term.sendText(`${cli} permissions check craftui.toml`);
+      launchCli('CraftUI Permissions', ['permissions', 'check', 'craftui.toml']);
     }),
     vscode.commands.registerCommand('craftui.startMcp', () => {
-      const rawCli = findExecutable('craftui') || 'craftui';
-      const cli = rawCli.includes(' ') ? `"${rawCli}"` : rawCli;
-      const term = vscode.window.createTerminal('CraftUI MCP');
-      term.show();
-      term.sendText(`${cli} mcp --stdio`);
+      launchCli('CraftUI MCP', ['mcp', '--stdio']);
     }),
     vscode.commands.registerCommand('craftui.restartLsp', () => {
       startLsp(context);

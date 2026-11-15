@@ -73,6 +73,14 @@ impl WidgetTree {
                             node.a11y.label = Some(node.cached_text.clone());
                         }
                     }
+                    WidgetKind::RichText { content, .. } => {
+                        if node.dirty.contains(DirtyFlags::TEXT)
+                            || node.dirty.contains(DirtyFlags::LAYOUT)
+                        {
+                            node.cached_text = content.get().plain_text();
+                            node.a11y.label = Some(node.cached_text.clone());
+                        }
+                    }
                     WidgetKind::Button {
                         label, disabled, ..
                     } => {
@@ -280,6 +288,13 @@ impl WidgetTree {
                             None
                         };
                         text_engine.measure(&txt, &st, max_w)
+                    }
+                    WidgetKind::RichText { content, .. } => {
+                        let max_w = constraints
+                            .max_width
+                            .is_finite()
+                            .then_some(constraints.max_width);
+                        text_engine.measure_rich(&content.get(), max_w)
                     }
                     WidgetKind::Icon { size, .. } => Size::new(*size, *size),
                     WidgetKind::Button { label, .. } => {

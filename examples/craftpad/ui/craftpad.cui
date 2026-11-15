@@ -1,7 +1,7 @@
 export component CraftpadStudio {
     in-out property <string> selected_template: "Flutter Counter";
     in-out property <string> source_code: "";
-    in-out property <string> status_text: "✓ Ready — 0 problems detected";
+    in-out property <string> status_text: "Ready — not yet validated";
     in-out property <int> demo_count: 0;
     callback on_run();
     callback on_reload();
@@ -328,7 +328,7 @@ export component CraftpadStudio {
                             align: Center;
 
                             Text {
-                                text: "Preview • Mobile Chassis";
+                                text: "Static mockup • not live";
                                 font_size: 12px;
                                 color: #94a3b8;
                             }

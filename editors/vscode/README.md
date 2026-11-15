@@ -1,6 +1,6 @@
 # CraftUI for Visual Studio Code
 
-Official Visual Studio Code language extension for [CraftUI](https://github.com/craftui/craftui) declarative UI applications (`.cui`).
+Official Visual Studio Code language extension for [CraftUI](https://github.com/krinry/Craftui) declarative UI applications (`.cui`).
 
 ## Features
 
@@ -18,7 +18,14 @@ Official Visual Studio Code language extension for [CraftUI](https://github.com/
 
 ## Installation
 
-Symlink or copy `editors/vscode` to your VS Code extensions folder:
+Download the VSIX for your operating system and architecture from the project's
+extension build artifacts, then run `code --install-extension <file>.vsix` or
+use **Extensions: Install from VSIX** in VS Code. Platform-specific packages
+built by the `VS Code extension packages` workflow include `craftui-lsp` and
+`craftui`; no local Rust toolchain is needed. Explicit `craftui.lspPath` and
+`craftui.cliPath` settings override bundled binaries.
+
+For development, symlink or copy `editors/vscode` to your VS Code extensions folder:
 ```sh
 ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/craftui
 ```
@@ -27,4 +34,4 @@ Build `craftui` and `craftui-lsp`:
 ```sh
 cargo build --release -p craftui-cli -p craftui-lsp
 ```
-The extension automatically discovers `craftui-lsp` and `craftui` binaries in your workspace `target/debug/` or `target/release/` directories or system `PATH`.
+Unbundled development installs discover `craftui-lsp` and `craftui` binaries in your workspace `target/debug/` or `target/release/` directories or system `PATH`.

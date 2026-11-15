@@ -925,11 +925,20 @@ fn tool_render_preview(args: Value) -> CallToolResult {
         }
         Some(req_comp)
     } else {
-        // Default to the first exported component
-        resolved.merged.components.first().map(|c| c.name.as_str())
+        // Let the runtime select the entry component, rather than an imported one.
+        None
     };
 
-    let cx = Scope::root();
+    // WidgetTree and the session allocate reactive state; always release it,
+    // including on mount, encoding, and output errors. Never dispose the shared root.
+    struct PreviewScope(Scope);
+    impl Drop for PreviewScope {
+        fn drop(&mut self) {
+            self.0.dispose();
+        }
+    }
+    let scope = PreviewScope(Scope::root().child_scope());
+    let cx = scope.0;
     let mut tree = WidgetTree::new(cx);
     let mut session = HotReloadSession::new(cx);
 
@@ -1042,7 +1051,7 @@ In CraftUI .cui files:
 - Syntax:
   `VirtualList {
       item_count: total_items;
-      estimated_item_height: 56px;
+      item_extent: 56px;
   }`
 - Memory footprint: O(visible) instead of O(N)."#
         }
@@ -1050,11 +1059,11 @@ In CraftUI .cui files:
             r#"# CraftUI Theming & Design Tokens
 - Built-in dynamic theme system supporting Dark and Light modes.
 - Theme tokens:
-  - `theme.background`: Base canvas color
-  - `theme.surface`: Card & elevated container color
-  - `theme.primary`: Accent brand color
-  - `theme.text`: Primary typography color
-  - `theme.text_secondary`: Muted caption typography color
+  - `Theme.background`: Base canvas color
+  - `Theme.surface`: Card & elevated container color
+  - `Theme.primary`: Accent brand color
+  - `Theme.text_primary`: Primary typography color
+  - `Theme.text_secondary`: Muted caption typography color
 - In Rust:
   `tree.set_theme(Theme::dark());` or `tree.set_theme(Theme::light());`"#
         }

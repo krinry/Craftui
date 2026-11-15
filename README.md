@@ -88,8 +88,7 @@ Known gaps:
   and zero numerical drift.
 - **Text & Typography**: Multilingual script shaping, inline text editor, `RichText` with
   multi-style `TextSpan` support, and Unicode emoji detection.
-- **Craftpad Playground**: In-browser studio and desktop playground (`examples/craftpad`)
-  with live 60 FPS canvas preview, template switching, and instant error diagnostics.
+- **Craftpad**: Experimental browser editor and WASM canvas (`examples/craftpad`); the desktop studio preview remains a mockup.
 - **AI & MCP Protocol**: Native Model Context Protocol server (`craftui mcp --stdio`)
   providing AI assistants with live `.cui` validation, widget catalog introspection, component
   scaffolding, and headless PNG rendering.

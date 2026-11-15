@@ -173,6 +173,32 @@ fn test_mcp_render_preview_validation() {
 }
 
 #[test]
+fn test_preview_defaults_to_entry_not_imported_component() {
+    let code = r#"import { Card } from "std/material.cui"
+export component App { Text { text: "Entry component"; } }"#;
+    let default = call_tool(
+        "craftui_render_preview",
+        json!({"code": code, "width": 80, "height": 80}),
+    );
+    let explicit = call_tool(
+        "craftui_render_preview",
+        json!({"code": code, "component": "App", "width": 80, "height": 80}),
+    );
+    assert!(!default.is_error, "{}", default.content[0].text);
+    assert!(!explicit.is_error, "{}", explicit.content[0].text);
+    assert_eq!(default.content[0].text, explicit.content[0].text);
+}
+
+#[test]
+fn test_explain_uses_supported_theme_and_list_properties() {
+    let theme = call_tool("craftui_explain", json!({"topic": "theming"}));
+    assert!(theme.content[0].text.contains("Theme.text_primary"));
+    assert!(!theme.content[0].text.contains("`theme."));
+    let list = call_tool("craftui_explain", json!({"topic": "virtual_list"}));
+    assert!(list.content[0].text.contains("item_extent: 56px"));
+}
+
+#[test]
 fn test_mcp_resources_and_prompts() {
     let resources = list_resources();
     assert!(!resources.is_empty());

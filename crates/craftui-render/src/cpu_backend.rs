@@ -336,25 +336,24 @@ mod vello_cpu_impl {
                             self.ctx.pop_layer();
                         }
                     }
-                    PaintCommand::DrawText {
-                        origin,
-                        text,
-                        style,
-                        max_width,
-                    } => {
-                        if text.is_empty() {
+                    PaintCommand::DrawText { origin, .. }
+                    | PaintCommand::DrawRichText { origin, .. } => {
+                        let Some((layout, color_override)) = cmd.shaped_text(text_engine) else {
                             continue;
-                        }
-                        let layout = text_engine.build_layout_cached(text, style, *max_width);
+                        };
                         let text_xform =
                             eff_xform * Affine::translate((origin.x as f64, origin.y as f64));
                         self.ctx.set_transform(text_xform);
                         self.ctx.reset_paint_transform();
-                        self.ctx.set_paint(style.color.to_peniko());
                         let mut coords_buf: Vec<i16> = Vec::new();
                         for line in layout.lines() {
                             for item in line.items() {
                                 if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+                                    self.ctx.set_paint(
+                                        color_override
+                                            .unwrap_or(glyph_run.style().brush)
+                                            .to_peniko(),
+                                    );
                                     let run = glyph_run.run();
                                     let font = run.font();
                                     let font_size = run.font_size();
@@ -379,6 +378,12 @@ mod vello_cpu_impl {
                                         .hint(true)
                                         .normalized_coords(coords_slice)
                                         .fill_glyphs(glyphs);
+                                    if let Some((underline, color)) =
+                                        crate::scene::underline_rect(&glyph_run, color_override)
+                                    {
+                                        self.ctx.set_paint(color.to_peniko());
+                                        self.ctx.fill_rect(&underline.to_kurbo());
+                                    }
                                 }
                             }
                         }
@@ -812,22 +817,17 @@ mod tiny_skia_impl {
                             }
                         }
                     }
-                    PaintCommand::DrawText {
-                        origin,
-                        text,
-                        style,
-                        max_width,
-                    } => {
-                        if text.is_empty() {
+                    PaintCommand::DrawText { origin, .. }
+                    | PaintCommand::DrawRichText { origin, .. } => {
+                        let Some((layout, color_override)) = cmd.shaped_text(text_engine) else {
                             continue;
-                        }
-                        let layout = text_engine.build_layout_cached(text, style, *max_width);
-                        let col = style.color;
+                        };
                         let mut coords_buf: Vec<i16> = Vec::new();
                         let dst = active_pixmap_mut(&mut root_pixmap, &mut layer_stack);
                         for line in layout.lines() {
                             for item in line.items() {
                                 if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+                                    let col = color_override.unwrap_or(glyph_run.style().brush);
                                     let run = glyph_run.run();
                                     let font = run.font();
                                     let font_size_phys = run.font_size() * sf;
@@ -882,6 +882,19 @@ mod tiny_skia_impl {
                                                 );
                                             }
                                         }
+                                    }
+                                    if let Some((underline, color)) =
+                                        crate::scene::underline_rect(&glyph_run, color_override)
+                                        && let Some(rect) = tiny_skia::Rect::from_xywh(
+                                            origin.x + underline.x,
+                                            origin.y + underline.y,
+                                            underline.width,
+                                            underline.height,
+                                        )
+                                    {
+                                        let mut paint = tiny_skia::Paint::default();
+                                        paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+                                        dst.fill_rect(rect, &paint, transform, clip_stack.last());
                                     }
                                 }
                             }

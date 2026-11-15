@@ -182,6 +182,113 @@ mod tests {
     use craftui_text::TextStyle;
 
     #[test]
+    #[cfg(any(feature = "cpu-vello", feature = "cpu-tiny-skia"))]
+    fn rich_text_renders_distinct_span_colors_on_cpu_backends() {
+        use craftui_text::{RichText, TextSpan};
+
+        let red = Color::rgb(240, 20, 20);
+        let blue = Color::rgb(20, 20, 240);
+        let rich = RichText::new()
+            .with_span(TextSpan::new(
+                "RED ",
+                TextStyle::default().with_size(28.0).with_color(red),
+            ))
+            .with_span(TextSpan::new(
+                "BLUE",
+                TextStyle::default().with_size(28.0).with_color(blue),
+            ));
+        let mut scene = PaintScene::new();
+        scene.draw_rich_text(Point::new(4.0, 4.0), rich, Some(220.0));
+        let textures = TextureRegistry::new();
+        let mut backends = Vec::new();
+        #[cfg(feature = "cpu-vello")]
+        backends.push(BackendKind::VelloCpu);
+        #[cfg(feature = "cpu-tiny-skia")]
+        backends.push(BackendKind::TinySkia);
+        for backend in backends {
+            let mut engine = TextEngine::new_without_system_fonts();
+            let rgba = render_scene_to_rgba(
+                backend,
+                &scene,
+                240,
+                60,
+                1.0,
+                Color::WHITE,
+                &textures,
+                &mut engine,
+            );
+            let red_pixels = rgba
+                .chunks_exact(4)
+                .filter(|p| p[0] > p[2].saturating_add(30))
+                .count();
+            let blue_pixels = rgba
+                .chunks_exact(4)
+                .filter(|p| p[2] > p[0].saturating_add(30))
+                .count();
+            assert!(red_pixels > 5, "{backend:?} did not paint red span");
+            assert!(blue_pixels > 5, "{backend:?} did not paint blue span");
+        }
+    }
+
+    #[test]
+    #[cfg(any(feature = "cpu-vello", feature = "cpu-tiny-skia"))]
+    fn underlined_rich_text_adds_decoration_pixels() {
+        use craftui_text::{RichText, TextSpan};
+
+        let mut style = TextStyle::default()
+            .with_size(28.0)
+            .with_color(Color::BLACK);
+        let mut scene = PaintScene::new();
+        scene.draw_rich_text(
+            Point::new(4.0, 4.0),
+            RichText::new().with_span(TextSpan::new("MMMM MMMM", style.clone())),
+            Some(220.0),
+        );
+        let mut underlined = PaintScene::new();
+        style.underline = true;
+        underlined.draw_rich_text(
+            Point::new(4.0, 4.0),
+            RichText::new().with_span(TextSpan::new("MMMM MMMM", style)),
+            Some(220.0),
+        );
+        let textures = TextureRegistry::new();
+        let mut backends = Vec::new();
+        #[cfg(feature = "cpu-vello")]
+        backends.push(BackendKind::VelloCpu);
+        #[cfg(feature = "cpu-tiny-skia")]
+        backends.push(BackendKind::TinySkia);
+        for backend in backends {
+            let mut engine = TextEngine::new_without_system_fonts();
+            let plain = render_scene_to_rgba(
+                backend,
+                &scene,
+                240,
+                60,
+                1.0,
+                Color::WHITE,
+                &textures,
+                &mut engine,
+            );
+            let decorated = render_scene_to_rgba(
+                backend,
+                &underlined,
+                240,
+                60,
+                1.0,
+                Color::WHITE,
+                &textures,
+                &mut engine,
+            );
+            let extra_pixels = plain
+                .chunks_exact(4)
+                .zip(decorated.chunks_exact(4))
+                .filter(|(before, after)| after[0].saturating_add(10) < before[0])
+                .count();
+            assert!(extra_pixels > 5, "{backend:?} did not paint an underline");
+        }
+    }
+
+    #[test]
     fn cpu_and_tinyskia_render_rounded_rect_text_and_pixelbuffer() {
         let mut textures = TextureRegistry::new();
         let tex = textures.create_from_rgba(

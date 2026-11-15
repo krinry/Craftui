@@ -2,7 +2,7 @@ use craftui_core::{
     BlendMode, BoxShadow, Brush, Color, CornerRadii, Fit, PlatformViewId, Point, Rect, TextureId,
     Transform2D,
 };
-use craftui_text::TextStyle;
+use craftui_text::{RichText, TextStyle};
 use kurbo::{Affine, BezPath};
 
 /// Backend-agnostic 2D paint command recorded from the retained widget tree.
@@ -57,6 +57,12 @@ pub enum PaintCommand {
         style: TextStyle,
         max_width: Option<f32>,
     },
+    /// One shaped paragraph, with styling applied across UTF-8 span ranges.
+    DrawRichText {
+        origin: Point,
+        text: RichText,
+        max_width: Option<f32>,
+    },
     PushClip {
         rect: Rect,
         radius: CornerRadii,
@@ -76,6 +82,65 @@ pub enum PaintCommand {
         id: PlatformViewId,
         rect: Rect,
     },
+}
+
+#[cfg(any(
+    feature = "cpu-vello",
+    feature = "cpu-tiny-skia",
+    feature = "gpu-vello",
+    feature = "gpu-sdf"
+))]
+impl PaintCommand {
+    /// Plain text uses its runtime color; rich text uses each glyph run's brush.
+    pub(crate) fn shaped_text(
+        &self,
+        engine: &mut craftui_text::TextEngine,
+    ) -> Option<(std::sync::Arc<parley::Layout<Color>>, Option<Color>)> {
+        match self {
+            Self::DrawText {
+                text,
+                style,
+                max_width,
+                ..
+            } if !text.is_empty() => Some((
+                engine.build_layout_cached(text, style, *max_width),
+                Some(style.color),
+            )),
+            Self::DrawRichText {
+                text, max_width, ..
+            } if !text.is_empty() => Some((
+                std::sync::Arc::new(engine.build_rich_layout(text, *max_width)),
+                None,
+            )),
+            _ => None,
+        }
+    }
+}
+
+/// Resolve an underline in paragraph-local coordinates using the shaped font metrics.
+#[cfg(any(
+    feature = "cpu-vello",
+    feature = "cpu-tiny-skia",
+    feature = "gpu-vello",
+    feature = "gpu-sdf"
+))]
+pub(crate) fn underline_rect(
+    glyph_run: &parley::GlyphRun<'_, Color>,
+    color_override: Option<Color>,
+) -> Option<(Rect, Color)> {
+    let decoration = glyph_run.style().underline.as_ref()?;
+    let metrics = glyph_run.run().font_metrics();
+    let offset = decoration.offset.unwrap_or(metrics.underline_offset);
+    let thickness = decoration.size.unwrap_or(metrics.underline_size).max(0.5);
+    Some((
+        Rect::new(
+            glyph_run.offset(),
+            glyph_run.baseline() - offset,
+            glyph_run.advance(),
+            thickness,
+        ),
+        color_override.unwrap_or(decoration.brush),
+    ))
 }
 
 /// Recorded vector scene for a single frame.
@@ -183,6 +248,15 @@ impl PaintScene {
     pub fn stroke_path(&mut self, path: BezPath, color: Color, width: f32) {
         self.commands
             .push(PaintCommand::StrokePath { path, color, width });
+    }
+
+    /// Draw a single shaped paragraph with per-span font and color styles.
+    pub fn draw_rich_text(&mut self, origin: Point, text: RichText, max_width: Option<f32>) {
+        self.commands.push(PaintCommand::DrawRichText {
+            origin,
+            text,
+            max_width,
+        });
     }
 
     pub fn draw_text(

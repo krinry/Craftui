@@ -115,7 +115,9 @@ pub mod prelude {
         BackendKind, PaintCommand, PaintScene, PixelBufferHandle, TextureHandle, TextureRegistry,
         kurbo, render_scene_to_rgba,
     };
-    pub use craftui_text::{TextAlign, TextEditorState, TextOverflow, TextStyle};
+    pub use craftui_text::{
+        RichText, TextAlign, TextEditorState, TextOverflow, TextSpan, TextStyle,
+    };
     pub use craftui_widgets::{
         AnimatableProp, AnimatedColor, AnimatedFloat, BoolCallback, BoxStyle, CanvasPaintFn,
         CanvasPointerFn, CustomWidget, Easing, FloatCallback, GestureArena, HoverCallback,

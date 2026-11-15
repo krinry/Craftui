@@ -467,6 +467,9 @@ impl WidgetTree {
             | WidgetKind::DataTable { .. }
             | WidgetKind::Select { .. }
             | WidgetKind::RadioGroup { .. } => CursorIcon::Pointer,
+            WidgetKind::RichText {
+                on_link: Some(_), ..
+            } => CursorIcon::Pointer,
             WidgetKind::TextInput { .. } => CursorIcon::Text,
             WidgetKind::Slider { .. } => CursorIcon::Grab,
             WidgetKind::SplitPane { axis, .. } => match axis {
@@ -691,6 +694,17 @@ impl WidgetTree {
                     n.on_tap = Some(rc);
                 }
             }
+        }
+    }
+
+    /// Handle link activation in a rich-text widget. Targets are passed to
+    /// the application; CraftUI does not open them or assume they are URLs.
+    pub fn set_on_link(&mut self, node: NodeId, cb: impl FnMut(String) + 'static) {
+        if let Some(n) = self.nodes.get_mut(node)
+            && let WidgetKind::RichText { on_link, .. } = &mut n.kind
+        {
+            *on_link = Some(Rc::new(RefCell::new(cb)));
+            n.dirty |= DirtyFlags::A11Y;
         }
     }
 

@@ -173,7 +173,7 @@ impl CraftpadController {
         Self {
             selected_template: cx.signal("Flutter Counter".to_string()),
             source_code: cx.signal(COUNTER_TEMPLATE.to_string()),
-            status_text: cx.signal("✓ Ready — 0 problems detected".to_string()),
+            status_text: cx.signal("Ready — not yet validated".to_string()),
             demo_count: cx.signal(0i32),
         }
     }
@@ -194,8 +194,9 @@ impl CraftpadController {
         let code = self.source_code.get();
         let resolved = resolve_source(&code, None);
         if resolved.diagnostics.is_empty() {
-            self.status_text
-                .set("✓ Build succeeded: 0 problems detected".to_string());
+            self.status_text.set(
+                "✓ Validation succeeded: 0 problems detected (preview is a mockup)".to_string(),
+            );
         } else {
             let errors = resolved
                 .diagnostics
@@ -250,11 +251,85 @@ pub fn mount_craftpad_app(cx: Scope, tree: &mut WidgetTree) -> (NodeId, Craftpad
 }
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
+mod web_preview {
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(start)]
-pub fn start() -> std::result::Result<(), JsValue> {
-    craftui_platform_web::mount_canvas("craftui-canvas", |cx, tree| mount_craftpad_app(cx, tree).0)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    use craftui::prelude::Scope;
+    use craftui_platform_web::{WebBridgeConfig, WebRunnerHandle, mount_web_app};
+    use craftui_runtime::HotReloadSession;
+    use wasm_bindgen::prelude::*;
+
+    struct Preview {
+        handle: WebRunnerHandle,
+        session: HotReloadSession,
+    }
+
+    thread_local! {
+        static PREVIEW: RefCell<Option<Preview>> = const { RefCell::new(None) };
+    }
+
+    /// Mount a canvas host once. Source is subsequently applied with `preview_source`.
+    #[wasm_bindgen]
+    pub fn init_preview() -> Result<(), JsValue> {
+        if PREVIEW.with(|preview| preview.borrow().is_some()) {
+            return Ok(());
+        }
+        let session = Rc::new(RefCell::new(None));
+        let session_out = session.clone();
+        let config = WebBridgeConfig {
+            sync_url_hash: false,
+            force_2d_fallback: true,
+            ..Default::default()
+        };
+        let handle = match mount_web_app(config, move |cx, tree, _, _| {
+            *session_out.borrow_mut() = Some(HotReloadSession::new(cx));
+            tree.column(cx)
+        }) {
+            Ok(handle) => handle,
+            Err(error) => {
+                if let Some(session) = session.borrow_mut().take() {
+                    session.state_scope.dispose();
+                }
+                return Err(error);
+            }
+        };
+        let session = session
+            .borrow_mut()
+            .take()
+            .ok_or_else(|| JsValue::from_str("Preview session was not created"))?;
+        PREVIEW.with(|preview| *preview.borrow_mut() = Some(Preview { handle, session }));
+        Ok(())
+    }
+
+    /// Rebuild the live UI while keeping component property signals on ordinary reloads.
+    #[wasm_bindgen]
+    pub fn preview_source(source: &str, reset_state: bool) -> Result<(), JsValue> {
+        PREVIEW.with(|preview| {
+            let mut preview = preview.borrow_mut();
+            let Preview { handle, session } = preview
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("Preview is not initialized"))?;
+            if reset_state {
+                let mut next = HotReloadSession::new(Scope::root());
+                let result = handle.with_tree(|tree| next.reload(source, None, tree));
+                match result {
+                    Ok(_) => {
+                        let old = std::mem::replace(session, next);
+                        old.state_scope.dispose();
+                        Ok(())
+                    }
+                    Err(error) => {
+                        next.state_scope.dispose();
+                        Err(JsValue::from_str(&error.to_string()))
+                    }
+                }
+            } else {
+                handle
+                    .with_tree(|tree| session.reload(source, None, tree))
+                    .map(|_| ())
+                    .map_err(|error| JsValue::from_str(&error.to_string()))
+            }
+        })
+    }
 }
