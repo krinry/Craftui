@@ -592,7 +592,7 @@ impl WidgetTree {
         }
 
         let mut action: Option<TapHandler> = None;
-        let mut link_cb: Option<(TextCallback, String)> = None;
+        let mut link_cb: Option<(crate::widgets::TextCallback, String)> = None;
         let mut bool_cb: Option<(BoolCallback, bool)> = None;
         let mut float_cb: Option<(FloatCallback, f32)> = None;
         let mut idx_cb: Option<(IndexCallback, usize)> = None;
