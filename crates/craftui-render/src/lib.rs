@@ -218,11 +218,15 @@ mod tests {
                 &mut engine,
             );
             let red_pixels = rgba
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .filter(|p| p[0] > p[2].saturating_add(30))
                 .count();
             let blue_pixels = rgba
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .filter(|p| p[2] > p[0].saturating_add(30))
                 .count();
             assert!(red_pixels > 5, "{backend:?} did not paint red span");
@@ -280,8 +284,10 @@ mod tests {
                 &mut engine,
             );
             let extra_pixels = plain
-                .chunks_exact(4)
-                .zip(decorated.chunks_exact(4))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(decorated.as_chunks::<4>().0.iter())
                 .filter(|(before, after)| after[0].saturating_add(10) < before[0])
                 .count();
             assert!(extra_pixels > 5, "{backend:?} did not paint an underline");
