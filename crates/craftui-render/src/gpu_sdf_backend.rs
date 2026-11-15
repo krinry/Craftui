@@ -1244,7 +1244,7 @@ impl GpuSdfBackend {
             return Some(tiles);
         }
 
-        let tile_dim = max_tile.min(1024).max(64);
+        let tile_dim = max_tile.clamp(64, 1024);
         let mut tiles = Vec::new();
         let inv = 1.0 / self.atlas_size as f32;
 

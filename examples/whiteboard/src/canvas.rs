@@ -160,9 +160,10 @@ pub fn spawn_whiteboard_canvas(
     };
 
     let ctrl_ptr = ctrl.clone();
-    let on_pointer: CanvasPointerFn = Rc::new(RefCell::new(move |rect: Rect, event: &PointerEvent| {
-        handle_pointer(rect, event, &ctrl_ptr);
-    }));
+    let on_pointer: CanvasPointerFn =
+        Rc::new(RefCell::new(move |rect: Rect, event: &PointerEvent| {
+            handle_pointer(rect, event, &ctrl_ptr);
+        }));
 
     let node = tree.canvas(scope, layout, on_paint, Some(on_pointer));
 
@@ -187,9 +188,10 @@ pub fn attach_whiteboard_canvas(tree: &mut WidgetTree, node: NodeId, ctrl: White
     });
 
     let ctrl_ptr = ctrl.clone();
-    let on_pointer: CanvasPointerFn = Rc::new(RefCell::new(move |rect: Rect, event: &PointerEvent| {
-        handle_pointer(rect, event, &ctrl_ptr);
-    }));
+    let on_pointer: CanvasPointerFn =
+        Rc::new(RefCell::new(move |rect: Rect, event: &PointerEvent| {
+            handle_pointer(rect, event, &ctrl_ptr);
+        }));
 
     tree.set_canvas_callbacks(node, Some(on_paint), Some(on_pointer));
 
@@ -232,10 +234,10 @@ pub fn paint_whiteboard(bounds: Rect, scene: &mut PaintScene, ctrl: &WhiteboardC
     }
 
     // 4. Draw selection bounding box and corner handles
-    if let Some(sel_id) = selected_id {
-        if let Some(sel_elem) = elements.iter().find(|e| e.id == sel_id) {
-            paint_selection_halo(scene, sel_elem, view);
-        }
+    if let Some(sel_id) = selected_id
+        && let Some(sel_elem) = elements.iter().find(|e| e.id == sel_id)
+    {
+        paint_selection_halo(scene, sel_elem, view);
     }
 }
 
@@ -272,7 +274,12 @@ fn paint_dot_grid(bounds: Rect, scene: &mut PaintScene, view: ViewTransform, is_
     }
 }
 
-fn paint_element(scene: &mut PaintScene, elem: &WhiteboardElement, view: ViewTransform, is_dark: bool) {
+fn paint_element(
+    scene: &mut PaintScene,
+    elem: &WhiteboardElement,
+    view: ViewTransform,
+    is_dark: bool,
+) {
     let screen_origin = view.world_to_screen(elem.origin);
     let scaled_width = (elem.stroke_width * view.zoom).clamp(1.0, 20.0);
     let stroke_color = if is_dark && elem.stroke_color == Color::rgb(30, 30, 30) {
@@ -349,7 +356,12 @@ fn paint_selection_halo(scene: &mut PaintScene, elem: &WhiteboardElement, view: 
     let wb = elem.bounds();
     let p_min = view.world_to_screen(Point::new(wb.x, wb.y));
     let p_max = view.world_to_screen(Point::new(wb.x + wb.width, wb.y + wb.height));
-    let screen_box = Rect::new(p_min.x - 4.0, p_min.y - 4.0, (p_max.x - p_min.x) + 8.0, (p_max.y - p_min.y) + 8.0);
+    let screen_box = Rect::new(
+        p_min.x - 4.0,
+        p_min.y - 4.0,
+        (p_max.x - p_min.x) + 8.0,
+        (p_max.y - p_min.y) + 8.0,
+    );
 
     let halo_color = Color::rgb(92, 124, 250); // Soft Excalidraw blue selection
     scene.stroke_rect(screen_box, halo_color, 1.5, CornerRadii::ZERO);
@@ -359,11 +371,19 @@ fn paint_selection_halo(scene: &mut PaintScene, elem: &WhiteboardElement, view: 
     let corners = [
         Point::new(screen_box.x, screen_box.y),
         Point::new(screen_box.x + screen_box.width, screen_box.y),
-        Point::new(screen_box.x + screen_box.width, screen_box.y + screen_box.height),
+        Point::new(
+            screen_box.x + screen_box.width,
+            screen_box.y + screen_box.height,
+        ),
         Point::new(screen_box.x, screen_box.y + screen_box.height),
     ];
     for c in corners {
-        let h_rect = Rect::new(c.x - handle_size * 0.5, c.y - handle_size * 0.5, handle_size, handle_size);
+        let h_rect = Rect::new(
+            c.x - handle_size * 0.5,
+            c.y - handle_size * 0.5,
+            handle_size,
+            handle_size,
+        );
         scene.fill_rect(h_rect, Color::rgb(255, 255, 255), CornerRadii::ZERO);
         scene.stroke_rect(h_rect, halo_color, 1.5, CornerRadii::ZERO);
     }
@@ -400,8 +420,10 @@ pub fn handle_pointer(_bounds: Rect, event: &PointerEvent, ctrl: &WhiteboardCont
                     if let Some(idx) = hit_idx {
                         let id = elements[idx].id;
                         ctrl.selected_id.set(Some(id));
-                        *ctrl.interaction.borrow_mut() =
-                            InteractionState::DraggingElement { id, last_world: world_pos };
+                        *ctrl.interaction.borrow_mut() = InteractionState::DraggingElement {
+                            id,
+                            last_world: world_pos,
+                        };
                     } else {
                         ctrl.selected_id.set(None);
                     }
@@ -438,7 +460,10 @@ pub fn handle_pointer(_bounds: Rect, event: &PointerEvent, ctrl: &WhiteboardCont
                     let draft = WhiteboardElement::new(
                         next_id,
                         world_pos,
-                        ElementKind::Diamond { width: 0.0, height: 0.0 },
+                        ElementKind::Diamond {
+                            width: 0.0,
+                            height: 0.0,
+                        },
                         ctrl.stroke_color.get(),
                         None,
                         ctrl.stroke_width.get(),
@@ -451,7 +476,10 @@ pub fn handle_pointer(_bounds: Rect, event: &PointerEvent, ctrl: &WhiteboardCont
                     let draft = WhiteboardElement::new(
                         next_id,
                         world_pos,
-                        ElementKind::Ellipse { radius_x: 0.0, radius_y: 0.0 },
+                        ElementKind::Ellipse {
+                            radius_x: 0.0,
+                            radius_y: 0.0,
+                        },
                         ctrl.stroke_color.get(),
                         None,
                         ctrl.stroke_width.get(),
@@ -490,7 +518,9 @@ pub fn handle_pointer(_bounds: Rect, event: &PointerEvent, ctrl: &WhiteboardCont
                     let draft = WhiteboardElement::new(
                         next_id,
                         world_pos,
-                        ElementKind::Freehand { points: vec![world_pos] },
+                        ElementKind::Freehand {
+                            points: vec![world_pos],
+                        },
                         ctrl.stroke_color.get(),
                         None,
                         ctrl.stroke_width.get(),
@@ -560,10 +590,10 @@ pub fn handle_pointer(_bounds: Rect, event: &PointerEvent, ctrl: &WhiteboardCont
                         *end = world_pos;
                     }
                     ElementKind::Freehand { points } => {
-                        if let Some(last) = points.last() {
-                            if last.distance_to(world_pos) > 2.0 {
-                                points.push(world_pos);
-                            }
+                        if let Some(last) = points.last()
+                            && last.distance_to(world_pos) > 2.0
+                        {
+                            points.push(world_pos);
                         }
                     }
                     _ => {}

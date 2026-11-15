@@ -187,10 +187,10 @@ fn run_client_socket_loop(
             {
                 if let Ok(mut q) = mailbox.outgoing.lock() {
                     while let Some(msg) = q.pop_front() {
-                        if let Ok(line) = msg.to_line() {
-                            if sock.write_all(line.as_bytes()).is_err() || sock.flush().is_err() {
-                                break;
-                            }
+                        if let Ok(line) = msg.to_line()
+                            && (sock.write_all(line.as_bytes()).is_err() || sock.flush().is_err())
+                        {
+                            break;
                         }
                     }
                 }

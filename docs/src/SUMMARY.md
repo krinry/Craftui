@@ -3,24 +3,26 @@
 [Introduction](introduction.md)
 
 # Getting Started
-- [Installation (Linux & Android)](getting-started/installation-linux-android.md)
-- [Quickstart: Your First App](getting-started/quickstart.md)
+- [Installation](getting-started/installation-linux-android.md)
+- [Quickstart: your first app](getting-started/quickstart.md)
 
 # The `.cui` DSL
-- [Syntax & Markup Guide](dsl/syntax-guide.md)
-- [Reactivity & State Management](dsl/reactivity.md)
+- [The `.cui` language](dsl/syntax-guide.md)
+- [Reactivity and Rust](dsl/reactivity.md)
 
-# Widget Catalog
-- [Comprehensive Widget Reference](widgets/catalog.md)
+# Widgets
+- [Widget catalog](widgets/catalog.md)
+
+# Tutorials
+- [Building the Notes app](guides/notes-app.md)
 
 # Platform Guides
-- [Linux Desktop Development](platforms/linux-desktop.md)
-- [Android Development on Linux](platforms/android-on-linux.md)
-- [WebAssembly (WASM) Deployment](platforms/web.md)
+- [Desktop](platforms/linux-desktop.md)
+- [Android](platforms/android-on-linux.md)
+- [Web](platforms/web.md)
 
-# Security & Native Capabilities
-- [The 35 Standard Permissions](guides/permissions.md)
-- [Application Manifest (`craftui.toml`)](guides/permissions.md#manifest-reference)
+# Native Capabilities
+- [Permissions](guides/permissions.md)
 
-# Flagship Real-World Architecture
-- [ScanCraft Case Study](guides/scancraft-architecture.md)
+# Other Examples
+- [ScanCraft](guides/scancraft-architecture.md)

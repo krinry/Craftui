@@ -1,0 +1,378 @@
+// CraftUI Notes: one screen that adapts between a phone and a wide window.
+//
+// The Rust side (src/lib.rs) owns the data. It fills the properties below and
+// reacts to the callbacks; this file only describes how things look.
+//
+//   * Phone  : the list and the editor take turns filling the screen.
+//   * Wide   : the list sits in a fixed column next to the editor.
+//
+// `wide_layout`, `show_list`, `show_editor` and `show_back` are computed in
+// Rust from the window width, so the layout rule lives in one tested place.
+
+export struct NoteCard {
+    title: string = "",
+    preview: string = "",
+    meta: string = "",
+    selected: bool = false,
+}
+
+export component NotesScreen {
+    // List pane
+    in-out property <[NoteCard]> notes: [];
+    in-out property <string> search_query: "";
+    in-out property <int> filter_tab: 0;
+    in-out property <string> summary_text: "";
+    in-out property <string> empty_title: "No notes yet";
+    in-out property <string> empty_hint: "Tap + to write your first note.";
+
+    // Layout
+    in-out property <bool> wide_layout: false;
+    in-out property <bool> show_list: true;
+    in-out property <bool> show_editor: false;
+    in-out property <bool> show_back: false;
+
+    // Editor pane
+    in-out property <bool> has_selection: false;
+    in-out property <string> draft_title: "";
+    in-out property <string> draft_body: "";
+    in-out property <string> pin_label: "Pin";
+    in-out property <string> editor_status: "";
+    in-out property <bool> confirm_delete: false;
+
+    // App chrome
+    in-out property <string> theme_icon: "moon";
+    in-out property <bool> has_storage_error: false;
+    in-out property <string> storage_error: "";
+
+    callback on_new_note();
+    callback on_open_note(int);
+    callback on_close_editor();
+    callback on_toggle_pin();
+    callback on_delete_note();
+    callback on_toggle_theme();
+
+    SafeArea {
+        Column {
+            width: 100%;
+            height: 100%;
+            background: Theme.background;
+
+            if has_storage_error : Row {
+                id: "storage_error_bar";
+                width: 100%;
+                background: Theme.danger;
+                padding_x: 16dp;
+                padding_y: 8dp;
+                align: Center;
+
+                Text {
+                    text: storage_error;
+                    font_size: 13;
+                    color: Theme.on_error;
+                }
+            }
+
+            Row {
+                width: 100%;
+                flex_grow: 1.0;
+                // Without this the row would be as tall as its content, so a
+                // long list of notes would run off the screen instead of
+                // scrolling inside the list pane.
+                min_height: 0dp;
+
+                // ---------------------------------------------------------
+                // List pane
+                // ---------------------------------------------------------
+                if show_list : Column {
+                    id: "list_pane";
+                    width: wide_layout ? 340dp : 100%;
+                    height: 100%;
+                    background: Theme.surface;
+                    padding: 16dp;
+                    gap: 12dp;
+
+                    Row {
+                        width: 100%;
+                        align: Center;
+                        justify: SpaceBetween;
+
+                        Column {
+                            gap: 2dp;
+
+                            Text {
+                                text: "Notes";
+                                font_size: 26;
+                                font_weight: Bold;
+                                color: Theme.text_primary;
+                            }
+                            Text {
+                                id: "summary_label";
+                                text: summary_text;
+                                font_size: 13;
+                                color: Theme.text_secondary;
+                            }
+                        }
+
+                        Row {
+                            gap: 8dp;
+                            align: Center;
+
+                            Button {
+                                id: "theme_button";
+                                text: theme_icon;
+                                font_size: 18;
+                                background: Theme.surface_variant;
+                                foreground: Theme.text_primary;
+                                border_radius: 20dp;
+                                padding_x: 11dp;
+                                padding_y: 9dp;
+                                on_tap => { on_toggle_theme(); }
+                            }
+                            Button {
+                                id: "new_note_button";
+                                text: "plus";
+                                font_size: 18;
+                                background: Theme.primary;
+                                foreground: Theme.on_primary;
+                                border_radius: 20dp;
+                                padding_x: 11dp;
+                                padding_y: 9dp;
+                                on_tap => { on_new_note(); }
+                            }
+                        }
+                    }
+
+                    TextInput {
+                        id: "search_input";
+                        width: 100%;
+                        placeholder: "Search notes";
+                        value <=> search_query;
+                    }
+
+                    Tabs {
+                        id: "filter_tabs";
+                        width: 100%;
+                        tabs: ["All", "Pinned"];
+                        active: filter_tab;
+                        on_change => { filter_tab = index; }
+                    }
+
+                    if notes.is_empty() : Column {
+                        id: "empty_state";
+                        width: 100%;
+                        flex_grow: 1.0;
+                        align: Center;
+                        justify: Center;
+                        gap: 8dp;
+                        padding: 24dp;
+
+                        Icon {
+                            svg: "note";
+                            size: 32;
+                            color: Theme.text_secondary;
+                        }
+                        Text {
+                            text: empty_title;
+                            font_size: 16;
+                            font_weight: SemiBold;
+                            color: Theme.text_primary;
+                        }
+                        Text {
+                            text: empty_hint;
+                            font_size: 13;
+                            color: Theme.text_secondary;
+                        }
+                    } else : ScrollView {
+                        id: "note_list";
+                        width: 100%;
+                        flex_grow: 1.0;
+
+                        Column {
+                            width: 100%;
+                            gap: 8dp;
+
+                            for note, idx in notes : Column {
+                                width: 100%;
+                                background: note.selected ? Theme.primary_container : Theme.surface_variant;
+                                border_radius: 12dp;
+                                padding_x: 14dp;
+                                padding_y: 12dp;
+                                gap: 4dp;
+                                cursor: Pointer;
+                                on_tap => { on_open_note(idx); }
+
+                                Text {
+                                    text: note.title;
+                                    font_size: 15;
+                                    font_weight: SemiBold;
+                                    color: Theme.text_primary;
+                                }
+                                Text {
+                                    text: note.preview;
+                                    font_size: 13;
+                                    color: Theme.text_secondary;
+                                }
+                                Text {
+                                    text: note.meta;
+                                    font_size: 11;
+                                    color: Theme.text_secondary;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if wide_layout : Divider {
+                    direction: Vertical;
+                    thickness: 1;
+                    color: Theme.border;
+                }
+
+                // ---------------------------------------------------------
+                // Editor pane
+                // ---------------------------------------------------------
+                if show_editor : Column {
+                    id: "editor_pane";
+                    flex_grow: 1.0;
+                    height: 100%;
+                    background: Theme.background;
+
+                    if has_selection : Column {
+                        width: 100%;
+                        flex_grow: 1.0;
+                        padding: 16dp;
+                        gap: 12dp;
+
+                        if confirm_delete : Row {
+                            id: "delete_confirm_bar";
+                            width: 100%;
+                            align: Center;
+                            justify: SpaceBetween;
+                            gap: 8dp;
+
+                            Text {
+                                text: "Delete this note?";
+                                font_size: 15;
+                                font_weight: SemiBold;
+                                color: Theme.text_primary;
+                            }
+
+                            Row {
+                                gap: 8dp;
+                                align: Center;
+
+                                Button {
+                                    id: "cancel_delete_button";
+                                    text: "Cancel";
+                                    background: Theme.surface_variant;
+                                    foreground: Theme.text_primary;
+                                    border_radius: 10dp;
+                                    on_tap => { confirm_delete = false; }
+                                }
+                                Button {
+                                    id: "confirm_delete_button";
+                                    text: "Delete";
+                                    background: Theme.danger;
+                                    foreground: Theme.on_error;
+                                    border_radius: 10dp;
+                                    on_tap => { on_delete_note(); }
+                                }
+                            }
+                        } else : Row {
+                            id: "editor_toolbar";
+                            width: 100%;
+                            align: Center;
+                            justify: SpaceBetween;
+                            gap: 8dp;
+
+                            Row {
+                                gap: 8dp;
+                                align: Center;
+
+                                if show_back : Button {
+                                    id: "back_button";
+                                    text: "chevron_left";
+                                    font_size: 18;
+                                    background: Theme.surface_variant;
+                                    foreground: Theme.text_primary;
+                                    border_radius: 20dp;
+                                    padding_x: 11dp;
+                                    padding_y: 9dp;
+                                    on_tap => { on_close_editor(); }
+                                }
+
+                                Text {
+                                    id: "editor_status_label";
+                                    text: editor_status;
+                                    font_size: 12;
+                                    color: Theme.text_secondary;
+                                }
+                            }
+
+                            Row {
+                                gap: 8dp;
+                                align: Center;
+
+                                Button {
+                                    id: "pin_button";
+                                    text: pin_label;
+                                    background: Theme.surface_variant;
+                                    foreground: Theme.text_primary;
+                                    border_radius: 10dp;
+                                    on_tap => { on_toggle_pin(); }
+                                }
+                                Button {
+                                    id: "delete_button";
+                                    text: "trash";
+                                    font_size: 18;
+                                    background: Theme.surface_variant;
+                                    foreground: Theme.danger;
+                                    border_radius: 20dp;
+                                    padding_x: 11dp;
+                                    padding_y: 9dp;
+                                    on_tap => { confirm_delete = true; }
+                                }
+                            }
+                        }
+
+                        TextInput {
+                            id: "title_input";
+                            width: 100%;
+                            placeholder: "Title";
+                            font_size: 20;
+                            font_weight: SemiBold;
+                            value <=> draft_title;
+                        }
+
+                        TextArea {
+                            id: "body_input";
+                            width: 100%;
+                            flex_grow: 1.0;
+                            placeholder: "Start writing...";
+                            font_size: 15;
+                            value <=> draft_body;
+                        }
+                    } else : Column {
+                        id: "editor_placeholder";
+                        width: 100%;
+                        flex_grow: 1.0;
+                        align: Center;
+                        justify: Center;
+                        gap: 8dp;
+
+                        Icon {
+                            svg: "edit";
+                            size: 32;
+                            color: Theme.text_secondary;
+                        }
+                        Text {
+                            text: "Select a note, or tap + to start a new one";
+                            font_size: 14;
+                            color: Theme.text_secondary;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -203,17 +203,16 @@ fn run_server_accept_loop(
                 );
 
                 // Immediately send current live UI source if available
-                if let Ok(guard) = latest_msg.lock() {
-                    if let Some(msg) = guard.as_ref() {
-                        if let Ok(line) = msg.to_line() {
-                            let mut s = match stream.try_clone() {
-                                Ok(cloned) => cloned,
-                                Err(_) => continue,
-                            };
-                            let _ = s.write_all(line.as_bytes());
-                            let _ = s.flush();
-                        }
-                    }
+                if let Ok(guard) = latest_msg.lock()
+                    && let Some(msg) = guard.as_ref()
+                    && let Ok(line) = msg.to_line()
+                {
+                    let mut s = match stream.try_clone() {
+                        Ok(cloned) => cloned,
+                        Err(_) => continue,
+                    };
+                    let _ = s.write_all(line.as_bytes());
+                    let _ = s.flush();
                 }
 
                 let reader_stream = match stream.try_clone() {
@@ -309,7 +308,7 @@ mod tests {
             TcpStream::connect(("127.0.0.1", port)).expect("must connect to remote preview server");
         client.set_nodelay(true).unwrap();
         client
-            .set_read_timeout(Some(Duration::from_millis(1000)))
+            .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();
 
         // Device sends Connected handshake
@@ -325,8 +324,16 @@ mod tests {
             .unwrap();
         client.flush().unwrap();
 
-        std::thread::sleep(Duration::from_millis(150));
-        assert!(server.connected_clients_count() >= 1);
+        // The server accepts connections on a polling thread, so wait for the
+        // client to be registered instead of assuming a fixed delay is enough.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while server.connected_clients_count() == 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            server.connected_clients_count() >= 1,
+            "the server did not register the client within 10 seconds"
+        );
 
         // Host broadcasts a reload message
         let reload = RemotePreviewMessage::Reload {

@@ -521,7 +521,15 @@ pub fn props_for_widget(kind: &str) -> Vec<&'static str> {
         }
         "Chip" | "FilterChip" | "ActionChip" | "ChoiceChip" | "InputChip" => {
             out.extend_from_slice(CONTAINER_PROPS);
-            out.extend_from_slice(&["label", "text", "selected", "value", "icon", "leading_icon", "disabled"]);
+            out.extend_from_slice(&[
+                "label",
+                "text",
+                "selected",
+                "value",
+                "icon",
+                "leading_icon",
+                "disabled",
+            ]);
         }
         "AppBar" => {
             out.extend_from_slice(CONTAINER_PROPS);
@@ -801,14 +809,12 @@ fn validate_element(el: &ElementNode, ctx: &ScopeCtx<'_>, diags: &mut Vec<Diagno
     let allowed_widget_props: Option<Vec<&'static str>> =
         is_builtin.then(|| props_for_widget(&el.kind));
 
-    if is_known && !el.children.is_empty() {
-        if is_builtin && !widget_allows_children(&el.kind) {
-            diags.push(Diagnostic {
-                span: el.span,
-                severity: Severity::Error,
-                message: format!("leaf widget '{}' cannot contain child elements", el.kind),
-            });
-        }
+    if is_known && !el.children.is_empty() && is_builtin && !widget_allows_children(&el.kind) {
+        diags.push(Diagnostic {
+            span: el.span,
+            severity: Severity::Error,
+            message: format!("leaf widget '{}' cannot contain child elements", el.kind),
+        });
     }
 
     for prop in &el.props {
@@ -1534,15 +1540,16 @@ fn infer_expr_type(expr: &Expr, ctx: &ScopeCtx<'_>) -> Option<TypeExpr> {
             ..
         } => infer_expr_type(then_expr, ctx).or_else(|| infer_expr_type(else_expr, ctx)),
         Expr::MethodCall(recv, m, _) => {
-            if let Expr::Ident(root) = recv.as_ref() {
-                if root == "Math" {
-                    return match m.as_str() {
-                        "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sqrt" | "abs"
-                        | "round" | "floor" | "ceil" | "min" | "max" | "clamp" | "pow"
-                        | "atan2" => Some(TypeExpr::Named("float".into())),
-                        _ => None,
-                    };
-                }
+            if let Expr::Ident(root) = recv.as_ref()
+                && root == "Math"
+            {
+                return match m.as_str() {
+                    "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sqrt" | "abs" | "round"
+                    | "floor" | "ceil" | "min" | "max" | "clamp" | "pow" | "atan2" => {
+                        Some(TypeExpr::Named("float".into()))
+                    }
+                    _ => None,
+                };
             }
             match m.as_str() {
                 "len" => Some(TypeExpr::Named("uint".into())),
@@ -1834,31 +1841,31 @@ fn validate_expr(
             }
         }
         Expr::MethodCall(recv, method, args) => {
-            if let Expr::Ident(root) = recv.as_ref() {
-                if root == "Math" {
-                    let known_math = match method.as_str() {
-                        "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sqrt" | "abs"
-                        | "round" | "floor" | "ceil" => args.len() == 1,
-                        "min" | "max" | "pow" | "atan2" => args.len() == 2,
-                        "clamp" => args.len() == 3,
-                        _ => false,
-                    };
-                    if !known_math {
-                        diags.push(Diagnostic {
-                            span,
-                            severity: Severity::Error,
-                            message: format!(
-                                "unknown or invalid Math function 'Math.{}({} args)'",
-                                method,
-                                args.len()
-                            ),
-                        });
-                    }
-                    for a in args {
-                        validate_expr(a, None, span, ctx, diags);
-                    }
-                    return;
+            if let Expr::Ident(root) = recv.as_ref()
+                && root == "Math"
+            {
+                let known_math = match method.as_str() {
+                    "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sqrt" | "abs" | "round"
+                    | "floor" | "ceil" => args.len() == 1,
+                    "min" | "max" | "pow" | "atan2" => args.len() == 2,
+                    "clamp" => args.len() == 3,
+                    _ => false,
+                };
+                if !known_math {
+                    diags.push(Diagnostic {
+                        span,
+                        severity: Severity::Error,
+                        message: format!(
+                            "unknown or invalid Math function 'Math.{}({} args)'",
+                            method,
+                            args.len()
+                        ),
+                    });
                 }
+                for a in args {
+                    validate_expr(a, None, span, ctx, diags);
+                }
+                return;
             }
             validate_expr(recv, None, span, ctx, diags);
             let known_ok = match method.as_str() {

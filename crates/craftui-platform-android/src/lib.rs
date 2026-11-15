@@ -1856,9 +1856,12 @@ pub mod android_runtime {
                     tracing::warn!("{msg}");
                     host.record_error(msg);
                 } else {
-                    static ONCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                    static ONCE: std::sync::atomic::AtomicBool =
+                        std::sync::atomic::AtomicBool::new(false);
                     if !ONCE.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                        android_log("run_android_app: first frame rendered successfully to ANativeWindow!");
+                        android_log(
+                            "run_android_app: first frame rendered successfully to ANativeWindow!",
+                        );
                     }
                 }
             }

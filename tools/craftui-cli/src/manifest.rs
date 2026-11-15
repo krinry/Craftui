@@ -573,14 +573,28 @@ pub fn default_usage_description(perm: &Permission) -> &'static str {
         Permission::BackgroundRefresh => "Background refresh keeps application state synchronized.",
         Permission::MediaProjection => "Screen capture records or shares visible app content.",
         Permission::ClipboardRead => "Clipboard access pastes copied text or snippets on demand.",
-        Permission::DeviceAdmin => "Device administrator permission enforces enterprise policies and device management.",
-        Permission::AccessibilityService => "Accessibility service assists users with screen reading, automation, and UI navigation.",
-        Permission::WriteSettings => "System settings permission modifies system preferences and display attributes.",
-        Permission::PackageUsageStats => "Package usage statistics track application usage and active intervals.",
-        Permission::IgnoreBatteryOptimizations => "Battery optimization exemption allows uninterrupted background processing.",
-        Permission::NotificationListener => "Notification listener service reads and routes system notifications.",
+        Permission::DeviceAdmin => {
+            "Device administrator permission enforces enterprise policies and device management."
+        }
+        Permission::AccessibilityService => {
+            "Accessibility service assists users with screen reading, automation, and UI navigation."
+        }
+        Permission::WriteSettings => {
+            "System settings permission modifies system preferences and display attributes."
+        }
+        Permission::PackageUsageStats => {
+            "Package usage statistics track application usage and active intervals."
+        }
+        Permission::IgnoreBatteryOptimizations => {
+            "Battery optimization exemption allows uninterrupted background processing."
+        }
+        Permission::NotificationListener => {
+            "Notification listener service reads and routes system notifications."
+        }
         Permission::VpnService => "VPN service establishes secure encrypted network tunnels.",
-        Permission::AdminPrivileges => "Administrator privileges execute elevated system management tasks.",
+        Permission::AdminPrivileges => {
+            "Administrator privileges execute elevated system management tasks."
+        }
         Permission::Custom(_) => "Requested to enable a custom application capability.",
     }
 }
@@ -852,5 +866,130 @@ location_always = "Track runs"
         assert_eq!(xml_escape(&m.app.name), "A &amp; B &lt;Demo&gt;");
         m.app.id = "invalid_id".to_string();
         assert!(m.validate().iter().any(|d| d.is_error));
+    }
+
+    #[test]
+    fn the_notes_example_manifest_is_valid_and_asks_for_no_permissions() {
+        let m = AppManifest::parse(include_str!("../../../examples/notes/craftui.toml"))
+            .expect("examples/notes/craftui.toml parses");
+
+        assert_eq!(m.app.name, "CraftUI Notes");
+        assert_eq!(m.app.id, "dev.craftui.notes");
+        assert_eq!(m.android.target_sdk, 35);
+        assert!(m.enabled_permissions().is_empty());
+        assert!(m.validate().iter().all(|d| !d.is_error));
+
+        // INTERNET is always declared; nothing else may appear.
+        let xml = m.render_android_manifest_permissions_xml();
+        assert!(xml.contains("android.permission.INTERNET"), "{xml}");
+        assert_eq!(xml.matches("<uses-permission").count(), 1, "{xml}");
+        assert!(m.ios_info_plist_usage_entries().is_empty());
+    }
+
+    #[test]
+    fn missing_sections_use_the_defaults() {
+        let m = AppManifest::parse("[app]\nname = \"Tiny\"\nid = \"dev.example.tiny\"\n")
+            .expect("a manifest with only [app]");
+        let defaults = AndroidSection::default();
+
+        assert_eq!(m.app.version, AppSection::default().version);
+        assert_eq!(m.android.min_sdk, defaults.min_sdk);
+        assert_eq!(m.android.target_sdk, defaults.target_sdk);
+        assert!(m.permissions.is_empty());
+    }
+
+    #[test]
+    fn parse_errors_name_the_line_and_the_problem() {
+        let message = |src: &str| {
+            let err = AppManifest::parse(src).expect_err("this manifest must be rejected");
+            format!("{err:?}")
+        };
+
+        let no_value = message("[app]\nname = \"A\"\nversion\n");
+        assert!(no_value.contains("line 3"), "{no_value}");
+        assert!(no_value.contains("key = value"), "{no_value}");
+
+        let section = message("[app]\nname = \"A\"\n\n[desktop]\ntitle = \"x\"\n");
+        assert!(section.contains("line 5"), "{section}");
+        assert!(section.contains("[desktop]"), "{section}");
+
+        let permission = message("[permissions]\ncamera = 3\n");
+        assert!(permission.contains("line 2"), "{permission}");
+        assert!(permission.contains("camera"), "{permission}");
+    }
+
+    #[test]
+    fn a_permission_set_to_false_is_not_requested() {
+        let m = AppManifest::parse(
+            "[permissions]\ncamera = false\nmicrophone = \"Record voice notes\"\n",
+        )
+        .expect("valid permissions");
+
+        let enabled = m.enabled_permissions();
+        assert_eq!(enabled.len(), 1);
+        assert_eq!(enabled[0].permission, Permission::Microphone);
+        assert_eq!(enabled[0].reason.as_deref(), Some("Record voice notes"));
+
+        let xml = m.render_android_manifest_permissions_xml();
+        assert!(xml.contains("android.permission.RECORD_AUDIO"), "{xml}");
+        assert!(!xml.contains("android.permission.CAMERA"), "{xml}");
+    }
+
+    #[test]
+    fn an_unknown_permission_name_is_kept_and_flagged() {
+        let m = AppManifest::parse("[permissions]\nteleport = true\n").expect("parses");
+
+        assert_eq!(m.enabled_permissions().len(), 1);
+        let diags = m.validate();
+        assert!(
+            diags.iter().any(|d| !d.is_error
+                && d.message.contains("teleport")
+                && d.message.contains("custom")),
+            "an unknown permission should produce a warning"
+        );
+    }
+
+    #[test]
+    fn validation_rejects_bad_ids_and_sdk_levels() {
+        let errors = |m: &AppManifest| {
+            m.validate()
+                .into_iter()
+                .filter(|d| d.is_error)
+                .map(|d| d.message)
+                .collect::<Vec<_>>()
+        };
+
+        let good = AppManifest::with_app("Demo", "dev.example.demo");
+        assert!(errors(&good).is_empty(), "{:?}", errors(&good));
+
+        let mut no_dot = good.clone();
+        no_dot.app.id = "demo".to_string();
+        assert!(errors(&no_dot).iter().any(|e| e.contains("reverse-DNS")));
+
+        let mut no_name = good.clone();
+        no_name.app.name = "  ".to_string();
+        assert!(errors(&no_name).iter().any(|e| e.contains("name")));
+
+        let mut sdk = good.clone();
+        sdk.android.min_sdk = sdk.android.target_sdk + 1;
+        assert!(errors(&sdk).iter().any(|e| e.contains("min_sdk")));
+
+        let mut too_old = good;
+        too_old.android.min_sdk = 19;
+        assert!(errors(&too_old).iter().any(|e| e.contains("min_sdk")));
+    }
+
+    #[test]
+    fn app_ids_are_derived_from_project_names() {
+        assert_eq!(AppManifest::sanitize_id("notes"), "dev.craftui.notes");
+        assert_eq!(
+            AppManifest::sanitize_id("My Cool-App"),
+            "dev.craftui.my_cool_app"
+        );
+        assert_eq!(
+            AppManifest::sanitize_id("--weird__name--"),
+            "dev.craftui.weird_name"
+        );
+        assert_eq!(AppManifest::sanitize_id("!!!"), "dev.craftui.app");
     }
 }

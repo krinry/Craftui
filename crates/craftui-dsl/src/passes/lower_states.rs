@@ -38,14 +38,17 @@ fn lower_states_in_element(el: &mut ElementNode) {
     for tr in el.transitions.drain(..) {
         for mut anim in tr.animations {
             if let Some(ref from) = tr.from_state {
-                anim.fields.push(("from_state".into(), Expr::String(from.clone())));
+                anim.fields
+                    .push(("from_state".into(), Expr::String(from.clone())));
             }
             if let Some(ref to) = tr.to_state {
-                anim.fields.push(("to_state".into(), Expr::String(to.clone())));
+                anim.fields
+                    .push(("to_state".into(), Expr::String(to.clone())));
             }
-            let duplicate = el.animations.iter().any(|a| {
-                a.prop == anim.prop && a.fields == anim.fields
-            });
+            let duplicate = el
+                .animations
+                .iter()
+                .any(|a| a.prop == anim.prop && a.fields == anim.fields);
             if !duplicate {
                 el.animations.push(anim);
             }

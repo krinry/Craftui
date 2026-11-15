@@ -1,16 +1,20 @@
-# Mobile & Web Permissions Guide
+# Permissions
 
-CraftUI features a unified permission system spanning 35 standard permissions across Android, iOS, and Web.
+CraftUI has one list of permission names that it maps to each platform. You
+declare what the app needs in `craftui.toml` and request it at run time from
+Rust.
 
 ---
 
-## 1. The 35 Standard Permissions
+## 1. The permission names
 
-Inspect all available permissions at any time with the CLI:
+Print the full list with the CLI:
 
 ```bash
 craftui permissions list
 ```
+
+A selection:
 
 | Permission Key | Description | Android Mapping | iOS Usage Description |
 |---|---|---|---|
@@ -42,42 +46,39 @@ photos = "Allows you to choose photos from your gallery."
 vibrate = "Provides haptic feedback when taking pictures."
 ```
 
-Audit your manifest against OS store policies:
+Check the manifest for unknown names and missing descriptions:
 ```bash
 craftui permissions check
 ```
 
 ---
 
-## 3. Requesting Permissions in Rust Code
+## 3. Requesting permissions in Rust
 
-Use the `PlatformServices` API to check and request permissions at runtime:
+`PlatformServices` checks and requests permissions at run time. The calls are
+ordinary functions that return the status directly:
 
 ```rust
-use craftui::prelude::*;
+use craftui::core::{Permission, PermissionStatus, PlatformServices};
 
-async fn take_photo(services: &PlatformServices) {
-    // 1. Check current status
-    let status = services.permission_status(Permission::Camera).await;
-
-    match status {
-        PermissionStatus::Granted => {
-            // Permission already granted, proceed
-            capture_image().await;
-        }
+fn take_photo(services: &PlatformServices) {
+    match services.check_permission(&Permission::Camera) {
+        PermissionStatus::Granted => capture_image(),
         PermissionStatus::NotDetermined | PermissionStatus::Denied => {
-            // 2. Request permission from user
-            let new_status = services.request_permission(Permission::Camera).await;
-            if new_status == PermissionStatus::Granted {
-                capture_image().await;
-            } else {
-                println!("Camera access was denied by user.");
+            if services.request_permission(&Permission::Camera) == PermissionStatus::Granted {
+                capture_image();
             }
         }
-        PermissionStatus::Restricted => {
-            println!("Camera access is restricted by device policy.");
-        }
+        // PermanentlyDenied, Restricted, Limited, Provisional, Unsupported
+        other => println!("camera is not available: {other:?}"),
     }
 }
 ```
-On Android, this invokes the native `ActivityResultContracts.RequestMultiplePermissions` dialog. On iOS, it prompts the system privacy dialog. On Desktop, it resolves immediately to granted or simulated status.
+
+`request_permissions(&[...])` asks for several at once. On platforms where the
+answer arrives later, `request_permission_async` and `request_permissions_async`
+take a `UiDispatcher` and call you back on the UI thread. Inside an app the
+services are available as `tree.services`.
+
+What each platform does with a request depends on its backend; the desktop
+backend is an in-memory stand-in intended for development and tests.

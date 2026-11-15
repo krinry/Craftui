@@ -271,10 +271,7 @@ fn process_import(
                 state.diagnostics.push(Diagnostic {
                     span: imp.span,
                     severity: d.severity,
-                    message: format!(
-                        "in embedded module '{}': {}",
-                        imp.from_path, d.message
-                    ),
+                    message: format!("in embedded module '{}': {}", imp.from_path, d.message),
                 });
             }
             for st in parsed_v.file.structs {

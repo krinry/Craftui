@@ -1,77 +1,81 @@
-# Installation & Environment Setup (Linux & Android)
+# Installation
 
-CraftUI is designed to be completely self-sufficient on **Linux**. You can build, run, and test your applications for **Linux Desktop**, **Android** (physical phones, tablets, or emulators), and the **Web** using only standard Linux developer tools.
+This page sets up a machine to build CraftUI apps for desktop, the Web and
+Android. The package lists are the ones the project's CI uses on Ubuntu.
 
----
+## 1. Rust
 
-## 1. Prerequisites on Linux
-
-Ensure you have a recent version of Rust (Edition 2024 / Rust 1.89+) installed:
+CraftUI needs Rust 1.89 or newer.
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup update stable
 ```
 
-Install standard development libraries for WGPU and Wayland/X11 windowing:
+## 2. Linux system libraries
 
 ```bash
-# Ubuntu / Debian / Pop!_OS
 sudo apt update
-sudo apt install -y build-essential pkg-config libx11-dev libxcursor-dev \
-    libxrandr-dev libxi-dev libxinerama-dev libwayland-dev libxkbcommon-dev \
-    libvulkan-dev vulkan-tools libasound2-dev libfontconfig1-dev
+sudo apt install -y build-essential pkg-config \
+    libwayland-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-dev
 ```
 
----
+macOS and Windows need no extra packages for desktop builds.
 
-## 2. Setting Up the Android Toolchain on Linux
+## 3. Get CraftUI
 
-You do **not** need Android Studio to build CraftUI Android apps. A minimal Android command-line SDK + NDK is sufficient:
-
-1. Add the `aarch64-linux-android` Rust compilation target:
-   ```bash
-   rustup target add aarch64-linux-android
-   ```
-
-2. Point your environment variables to your Android SDK and NDK (e.g., in `~/.bashrc`):
-   ```bash
-   export ANDROID_HOME="$HOME/Android/Sdk"
-   export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/28.2.13676358"
-   export PATH="$ANDROID_HOME/platform-tools:$PATH"
-   ```
-
-3. Verify your device is connected via ADB:
-   ```bash
-   adb devices
-   ```
-
----
-
-## 3. Installing the CraftUI Tooling
-
-Build and install `craftui-cli`:
+CraftUI is not published on crates.io yet. Clone the repository and install the
+command-line tool from it:
 
 ```bash
+git clone https://github.com/krinry/Craftui
+cd Craftui
 cargo install --path tools/craftui-cli
 ```
 
-Verify your environment with the built-in diagnostic tool:
+This installs the `craftui` command. Check your setup:
 
 ```bash
 craftui doctor
 ```
 
-Output:
-```
-CraftUI Environment Doctor
---------------------------
-[ok] rustc: rustc 1.89+
-[ok] cargo: cargo 1.89+
-[ok] Desktop target (host): ready
-[ok] Web target (wasm32-unknown-unknown): installed
-[ok] Android target (aarch64-linux-android): installed (NDK: /home/.../ndk/28.2.13676358, adb: /home/.../platform-tools/adb)
-[ok] Templates (.cui): verified
+`doctor` lists the Rust toolchain, the installed targets and the Android tools
+it found, and tells you what is missing.
+
+## 4. Web builds (optional)
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.130
 ```
 
-You are now ready to build native applications for Linux and Android!
+The `wasm-bindgen-cli` version must equal the `wasm-bindgen` version in
+`Cargo.lock`; the build fails with a clear message when they differ.
+
+## 5. Android builds (optional)
+
+You need the Android SDK and NDK, JDK 17 and Gradle 8. Android Studio installs
+the first two, or use the command-line SDK tools.
+
+```bash
+rustup target add aarch64-linux-android
+```
+
+Add to your shell profile, with the NDK version you installed:
+
+```bash
+export ANDROID_HOME="$HOME/Android/Sdk"
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/<version>"
+export PATH="$ANDROID_HOME/platform-tools:$PATH"
+```
+
+To install on a phone, enable USB debugging and check that it is listed:
+
+```bash
+adb devices
+```
+
+## Next
+
+Continue with the [quickstart](quickstart.md), or build the
+[notes app](../guides/notes-app.md) for all three platforms.

@@ -1,6 +1,12 @@
-# ScanCraft: Real-World Architecture & Dogfooding Case Study
+# ScanCraft
 
-`ScanCraft` (`examples/scancraft`) is the flagship reference application for CraftUI, designed to demonstrate how a production-grade mobile and desktop utility is structured.
+`examples/scancraft` is a larger example: a document scanner with a capture
+screen, an image editor and a document library. It shows how an app uses
+permissions, platform services and a multi-screen `.cui` file together.
+
+It is built in CI as part of the workspace, but it has no end-to-end test. On
+desktop the camera is simulated. For an example with tests on every layer, see
+the [notes app](notes-app.md).
 
 ---
 

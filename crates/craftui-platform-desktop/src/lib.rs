@@ -114,11 +114,10 @@ fn read_os_clipboard(
         let pb = NSPasteboard::generalPasteboard();
         // SAFETY: `NSPasteboardTypeString` is a static immutable AppKit UTI constant.
         let pb_type = unsafe { NSPasteboardTypeString };
-        return pb.stringForType(pb_type).map(|ns| ns.to_string());
+        pb.stringForType(pb_type).map(|ns| ns.to_string())
     }
     #[cfg(target_os = "windows")]
     {
-        use std::ffi::c_void;
         use windows_sys::Win32::Foundation::HANDLE;
         use windows_sys::Win32::System::DataExchange::{
             CloseClipboard, GetClipboardData, OpenClipboard,
@@ -155,8 +154,8 @@ fn read_os_clipboard(
             let slice = std::slice::from_raw_parts(ptr, max_u16);
             let nul_pos = slice.iter().position(|&u| u == 0).unwrap_or(slice.len());
             let decoded = String::from_utf16_lossy(&slice[..nul_pos]);
-            GlobalUnlock(handle as *mut c_void);
-            return Some(decoded);
+            GlobalUnlock(handle);
+            Some(decoded)
         }
     }
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -206,11 +205,10 @@ fn write_os_clipboard(
         let ns_text = NSString::from_str(text);
         // SAFETY: `NSPasteboardTypeString` is a static immutable AppKit UTI constant.
         let pb_type = unsafe { NSPasteboardTypeString };
-        return pb.setString_forType(&ns_text, pb_type);
+        pb.setString_forType(&ns_text, pb_type)
     }
     #[cfg(target_os = "windows")]
     {
-        use std::ffi::c_void;
         use windows_sys::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
         use windows_sys::Win32::System::DataExchange::{
             CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
@@ -251,12 +249,12 @@ fn write_os_clipboard(
                 return false;
             }
             std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
-            GlobalUnlock(hmem as *mut c_void);
+            GlobalUnlock(hmem);
             if SetClipboardData(CF_UNICODETEXT, hmem as HANDLE).is_null() {
                 GlobalFree(hmem);
                 return false;
             }
-            return true;
+            true
         }
     }
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -496,7 +494,11 @@ impl PermissionBackend for DesktopPermissionBackend {
                 .spawn()
                 .is_ok()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows", all(unix, not(target_os = "macos")))))]
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            all(unix, not(target_os = "macos"))
+        )))]
         {
             false
         }
@@ -509,7 +511,9 @@ impl PermissionBackend for DesktopPermissionBackend {
         #[cfg(target_os = "macos")]
         {
             std::process::Command::new("open")
-                .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                .arg(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                )
                 .spawn()
                 .is_ok()
         }
@@ -532,7 +536,11 @@ impl PermissionBackend for DesktopPermissionBackend {
                 })
                 .is_ok()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows", all(unix, not(target_os = "macos")))))]
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            all(unix, not(target_os = "macos"))
+        )))]
         {
             false
         }
@@ -563,7 +571,11 @@ impl PermissionBackend for DesktopPermissionBackend {
                 .spawn()
                 .is_ok()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows", all(unix, not(target_os = "macos")))))]
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            all(unix, not(target_os = "macos"))
+        )))]
         {
             false
         }
@@ -577,6 +589,9 @@ impl PermissionBackend for DesktopPermissionBackend {
         self.check(&Permission::AdminPrivileges) == PermissionStatus::Granted
     }
 
+    // On Windows the platform branch below is a constant, which clippy would
+    // ask to fold into the check above; the other platforms need both parts.
+    #[cfg_attr(target_os = "windows", allow(clippy::needless_bool))]
     fn request_admin_privileges(&self) -> bool {
         if self.is_admin_active() {
             return true;
@@ -584,7 +599,10 @@ impl PermissionBackend for DesktopPermissionBackend {
         #[cfg(target_os = "macos")]
         {
             std::process::Command::new("osascript")
-                .args(["-e", "do shell script \"echo admin\" with administrator privileges"])
+                .args([
+                    "-e",
+                    "do shell script \"echo admin\" with administrator privileges",
+                ])
                 .output()
                 .map(|out| out.status.success())
                 .unwrap_or(false)
@@ -601,7 +619,11 @@ impl PermissionBackend for DesktopPermissionBackend {
                 .map(|out| out.status.success())
                 .unwrap_or(false)
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows", all(unix, not(target_os = "macos")))))]
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            all(unix, not(target_os = "macos"))
+        )))]
         {
             false
         }
@@ -1634,39 +1656,38 @@ fn paint_live_preview_overlays(
     }
 
     // 3. Live Element Inspector
-    if spec.show_inspector {
-        if let Some(nid) = tree.hit_test(cursor_pos) {
-            let rect = tree.rect(nid);
-            if rect.width > 0.0 && rect.height > 0.0 {
-                scene.stroke_rect(rect, Color::rgb(6, 182, 212), 2.0, CornerRadii::all(4.0));
-                if let Some(node) = tree.nodes.get(nid) {
-                    let tag_text =
-                        format!("{}  {:.0}×{:.0}", node.debug_name, rect.width, rect.height);
-                    let tag_w = (tag_text.len() as f32) * 7.0 + 14.0;
-                    let tag_y = (rect.y - 22.0).max(4.0);
-                    let tag_rect = Rect::new(rect.x, tag_y, tag_w, 20.0);
-                    scene.fill_rect(
-                        tag_rect,
-                        Brush::Solid(Color::rgba(15, 23, 42, 242)),
-                        CornerRadii::all(4.0),
-                    );
-                    scene.stroke_rect(
-                        tag_rect,
-                        Color::rgb(6, 182, 212),
-                        1.0,
-                        CornerRadii::all(4.0),
-                    );
-                    scene.commands.push(PaintCommand::DrawText {
-                        origin: Point::new(rect.x + 6.0, tag_y + 4.0),
-                        text: tag_text,
-                        style: TextStyle {
-                            font_size: 11.0,
-                            color: Color::WHITE,
-                            ..Default::default()
-                        },
-                        max_width: None,
-                    });
-                }
+    if spec.show_inspector
+        && let Some(nid) = tree.hit_test(cursor_pos)
+    {
+        let rect = tree.rect(nid);
+        if rect.width > 0.0 && rect.height > 0.0 {
+            scene.stroke_rect(rect, Color::rgb(6, 182, 212), 2.0, CornerRadii::all(4.0));
+            if let Some(node) = tree.nodes.get(nid) {
+                let tag_text = format!("{}  {:.0}×{:.0}", node.debug_name, rect.width, rect.height);
+                let tag_w = (tag_text.len() as f32) * 7.0 + 14.0;
+                let tag_y = (rect.y - 22.0).max(4.0);
+                let tag_rect = Rect::new(rect.x, tag_y, tag_w, 20.0);
+                scene.fill_rect(
+                    tag_rect,
+                    Brush::Solid(Color::rgba(15, 23, 42, 242)),
+                    CornerRadii::all(4.0),
+                );
+                scene.stroke_rect(
+                    tag_rect,
+                    Color::rgb(6, 182, 212),
+                    1.0,
+                    CornerRadii::all(4.0),
+                );
+                scene.commands.push(PaintCommand::DrawText {
+                    origin: Point::new(rect.x + 6.0, tag_y + 4.0),
+                    text: tag_text,
+                    style: TextStyle {
+                        font_size: 11.0,
+                        color: Color::WHITE,
+                        ..Default::default()
+                    },
+                    max_width: None,
+                });
             }
         }
     }
@@ -2011,48 +2032,48 @@ impl ApplicationHandler<DesktopUserEvent> for DesktopRunner {
             WindowEvent::KeyboardInput { event: key_ev, .. } => {
                 let ke = translate_winit_key(&key_ev, state.modifiers);
                 #[cfg(feature = "hot-reload")]
-                if key_ev.state == ElementState::Pressed {
-                    if let Some(spec) = state.hot_reload.as_mut() {
-                        match ke.code {
-                            KeyCode::F1 => {
-                                spec.show_inspector = !spec.show_inspector;
-                                state.window.request_redraw();
-                                return;
-                            }
-                            KeyCode::F2 => {
-                                let cur = state.tree.theme().mode;
-                                let next = match cur {
-                                    ThemeMode::Amoled => ThemeTokens::dark(),
-                                    ThemeMode::Dark => ThemeTokens::light(),
-                                    _ => ThemeTokens::amoled(),
-                                };
-                                state.tree.set_theme(next);
-                                state.window.request_redraw();
-                                return;
-                            }
-                            KeyCode::F3 => {
-                                spec.device_mode = !spec.device_mode;
-                                state.window.request_redraw();
-                                return;
-                            }
-                            KeyCode::F5 => {
-                                match spec.session.reload_file(
-                                    &spec.path,
-                                    spec.component.as_deref(),
-                                    &mut state.tree,
-                                ) {
-                                    Ok(_) => {
-                                        spec.last_reload_error = None;
-                                    }
-                                    Err(e) => {
-                                        spec.last_reload_error = Some(e.to_string());
-                                    }
-                                }
-                                state.window.request_redraw();
-                                return;
-                            }
-                            _ => {}
+                if key_ev.state == ElementState::Pressed
+                    && let Some(spec) = state.hot_reload.as_mut()
+                {
+                    match ke.code {
+                        KeyCode::F1 => {
+                            spec.show_inspector = !spec.show_inspector;
+                            state.window.request_redraw();
+                            return;
                         }
+                        KeyCode::F2 => {
+                            let cur = state.tree.theme().mode;
+                            let next = match cur {
+                                ThemeMode::Amoled => ThemeTokens::dark(),
+                                ThemeMode::Dark => ThemeTokens::light(),
+                                _ => ThemeTokens::amoled(),
+                            };
+                            state.tree.set_theme(next);
+                            state.window.request_redraw();
+                            return;
+                        }
+                        KeyCode::F3 => {
+                            spec.device_mode = !spec.device_mode;
+                            state.window.request_redraw();
+                            return;
+                        }
+                        KeyCode::F5 => {
+                            match spec.session.reload_file(
+                                &spec.path,
+                                spec.component.as_deref(),
+                                &mut state.tree,
+                            ) {
+                                Ok(_) => {
+                                    spec.last_reload_error = None;
+                                }
+                                Err(e) => {
+                                    spec.last_reload_error = Some(e.to_string());
+                                }
+                            }
+                            state.window.request_redraw();
+                            return;
+                        }
+                        _ => {}
                     }
                 }
                 if state.tree.handle_event(&UiEvent::Key(ke)) {

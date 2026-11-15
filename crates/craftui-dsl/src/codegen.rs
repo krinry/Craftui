@@ -223,6 +223,10 @@ fn emit_component(
         use_self: false,
     };
 
+    // The builder below is machine-written: it favours a direct, uniform
+    // translation of each `.cui` expression over idiomatic Rust, so style lints
+    // are switched off for it rather than surfacing in every app that uses the DSL.
+    let _ = writeln!(out, "#[allow(clippy::all)]");
     let _ = writeln!(out, "impl {} {{", comp.name);
     let _ = writeln!(out, "    #[allow(dead_code)]");
     let _ = writeln!(out, "    pub fn new(_cx: Scope) -> Self {{");
@@ -351,6 +355,67 @@ fn can_bind_handler_local(name: &str, ctx: &EmitCtx<'_>) -> bool {
 
 fn find_prop<'a>(el: &'a ElementNode, names: &[&str]) -> Option<&'a PropBinding> {
     el.props.iter().find(|p| names.iter().any(|n| p.name == *n))
+}
+
+/// Sizing that the wrapper around `if … else` branches takes over from them.
+///
+/// The branches are mounted inside a helper container. Left at its default
+/// size, that container is only as large as its content, so a branch asking
+/// for `flex_grow: 1.0` or `height: 100%` would have nothing to grow into.
+/// The first branch that sets a literal `width`, `height` or `flex_grow`
+/// decides the wrapper's value for it.
+///
+/// When one of the branches scrolls, a wrapper that grows takes exactly the
+/// space its parent has left. Otherwise the wrapper could never be smaller than
+/// the full scrolled content, and a long list would run off the screen instead
+/// of scrolling.
+fn slot_sizing_from_branches(branches: &[&ElementNode]) -> String {
+    fn literal_len(expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Length(v, Unit::Dp) => Some(format!("Length::Dp({v:.2})")),
+            Expr::Length(v, Unit::Px) => Some(format!("Length::Px({v:.2})")),
+            Expr::Length(v, Unit::Pct) => Some(format!("Length::Pct({v:.2})")),
+            Expr::Int(v) => Some(format!("Length::Dp({v}.0)")),
+            Expr::Float(v) => Some(format!("Length::Dp({v:.2})")),
+            _ => None,
+        }
+    }
+    fn literal_number(expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Int(v) => Some(format!("{v}.0")),
+            Expr::Float(v) => Some(format!("{v:.2}")),
+            _ => None,
+        }
+    }
+    let first = |name: &str, convert: fn(&Expr) -> Option<String>| {
+        branches
+            .iter()
+            .copied()
+            .filter_map(|el| find_prop(el, &[name]))
+            .find_map(|p| convert(&p.value))
+    };
+
+    let mut out = String::new();
+    if let Some(width) = first("width", literal_len) {
+        let _ = write!(out, ".with_width({width})");
+    }
+    if let Some(height) = first("height", literal_len) {
+        let _ = write!(out, ".with_height({height})");
+    }
+    if let Some(grow) = first("flex_grow", literal_number) {
+        let scrolls = branches.iter().any(|el| {
+            matches!(
+                el.kind.as_str(),
+                "ScrollView" | "VirtualList" | "VirtualGrid"
+            )
+        });
+        if scrolls {
+            let _ = write!(out, ".fill_remaining({grow})");
+        } else {
+            let _ = write!(out, ".with_flex_grow({grow})");
+        }
+    }
+    out
 }
 
 fn find_handler<'a>(el: &'a ElementNode, names: &[&str]) -> Option<&'a HandlerBinding> {
@@ -541,7 +606,11 @@ fn emit_element(
         }
         "Divider" | "HorizontalDivider" | "VerticalDivider" => {
             let is_vertical = el.kind == "VerticalDivider";
-            let default_axis = if is_vertical { "Axis::Vertical" } else { "Axis::Horizontal" };
+            let default_axis = if is_vertical {
+                "Axis::Vertical"
+            } else {
+                "Axis::Horizontal"
+            };
             let axis = find_prop(el, &["direction"])
                 .map(|p| expr_to_axis(&p.value, ctx, false))
                 .unwrap_or_else(|| default_axis.into());
@@ -655,7 +724,8 @@ fn emit_element(
                 }
                 _ => {
                     if let Some(fg) = custom_fg {
-                        let _ = writeln!(out, "{indent}    {tr}.set_button_foreground(__btn, {fg});");
+                        let _ =
+                            writeln!(out, "{indent}    {tr}.set_button_foreground(__btn, {fg});");
                     }
                 }
             }
@@ -1339,10 +1409,7 @@ fn emit_element(
                     })
                     .unwrap_or("CardVariant::Elevated"),
             };
-            let _ = writeln!(
-                out,
-                "{indent}let {var} = {tr}.card({cx}, {variant});"
-            );
+            let _ = writeln!(out, "{indent}let {var} = {tr}.card({cx}, {variant});");
         }
         "ListTile" => {
             let title_rv = find_prop(el, &["title"])
@@ -1463,20 +1530,19 @@ fn emit_element(
                 _ => (15.0f32, 400.0f32),
             };
             let mut style_chain = String::new();
-            if let Some(class_prop) = find_prop(el, &["class"]) {
-                if let Expr::String(s) = &class_prop.value {
-                    let tw = craftui_core::TailwindTokens::parse(s);
-                    if let Some(sz) = tw.font_size {
-                        default_size = sz;
-                    }
-                    if let Some(wt) = tw.font_weight {
-                        default_weight = wt;
-                    }
-                    if let Some(c) = tw.text_color {
-                        let (r, g, b, a) = (c.r, c.g, c.b, c.a);
-                        style_chain
-                            .push_str(&format!(".with_color(Color::rgba({r}, {g}, {b}, {a}))"));
-                    }
+            if let Some(class_prop) = find_prop(el, &["class"])
+                && let Expr::String(s) = &class_prop.value
+            {
+                let tw = craftui_core::TailwindTokens::parse(s);
+                if let Some(sz) = tw.font_size {
+                    default_size = sz;
+                }
+                if let Some(wt) = tw.font_weight {
+                    default_weight = wt;
+                }
+                if let Some(c) = tw.text_color {
+                    let (r, g, b, a) = (c.r, c.g, c.b, c.a);
+                    style_chain.push_str(&format!(".with_color(Color::rgba({r}, {g}, {b}, {a}))"));
                 }
             }
             if let Some(cp) = find_prop(el, &["color"]) {
@@ -1828,108 +1894,108 @@ fn emit_common_props_and_events(
     let mut box_dyn_tracks = Vec::new();
 
     // Parse Tailwind utility class tokens if class="..." attribute is provided
-    if let Some(class_prop) = find_prop(el, &["class"]) {
-        if let Expr::String(s) = &class_prop.value {
-            let tw = craftui_core::TailwindTokens::parse(s);
-            if tw.is_column {
-                layout_init_stmts.push("ls.mode = LayoutMode::Column;".into());
-            } else if tw.is_row {
-                layout_init_stmts.push("ls.mode = LayoutMode::Row;".into());
-            }
-            if tw.align_center {
-                layout_init_stmts.push("ls.align_items = Alignment::Center;".into());
-            } else if tw.align_start {
-                layout_init_stmts.push("ls.align_items = Alignment::Start;".into());
-            } else if tw.align_end {
-                layout_init_stmts.push("ls.align_items = Alignment::End;".into());
-            }
-            if tw.justify_between {
-                layout_init_stmts.push("ls.justify_content = Justify::SpaceBetween;".into());
-            } else if tw.justify_center {
-                layout_init_stmts.push("ls.justify_content = Justify::Center;".into());
-            } else if tw.justify_around {
-                layout_init_stmts.push("ls.justify_content = Justify::SpaceAround;".into());
-            } else if tw.justify_evenly {
-                layout_init_stmts.push("ls.justify_content = Justify::SpaceEvenly;".into());
-            } else if tw.justify_start {
-                layout_init_stmts.push("ls.justify_content = Justify::Start;".into());
-            } else if tw.justify_end {
-                layout_init_stmts.push("ls.justify_content = Justify::End;".into());
-            }
-            if let Some(pad) = tw.padding {
-                layout_init_stmts.push(format!(
-                    "ls.padding = Insets::new({}f32, {}f32, {}f32, {}f32);",
-                    pad.top, pad.right, pad.bottom, pad.left
-                ));
-            }
-            if let Some(gap) = tw.gap {
-                layout_init_stmts.push(format!("ls.gap_x = {gap}f32; ls.gap_y = {gap}f32;"));
-            }
-            if let Some(w) = tw.width {
-                match w {
-                    craftui_core::Length::Pct(pct) => {
-                        layout_init_stmts.push(format!("ls.width = Length::Pct({pct}f32);"));
-                    }
-                    craftui_core::Length::Dp(dp) => {
-                        layout_init_stmts.push(format!("ls.width = Length::Dp({dp}f32); ls.min_width = Length::Dp({dp}f32); ls.flex_shrink = 0.0f32;"));
-                    }
-                    craftui_core::Length::Px(px) => {
-                        layout_init_stmts.push(format!("ls.width = Length::Dp({px}f32); ls.min_width = Length::Dp({px}f32); ls.flex_shrink = 0.0f32;"));
-                    }
-                    _ => {}
+    if let Some(class_prop) = find_prop(el, &["class"])
+        && let Expr::String(s) = &class_prop.value
+    {
+        let tw = craftui_core::TailwindTokens::parse(s);
+        if tw.is_column {
+            layout_init_stmts.push("ls.mode = LayoutMode::Column;".into());
+        } else if tw.is_row {
+            layout_init_stmts.push("ls.mode = LayoutMode::Row;".into());
+        }
+        if tw.align_center {
+            layout_init_stmts.push("ls.align_items = Alignment::Center;".into());
+        } else if tw.align_start {
+            layout_init_stmts.push("ls.align_items = Alignment::Start;".into());
+        } else if tw.align_end {
+            layout_init_stmts.push("ls.align_items = Alignment::End;".into());
+        }
+        if tw.justify_between {
+            layout_init_stmts.push("ls.justify_content = Justify::SpaceBetween;".into());
+        } else if tw.justify_center {
+            layout_init_stmts.push("ls.justify_content = Justify::Center;".into());
+        } else if tw.justify_around {
+            layout_init_stmts.push("ls.justify_content = Justify::SpaceAround;".into());
+        } else if tw.justify_evenly {
+            layout_init_stmts.push("ls.justify_content = Justify::SpaceEvenly;".into());
+        } else if tw.justify_start {
+            layout_init_stmts.push("ls.justify_content = Justify::Start;".into());
+        } else if tw.justify_end {
+            layout_init_stmts.push("ls.justify_content = Justify::End;".into());
+        }
+        if let Some(pad) = tw.padding {
+            layout_init_stmts.push(format!(
+                "ls.padding = Insets::new({}f32, {}f32, {}f32, {}f32);",
+                pad.top, pad.right, pad.bottom, pad.left
+            ));
+        }
+        if let Some(gap) = tw.gap {
+            layout_init_stmts.push(format!("ls.gap_x = {gap}f32; ls.gap_y = {gap}f32;"));
+        }
+        if let Some(w) = tw.width {
+            match w {
+                craftui_core::Length::Pct(pct) => {
+                    layout_init_stmts.push(format!("ls.width = Length::Pct({pct}f32);"));
                 }
-            }
-            if let Some(h) = tw.height {
-                match h {
-                    craftui_core::Length::Pct(pct) => {
-                        layout_init_stmts.push(format!("ls.height = Length::Pct({pct}f32);"));
-                    }
-                    craftui_core::Length::Dp(dp) => {
-                        layout_init_stmts.push(format!(
-                            "ls.height = Length::Dp({dp}f32); ls.min_height = Length::Dp({dp}f32);"
-                        ));
-                    }
-                    craftui_core::Length::Px(px) => {
-                        layout_init_stmts.push(format!(
-                            "ls.height = Length::Dp({px}f32); ls.min_height = Length::Dp({px}f32);"
-                        ));
-                    }
-                    _ => {}
+                craftui_core::Length::Dp(dp) => {
+                    layout_init_stmts.push(format!("ls.width = Length::Dp({dp}f32); ls.min_width = Length::Dp({dp}f32); ls.flex_shrink = 0.0f32;"));
                 }
+                craftui_core::Length::Px(px) => {
+                    layout_init_stmts.push(format!("ls.width = Length::Dp({px}f32); ls.min_width = Length::Dp({px}f32); ls.flex_shrink = 0.0f32;"));
+                }
+                _ => {}
             }
-            if let Some(bg) = tw.background {
-                let (r, g, b, a) = (bg.r, bg.g, bg.b, bg.a);
-                box_stmts.push(format!(
+        }
+        if let Some(h) = tw.height {
+            match h {
+                craftui_core::Length::Pct(pct) => {
+                    layout_init_stmts.push(format!("ls.height = Length::Pct({pct}f32);"));
+                }
+                craftui_core::Length::Dp(dp) => {
+                    layout_init_stmts.push(format!(
+                        "ls.height = Length::Dp({dp}f32); ls.min_height = Length::Dp({dp}f32);"
+                    ));
+                }
+                craftui_core::Length::Px(px) => {
+                    layout_init_stmts.push(format!(
+                        "ls.height = Length::Dp({px}f32); ls.min_height = Length::Dp({px}f32);"
+                    ));
+                }
+                _ => {}
+            }
+        }
+        if let Some(bg) = tw.background {
+            let (r, g, b, a) = (bg.r, bg.g, bg.b, bg.a);
+            box_stmts.push(format!(
                     "bs.background = Some(ReactiveValue::Static(Brush::Solid(Color::rgba({r}, {g}, {b}, {a}))));"
                 ));
-            }
-            if let Some(rad) = tw.radius {
-                box_stmts.push(format!(
-                    "bs.radius = CornerRadii::new({}f32, {}f32, {}f32, {}f32);",
-                    rad.top_left, rad.top_right, rad.bottom_right, rad.bottom_left
-                ));
-            }
-            if let Some(sh) = tw.shadow {
-                let (r, g, b, a) = (sh.color.r, sh.color.g, sh.color.b, sh.color.a);
-                box_stmts.push(format!(
+        }
+        if let Some(rad) = tw.radius {
+            box_stmts.push(format!(
+                "bs.radius = CornerRadii::new({}f32, {}f32, {}f32, {}f32);",
+                rad.top_left, rad.top_right, rad.bottom_right, rad.bottom_left
+            ));
+        }
+        if let Some(sh) = tw.shadow {
+            let (r, g, b, a) = (sh.color.r, sh.color.g, sh.color.b, sh.color.a);
+            box_stmts.push(format!(
                     "bs.shadow = Some(BoxShadow::drop({}f32, {}f32, {}f32, {}f32, Color::rgba({r}, {g}, {b}, {a})));",
                     sh.offset_x, sh.offset_y, sh.blur_radius, sh.spread
                 ));
-            }
-            if tw.border_width.is_some() || tw.border_color.is_some() {
-                let bw = tw.border_width.unwrap_or(1.0);
-                let bc = tw
-                    .border_color
-                    .unwrap_or(craftui_core::Color::rgb(30, 41, 59));
-                box_stmts.push(format!(
+        }
+        if tw.border_width.is_some() || tw.border_color.is_some() {
+            let bw = tw.border_width.unwrap_or(1.0);
+            let bc = tw
+                .border_color
+                .unwrap_or(craftui_core::Color::rgb(30, 41, 59));
+            box_stmts.push(format!(
                     "bs.border = Some(Border {{ width: {bw}f32, color: Color::rgba({}, {}, {}, {}), radius: bs.radius }});",
                     bc.r, bc.g, bc.b, bc.a
                 ));
-                box_stmts.push(format!(
-                    "bs.border_color = Some(ReactiveValue::Static(Color::rgba({}, {}, {}, {})));",
-                    bc.r, bc.g, bc.b, bc.a
-                ));
-            }
+            box_stmts.push(format!(
+                "bs.border_color = Some(ReactiveValue::Static(Color::rgba({}, {}, {}, {})));",
+                bc.r, bc.g, bc.b, bc.a
+            ));
         }
     }
 
@@ -2300,7 +2366,11 @@ fn emit_common_props_and_events(
     }
 
     // 7. Gesture & pointer handlers supported on all nodes (skip Button variants' and ListTile's primary on_tap unless subcomponent)
-    if (is_subcomponent || (!el.kind.ends_with("Button") && !el.kind.ends_with("button") && el.kind != "ListTile" && el.kind != "list_tile"))
+    if (is_subcomponent
+        || (!el.kind.ends_with("Button")
+            && !el.kind.ends_with("button")
+            && el.kind != "ListTile"
+            && el.kind != "list_tile"))
         && let Some(h) = find_handler(el, &["on_tap", "on_click"])
         && (!is_subcomponent
             || !ctx
@@ -2744,9 +2814,10 @@ fn emit_children(
                         &slot_ctx,
                     );
 
+                    let slot_sizing = slot_sizing_from_branches(&[&**then_branch, &**eb]);
                     let _ = writeln!(
                         out,
-                        "{indent}{{ let __if_host = {tr}.dynamic_slot({cx}, {slot_layout}, {{ {captures_cond} move || {cond_dyn} }}, {{ {captures_body} move |__if_cx, &__is_then, __if_tree| {{ if __is_then {{\n{then_buf}{indent}            {tvar}\n{indent}        }} else {{\n{else_buf}{indent}            {evar}\n{indent}        }} }} }}); {tr}.append_child({var}, __if_host); }}"
+                        "{indent}{{ let __if_host = {tr}.dynamic_slot({cx}, {slot_layout}{slot_sizing}, {{ {captures_cond} move || {cond_dyn} }}, {{ {captures_body} move |__if_cx, &__is_then, __if_tree| {{ if __is_then {{\n{then_buf}{indent}            {tvar}\n{indent}        }} else {{\n{else_buf}{indent}            {evar}\n{indent}        }} }} }}); {tr}.append_child({var}, __if_host); }}"
                     );
                 } else {
                     let cvar = emit_element(out, then_branch, counter, indent, ctx);
@@ -3373,10 +3444,10 @@ fn infer_expr_type(expr: &Expr, ctx: &EmitCtx<'_>) -> String {
             }
         }
         Expr::MethodCall(base, m, _) => {
-            if let Expr::Ident(root) = base.as_ref() {
-                if root == "Math" {
-                    return "f32".into();
-                }
+            if let Expr::Ident(root) = base.as_ref()
+                && root == "Math"
+            {
+                return "f32".into();
             }
             match m.as_str() {
                 "len" => "usize".into(),
@@ -3550,12 +3621,18 @@ fn expr_to_typed_rust_inner(expr: &Expr, ty: &str, ctx: &EmitCtx<'_>, tracked: b
                         "width" => format!("__metrics_sig.{get}().logical_size.width"),
                         "height" => format!("__metrics_sig.{get}().logical_size.height"),
                         "scale_factor" => format!("__metrics_sig.{get}().scale_factor"),
-                        "is_compact" => format!("(__metrics_sig.{get}().logical_size.width < 600.0)"),
+                        "is_compact" => {
+                            format!("(__metrics_sig.{get}().logical_size.width < 600.0)")
+                        }
                         "is_medium" => format!(
                             "(__metrics_sig.{get}().logical_size.width >= 600.0 && __metrics_sig.{get}().logical_size.width <= 1024.0)"
                         ),
-                        "is_expanded" => format!("(__metrics_sig.{get}().logical_size.width > 1024.0)"),
-                        "breakpoint" => format!("format!(\"{{:?}}\", __metrics_sig.{get}().breakpoint())"),
+                        "is_expanded" => {
+                            format!("(__metrics_sig.{get}().logical_size.width > 1024.0)")
+                        }
+                        "breakpoint" => {
+                            format!("format!(\"{{:?}}\", __metrics_sig.{get}().breakpoint())")
+                        }
                         _ => "0.0".into(),
                     };
                     let field_ty = match field.as_str() {
@@ -3720,39 +3797,39 @@ fn expr_to_typed_rust_inner(expr: &Expr, ty: &str, ctx: &EmitCtx<'_>, tracked: b
             _ => "Default::default()".into(),
         },
         Expr::MethodCall(recv, method, args) => {
-            if let Expr::Ident(id) = recv.as_ref() {
-                if id == "Math" {
-                    match method.as_str() {
-                        "sin" | "cos" | "tan" | "sqrt" if args.len() == 1 => {
-                            let x = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
-                            return cast_expr_var(&format!("({x}).{method}()"), "f32", ty);
-                        }
-                        "abs" if args.len() == 1 => {
-                            let x = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
-                            return cast_expr_var(&format!("({x}).abs()"), "f32", ty);
-                        }
-                        "round" | "floor" | "ceil" if args.len() == 1 => {
-                            let x = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
-                            return cast_expr_var(&format!("({x}).{method}()"), "f32", ty);
-                        }
-                        "min" | "max" if args.len() == 2 => {
-                            let a = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
-                            let b = expr_to_typed_rust_inner(&args[1], "f32", ctx, tracked);
-                            return cast_expr_var(&format!("({a}).{method}({b})"), "f32", ty);
-                        }
-                        "pow" if args.len() == 2 => {
-                            let a = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
-                            let b = expr_to_typed_rust_inner(&args[1], "f32", ctx, tracked);
-                            return cast_expr_var(&format!("({a}).powf({b})"), "f32", ty);
-                        }
-                        "clamp" if args.len() == 3 => {
-                            let x = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
-                            let lo = expr_to_typed_rust_inner(&args[1], "f32", ctx, tracked);
-                            let hi = expr_to_typed_rust_inner(&args[2], "f32", ctx, tracked);
-                            return cast_expr_var(&format!("({x}).clamp({lo}, {hi})"), "f32", ty);
-                        }
-                        _ => {}
+            if let Expr::Ident(id) = recv.as_ref()
+                && id == "Math"
+            {
+                match method.as_str() {
+                    "sin" | "cos" | "tan" | "sqrt" if args.len() == 1 => {
+                        let x = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
+                        return cast_expr_var(&format!("({x}).{method}()"), "f32", ty);
                     }
+                    "abs" if args.len() == 1 => {
+                        let x = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
+                        return cast_expr_var(&format!("({x}).abs()"), "f32", ty);
+                    }
+                    "round" | "floor" | "ceil" if args.len() == 1 => {
+                        let x = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
+                        return cast_expr_var(&format!("({x}).{method}()"), "f32", ty);
+                    }
+                    "min" | "max" if args.len() == 2 => {
+                        let a = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
+                        let b = expr_to_typed_rust_inner(&args[1], "f32", ctx, tracked);
+                        return cast_expr_var(&format!("({a}).{method}({b})"), "f32", ty);
+                    }
+                    "pow" if args.len() == 2 => {
+                        let a = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
+                        let b = expr_to_typed_rust_inner(&args[1], "f32", ctx, tracked);
+                        return cast_expr_var(&format!("({a}).powf({b})"), "f32", ty);
+                    }
+                    "clamp" if args.len() == 3 => {
+                        let x = expr_to_typed_rust_inner(&args[0], "f32", ctx, tracked);
+                        let lo = expr_to_typed_rust_inner(&args[1], "f32", ctx, tracked);
+                        let hi = expr_to_typed_rust_inner(&args[2], "f32", ctx, tracked);
+                        return cast_expr_var(&format!("({x}).clamp({lo}, {hi})"), "f32", ty);
+                    }
+                    _ => {}
                 }
             }
             let rty = infer_expr_type(recv, ctx);

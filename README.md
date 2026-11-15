@@ -1,117 +1,155 @@
 # CraftUI
 
-A pure-Rust, MIT-licensed cross-platform declarative UI framework targeting **Desktop** (Windows, macOS, Linux), **Mobile** (Android, iOS), and **Web** (WebAssembly), engineered for exceptional visual beauty, lightweight footprint, sub-100ms developer iteration, and native OS capabilities.
+A declarative UI framework written in Rust. One codebase draws its own
+interface on desktop (Linux, macOS, Windows), Android and the Web. MIT licensed.
 
-> **Roadmap & Docs:**
-> - [`ROADMAP.md`](ROADMAP.md) — Audited issue register and verified production phases (Phases 1–5 completed).
-> - [`craftui_prd.md`](craftui_prd.md) — Product requirements and capabilities.
-> - [`craftui_architecture.md`](craftui_architecture.md) — System architecture and rendering pipeline.
-> - [`craftui_dsl_and_design_spec.md`](craftui_dsl_and_design_spec.md) — `.cui` declarative template and design system specifications.
+You describe the interface in `.cui` files, which are compiled to Rust when the
+app is built, and keep the app's logic in ordinary Rust.
 
----
+```cui
+export component Counter {
+    in-out property <int> count: 0;
 
-## Key Features & Highlights
+    Column {
+        gap: 12;
+        padding: 24;
 
-- **Lightweight & High-Performance Hybrid Rendering**:
-  - Pure-WGSL **Instanced SDF Quad + Glyph Atlas + Kawase Backdrop-Blur GPU backend (`gpu-sdf`)** running on Desktop (Vulkan, Metal, DirectX 12), Mobile (Vulkan, GLES), WebGPU, **and WebGL2** without compute-shader requirements.
-  - Optional `vello` GPU (`gpu-vello`) and pure-software fallback renderers (`vello_cpu`, `tiny-skia`).
-  - Zero idle CPU/GPU consumption: demand-driven frame pacing (`0%` idle spin) across desktop, mobile, and web.
-- **Modern Declarative UI & Design System**:
-  - Declarative `.cui` markup and pure-Rust `cui!` macro with compile-time type validation, two-way bindings (`<=>`), and declarative `animate` blocks.
-  - Complete widget suite (40+ built-ins): `SafeArea` (dynamic notch/Dynamic Island/keyboard insets), `SegmentedControl`, `Accordion`, `DataTable` (sortable, striped, selectable), `SplitPane`, `Spinner`, `Badge`, `ToastHost`, `Modal`, `BottomSheet`, `ScrollView`, `VirtualList`, `VirtualGrid`, `Tabs`, `Slider`, `Switch`, `Checkbox`, `TextInput`, `TextArea`, `Canvas`, and `PlatformView`.
-  - Built-in design token modes (`Dark`, `Light`, `Amoled`, `HighContrast`, `ThemeOverride`) with live runtime interpolation.
-- **Native Mobile Capabilities & Zero-Boilerplate Permissions**:
-  - **35 Standard Cross-Platform Permissions** (`Camera`, `Microphone`, `LocationWhenInUse`, `LocationAlways`, `Photos`, `Notifications`, `Bluetooth`, `Biometrics`, `Contacts`, `Sensors`, `StorageRead`, `Nfc`, `Vibrate`, `ClipboardRead`, etc.).
-  - Single zero-dependency `craftui.toml` manifest:
-    - Automatically emits Android `<uses-permission>` (with exact `android:maxSdkVersion` bounds) and `<uses-feature android:required="false" />`.
-    - Automatically merges Apple `Info.plist` `NS*UsageDescription` privacy strings and `UIBackgroundModes`.
-    - Automatically checks W3C Web Permissions API descriptor compatibility.
-  - Native haptics (`HapticStyle`), OS share sheet (`SharePayload`), secure key-value storage (Android Keystore / iOS Keychain), and live device/network/battery telemetry.
-- **Flutter-Surpassing Developer Experience (DX)**:
-  - `craftui-cli`:
-    - `craftui new <name> --template counter|dashboard|mobile`
-    - `craftui init` (initializes `craftui.toml` in existing projects without overwriting code)
-    - `craftui setup` (installs missing Rust targets and audits NDK/ADB/tools)
-    - `craftui run --platform desktop|web|android` (multi-threaded Web static server with `application/wasm` MIME; direct ADB install/launch)
-    - `craftui permissions list|check` (audits `craftui.toml` against target platforms)
-    - `craftui doctor [--json]` (inspects rustc, cargo, targets, NDK, clang, Xcode, and `.cui` files)
-  - **Official VS Code Extension** (`editors/vscode/`): syntax highlighting, LSP diagnostics, hover docs, completions, hex color pickers, and live hot-reload preview shortcuts.
-
----
-
-## Quick Start
-
-### 1. Install & Setup Toolchain
-```bash
-# Verify environment and install missing targets
-cargo run -p craftui-cli -- doctor
-cargo run -p craftui-cli -- setup
+        Text { text: "Count: " + count; font_size: 24; }
+        Button { text: "Add one"; on_tap => { count += 1; } }
+    }
+}
 ```
 
-### 2. Scaffold a New Project
-```bash
-# Create a mobile-ready starter
-cargo run -p craftui-cli -- new my_app --template mobile
-cd my_app
+> **Status: early.** Version 0.1.0, not published on crates.io, and the API
+> will change. Read the [status table](#status) before choosing it for a
+> project.
 
-# Audit permissions manifest
-cargo run -p craftui-cli -- permissions check craftui.toml
+## Try the example app
 
-# Validate templates and run on desktop
-cargo run -p craftui-cli -- check ui/main.cui
-cargo run -p craftui-cli -- run --platform desktop
-```
-
-### 3. Build & Package for All Platforms
-```bash
-# WebAssembly web bundle (dist/web) and serve locally
-cargo run -p craftui-cli -- run --platform web --port 8080
-
-# Android Gradle / GameActivity project (dist/android)
-cargo run -p craftui-cli -- build --platform android
-
-# iOS UIKit / Metal / C-ABI bridge bundle (dist/ios)
-cargo run -p craftui-cli -- build --platform ios --skip-cargo
-```
-
----
-
-## Workspace Verification & Testing
+`examples/notes` is a notes app with search, pinning, an editor and saved data.
+It runs on all three platform families from the same code.
 
 ```bash
-# Run all workspace unit and integration tests
-cargo test --workspace
+# Desktop
+cargo run -p craftui-example-notes --features desktop
 
-# Enforce strict compiler and clippy warnings
-cargo clippy --workspace --all-targets -- -D warnings
+# Web: writes dist/notes-web, then serve that folder
+cargo run -p craftui-cli -- build --platform web --release -p craftui-example-notes -o dist/notes-web
 
-# Check headless minimal footprint build
-cargo check -p craftui --no-default-features --features "desktop,dsl,hot-reload,embedded-fallback-font,gpu-sdf"
-
-# Check Web WASM target
-cargo clippy -p craftui-platform-web --target wasm32-unknown-unknown --all-targets -- -D warnings
-
-# Run headless performance benchmark suite
-cargo bench -p craftui --bench perf_suite -- --quick --json
-
-# Run package binary size report
-bash scripts/size_report.sh
+# Android: writes a Gradle project, then builds the APK
+cargo run -p craftui-cli -- build --platform android --release -p craftui-example-notes -o dist/notes-android
+gradle -p dist/notes-android assembleDebug
 ```
 
----
+Requirements and details are in [`examples/notes/README.md`](examples/notes/README.md).
 
-## Platform Verification & Honest Limitations
+## Status
 
-| Platform | Verification Status | Notes & Limitations |
+What the project's CI checks on every change, and what it does not.
+
+| Area | Checked automatically | Not checked |
 |---|---|---|
-| **Linux (Host)** | **Verified** | Full desktop suite, Wayland/X11, software + GPU offscreen rendering, CLI, and LSP verified. |
-| **Web (`wasm32-unknown-unknown`)** | **Verified** | Cross-compilation, strict `-D warnings` clippy, `application/wasm` HTTP server, and DOM ARIA/canvas verified; browser GPU display requires live browser. |
-| **Android (`aarch64-linux-android`)** | **Verified** | Cross-compilation via Android NDK 28.2 (`aarch64-linux-android24-clang`), `AndroidHost` lifecycle/IME/permissions tests, and Gradle project generation verified; live APK on-device execution requires physical Android device or emulator. |
-| **iOS (`aarch64-apple-ios`)** | **Verified C-ABI / Swift** | C-ABI bridge exports, `IosAppHost` lifecycle/touch/permissions tests, and Xcode bridge templates (`CraftUI.h`, `CraftUIViewController.swift`, `CraftUIPermissions.swift`, `Info.plist`) verified; final static library linking (`xcodebuild`) and IPA signing require macOS host. |
-| **Windows (`x86_64-pc-windows-msvc`)** | **Verified Core/DSL** | Platform-neutral code, layout, rendering, and CLI verified on Linux host; Win32 `IFileDialog` / `CF_UNICODETEXT` native runtime execution requires Windows CI runner. |
+| Framework (Linux) | Formatting, clippy with warnings denied, the whole test suite. UI tests run without a window. | Real windows, GPU output, system dialogs. |
+| Web | The notes app is built to WebAssembly and driven in headless Chrome: it starts, paints, opens the editor, accepts typing, saves, and restores after a reload. | Other browsers; real GPUs; touch input; mobile browsers. |
+| Android | The notes app is built into a debug APK and the package is inspected (id, native library, entry point, SDK level). | **Running on a device or emulator.** Release signing. |
+| macOS, Windows | Clippy with warnings denied and the whole test suite, on every change. | Real windows, GPU output, system dialogs. |
+| iOS | Nothing beyond compiling shared code. A platform crate and project templates exist. | Building, linking and running an iOS app. |
 
----
+Known gaps:
+
+- Some widget names are accepted by the language but not implemented yet; see
+  the end of the [widget catalog](docs/src/widgets/catalog.md).
+- A component cannot take child elements from the place it is used.
+- Editing `.cui` files while the app runs uses a separate interpreter from the
+  build-time compiler, and the two can differ.
+- The Android project template declares `INTERNET` and biometric permissions
+  even when the app asks for none.
+- The WebAssembly file for the notes app is about 6.2 MB before compression.
+
+## What is in the box
+
+- **The `.cui` language**: components, typed properties, callbacks, two-way
+  bindings (`<=>`), `if` / `for`, imports, theme tokens, `animate` blocks.
+  Errors are reported at build time with file and line.
+- **Reactive state**: signals, computed values and effects. Only the parts of
+  the interface that read a changed value are updated.
+- **Widgets**: layout (`Row`, `Column`, `Stack`, `Grid`, `ScrollView`,
+  `SafeArea`), text and input (`Text`, `TextInput`, `TextArea`, `Checkbox`,
+  `Switch`, `Slider`, `Select`), lists (`VirtualList`, `VirtualGrid`,
+  `DataTable`), overlays (`Modal`, `BottomSheet`, `ToastHost`), `Canvas`, and a
+  Material-style component library written in `.cui`.
+- **Rendering**: a GPU renderer on `wgpu`, an optional Vello renderer, and CPU
+  renderers for machines without a GPU and for tests.
+- **Themes**: light, dark, AMOLED and high-contrast token sets.
+- **Platform services**: clipboard, file dialogs, permissions, haptics, sharing,
+  secure storage. How complete each one is differs by platform.
+- **Tools**: the `craftui` command (`new`, `run`, `build`, `check`, `preview`,
+  `doctor`, `permissions`), a language server, and a VS Code extension in
+  `editors/vscode`.
+
+## Start a project
+
+```bash
+git clone https://github.com/krinry/Craftui
+cd Craftui
+cargo install --path tools/craftui-cli
+
+# Create the app beside the clone, not inside it: a package inside `Craftui`
+# would be caught by that workspace, which does not list it, and Cargo would
+# reject the build.
+cd ..
+craftui new my_app
+cd my_app
+```
+
+Because CraftUI is not on crates.io, open the new project's `Cargo.toml` and
+point the `craftui` dependency at your clone:
+
+```toml
+craftui = { path = "../Craftui/crates/craftui" }
+```
+
+Then:
+
+```bash
+craftui check ui/main.cui     # validate the interface file
+craftui run --platform desktop
+```
+
+## Documentation
+
+The book is in [`docs/`](docs/src/SUMMARY.md):
+
+- [Installation](docs/src/getting-started/installation-linux-android.md)
+- [Quickstart](docs/src/getting-started/quickstart.md)
+- [The `.cui` language](docs/src/dsl/syntax-guide.md)
+- [Reactivity and Rust](docs/src/dsl/reactivity.md)
+- [Widget catalog](docs/src/widgets/catalog.md)
+- [Building the notes app](docs/src/guides/notes-app.md)
+- Platform guides: [desktop](docs/src/platforms/linux-desktop.md),
+  [Android](docs/src/platforms/android-on-linux.md),
+  [Web](docs/src/platforms/web.md)
+
+Every `cui` example in the documentation is compiled by the test suite, so the
+examples stay valid as the language changes.
+
+Design notes and plans written before and during development are in
+[`docs/design/`](docs/design/README.md). They describe intent and are not always
+accurate about the current code; where they disagree with the book, the book is
+right.
+
+## Developing CraftUI
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the layout of the repository and
+[`CHANGELOG.md`](CHANGELOG.md) for recent changes.
 
 ## License
 
-Licensed under the [MIT License](LICENSE) or [Apache License 2.0](LICENSE-APACHE) at your option. Zero GPL/LGPL/AGPL dependencies are permitted (enforced by `deny.toml`).
+[MIT](LICENSE). Dependencies under GPL, LGPL or AGPL are not accepted; CI
+enforces this with `cargo deny`.

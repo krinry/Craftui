@@ -387,16 +387,16 @@ impl HotReloadSession {
 
         // Second pass: install reactive Window effects with full component properties map
         for prop in &comp.properties {
-            if let Some(ref def_expr) = prop.default_value {
-                if expr_references_window(def_expr) {
-                    let sig_c = self.store.props.get(&prop.name).copied().unwrap();
-                    let expr_c = def_expr.clone();
-                    let env_c = full_env.clone();
-                    mount_scope.effect(move || {
-                        let v = eval_expr_tracked(&expr_c, &env_c, true);
-                        sig_c.set(v);
-                    });
-                }
+            if let Some(ref def_expr) = prop.default_value
+                && expr_references_window(def_expr)
+            {
+                let sig_c = self.store.props.get(&prop.name).copied().unwrap();
+                let expr_c = def_expr.clone();
+                let env_c = full_env.clone();
+                mount_scope.effect(move || {
+                    let v = eval_expr_tracked(&expr_c, &env_c, true);
+                    sig_c.set(v);
+                });
             }
         }
 
@@ -1638,27 +1638,27 @@ fn apply_common_props_and_events(
 
     if let Some(cls_prop) = find_prop(el, &["class"]) {
         let tw = craftui_core::TailwindTokens::parse(&eval_expr(&cls_prop.value, env).as_str());
-        if let Some(bg) = tw.background {
-            if box_style.background.is_none() {
-                box_style.background = Some(ReactiveValue::Static(Brush::Solid(bg)));
-                box_dirty = true;
-            }
+        if let Some(bg) = tw.background
+            && box_style.background.is_none()
+        {
+            box_style.background = Some(ReactiveValue::Static(Brush::Solid(bg)));
+            box_dirty = true;
         }
-        if let Some(r) = tw.radius {
-            if box_style.radius == CornerRadii::ZERO {
-                box_style.radius = r;
-                if let Some(ref mut br) = box_style.border {
-                    br.radius = r;
-                }
-                tree.set_image_radius(node, r);
-                box_dirty = true;
+        if let Some(r) = tw.radius
+            && box_style.radius == CornerRadii::ZERO
+        {
+            box_style.radius = r;
+            if let Some(ref mut br) = box_style.border {
+                br.radius = r;
             }
+            tree.set_image_radius(node, r);
+            box_dirty = true;
         }
-        if let Some(sh) = tw.shadow {
-            if box_style.shadow.is_none() {
-                box_style.shadow = Some(sh);
-                box_dirty = true;
-            }
+        if let Some(sh) = tw.shadow
+            && box_style.shadow.is_none()
+        {
+            box_style.shadow = Some(sh);
+            box_dirty = true;
         }
     }
 
@@ -2296,17 +2296,17 @@ fn instantiate_subcomponent(
                 .map(|e| eval_expr(e, outer_env))
                 .unwrap_or(DynValue::Null);
             let child_sig = scope.signal(v);
-            if let Some(ref def_expr) = p.default_value {
-                if expr_references_window(def_expr) {
-                    let expr_c = def_expr.clone();
-                    let outer_c = outer_env.clone();
-                    scope.effect(move || {
-                        let nv = eval_expr_tracked(&expr_c, &outer_c, true);
-                        if child_sig.get_untracked() != nv {
-                            child_sig.set(nv);
-                        }
-                    });
-                }
+            if let Some(ref def_expr) = p.default_value
+                && expr_references_window(def_expr)
+            {
+                let expr_c = def_expr.clone();
+                let outer_c = outer_env.clone();
+                scope.effect(move || {
+                    let nv = eval_expr_tracked(&expr_c, &outer_c, true);
+                    if child_sig.get_untracked() != nv {
+                        child_sig.set(nv);
+                    }
+                });
             }
             sub_props.insert(p.name.clone(), child_sig);
         }
@@ -3034,14 +3034,14 @@ fn eval_expr_tracked(expr: &Expr, env: &DynEnv, track: bool) -> DynValue {
         }
         Expr::Member(base, field) => {
             if let Expr::Ident(root) = base.as_ref() {
-                if root == "root" {
-                    if let Some(sig) = env.props.get(field) {
-                        return if track {
-                            sig.get()
-                        } else {
-                            sig.get_untracked()
-                        };
-                    }
+                if root == "root"
+                    && let Some(sig) = env.props.get(field)
+                {
+                    return if track {
+                        sig.get()
+                    } else {
+                        sig.get_untracked()
+                    };
                 }
                 if root == "Math" {
                     return match field.as_str() {
@@ -3123,71 +3123,65 @@ fn eval_expr_tracked(expr: &Expr, env: &DynEnv, track: bool) -> DynValue {
             }
         }
         Expr::MethodCall(recv, method, args) => {
-            if let Expr::Ident(id) = recv.as_ref() {
-                if id == "Math" {
-                    let eval_args: Vec<DynValue> = args
-                        .iter()
-                        .map(|a| eval_expr_tracked(a, env, track))
-                        .collect();
-                    return match method.as_str() {
-                        "sin" if eval_args.len() == 1 => {
-                            DynValue::Float(eval_args[0].as_f32().sin() as f64)
+            if let Expr::Ident(id) = recv.as_ref()
+                && id == "Math"
+            {
+                let eval_args: Vec<DynValue> = args
+                    .iter()
+                    .map(|a| eval_expr_tracked(a, env, track))
+                    .collect();
+                return match method.as_str() {
+                    "sin" if eval_args.len() == 1 => {
+                        DynValue::Float(eval_args[0].as_f32().sin() as f64)
+                    }
+                    "cos" if eval_args.len() == 1 => {
+                        DynValue::Float(eval_args[0].as_f32().cos() as f64)
+                    }
+                    "tan" if eval_args.len() == 1 => {
+                        DynValue::Float(eval_args[0].as_f32().tan() as f64)
+                    }
+                    "sqrt" if eval_args.len() == 1 => {
+                        DynValue::Float(eval_args[0].as_f32().sqrt() as f64)
+                    }
+                    "abs" if eval_args.len() == 1 => match eval_args[0] {
+                        DynValue::Int(v) => DynValue::Int(v.abs()),
+                        _ => DynValue::Float(eval_args[0].as_f32().abs() as f64),
+                    },
+                    "round" if eval_args.len() == 1 => {
+                        DynValue::Float(eval_args[0].as_f32().round() as f64)
+                    }
+                    "floor" if eval_args.len() == 1 => {
+                        DynValue::Float(eval_args[0].as_f32().floor() as f64)
+                    }
+                    "ceil" if eval_args.len() == 1 => {
+                        DynValue::Float(eval_args[0].as_f32().ceil() as f64)
+                    }
+                    "min" if eval_args.len() == 2 => {
+                        if let (DynValue::Int(a), DynValue::Int(b)) = (&eval_args[0], &eval_args[1])
+                        {
+                            DynValue::Int((*a).min(*b))
+                        } else {
+                            DynValue::Float(eval_args[0].as_f32().min(eval_args[1].as_f32()) as f64)
                         }
-                        "cos" if eval_args.len() == 1 => {
-                            DynValue::Float(eval_args[0].as_f32().cos() as f64)
+                    }
+                    "max" if eval_args.len() == 2 => {
+                        if let (DynValue::Int(a), DynValue::Int(b)) = (&eval_args[0], &eval_args[1])
+                        {
+                            DynValue::Int((*a).max(*b))
+                        } else {
+                            DynValue::Float(eval_args[0].as_f32().max(eval_args[1].as_f32()) as f64)
                         }
-                        "tan" if eval_args.len() == 1 => {
-                            DynValue::Float(eval_args[0].as_f32().tan() as f64)
-                        }
-                        "sqrt" if eval_args.len() == 1 => {
-                            DynValue::Float(eval_args[0].as_f32().sqrt() as f64)
-                        }
-                        "abs" if eval_args.len() == 1 => match eval_args[0] {
-                            DynValue::Int(v) => DynValue::Int(v.abs()),
-                            _ => DynValue::Float(eval_args[0].as_f32().abs() as f64),
-                        },
-                        "round" if eval_args.len() == 1 => {
-                            DynValue::Float(eval_args[0].as_f32().round() as f64)
-                        }
-                        "floor" if eval_args.len() == 1 => {
-                            DynValue::Float(eval_args[0].as_f32().floor() as f64)
-                        }
-                        "ceil" if eval_args.len() == 1 => {
-                            DynValue::Float(eval_args[0].as_f32().ceil() as f64)
-                        }
-                        "min" if eval_args.len() == 2 => {
-                            if let (DynValue::Int(a), DynValue::Int(b)) =
-                                (&eval_args[0], &eval_args[1])
-                            {
-                                DynValue::Int((*a).min(*b))
-                            } else {
-                                DynValue::Float(
-                                    eval_args[0].as_f32().min(eval_args[1].as_f32()) as f64
-                                )
-                            }
-                        }
-                        "max" if eval_args.len() == 2 => {
-                            if let (DynValue::Int(a), DynValue::Int(b)) =
-                                (&eval_args[0], &eval_args[1])
-                            {
-                                DynValue::Int((*a).max(*b))
-                            } else {
-                                DynValue::Float(
-                                    eval_args[0].as_f32().max(eval_args[1].as_f32()) as f64
-                                )
-                            }
-                        }
-                        "pow" if eval_args.len() == 2 => {
-                            DynValue::Float(eval_args[0].as_f32().powf(eval_args[1].as_f32()) as f64)
-                        }
-                        "clamp" if eval_args.len() == 3 => {
-                            let lo = eval_args[1].as_f32();
-                            let hi = eval_args[2].as_f32().max(lo);
-                            DynValue::Float(eval_args[0].as_f32().clamp(lo, hi) as f64)
-                        }
-                        _ => DynValue::Null,
-                    };
-                }
+                    }
+                    "pow" if eval_args.len() == 2 => {
+                        DynValue::Float(eval_args[0].as_f32().powf(eval_args[1].as_f32()) as f64)
+                    }
+                    "clamp" if eval_args.len() == 3 => {
+                        let lo = eval_args[1].as_f32();
+                        let hi = eval_args[2].as_f32().max(lo);
+                        DynValue::Float(eval_args[0].as_f32().clamp(lo, hi) as f64)
+                    }
+                    _ => DynValue::Null,
+                };
             }
             let r = eval_expr_tracked(recv, env, track);
             let eval_args: Vec<DynValue> = args
@@ -4395,7 +4389,9 @@ export component RuntimeMaterialDemo {
             logical_size: Size::new(400.0, 800.0),
             ..Default::default()
         });
-        let root = session.reload(src, Some("ResponsiveApp"), &mut tree).unwrap();
+        let root = session
+            .reload(src, Some("ResponsiveApp"), &mut tree)
+            .unwrap();
         tree.set_root(root);
         tree.layout(tree.metrics);
 

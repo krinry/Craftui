@@ -27,6 +27,10 @@ pub struct LayoutStyle {
     pub flex_wrap: bool,
     pub flex_grow: f32,
     pub flex_shrink: f32,
+    /// The size the node starts from on its parent's main axis before spare
+    /// space is shared out. `Auto` means the node's own size or content.
+    #[serde(default)]
+    pub flex_basis: Length,
     pub width: Length,
     pub height: Length,
     pub min_width: Length,
@@ -64,6 +68,7 @@ impl Default for LayoutStyle {
             flex_wrap: false,
             flex_grow: 0.0,
             flex_shrink: 1.0,
+            flex_basis: Length::Auto,
             width: Length::Auto,
             height: Length::Auto,
             min_width: Length::Auto,
@@ -137,6 +142,31 @@ impl LayoutStyle {
     pub fn with_size(mut self, w: Length, h: Length) -> Self {
         self.width = w;
         self.height = h;
+        self
+    }
+
+    /// Take exactly the space the parent has left on its main axis, however
+    /// large the content is.
+    ///
+    /// The node starts from zero, grows by `grow`, and may be smaller than its
+    /// content. Use it for a scrolling area that sits under fixed headers: the
+    /// headers keep their size and the area scrolls inside what remains.
+    pub fn fill_remaining(mut self, grow: f32) -> Self {
+        self.flex_grow = grow;
+        self.flex_basis = Length::Dp(0.0);
+        self.min_width = Length::Dp(0.0);
+        self.min_height = Length::Dp(0.0);
+        self
+    }
+
+    /// Set the smallest size the node may be given.
+    ///
+    /// A flex child is normally never made smaller than its content. Passing
+    /// zero lifts that limit, so the node can be shrunk to the space that is
+    /// left and its content can scroll or be clipped inside it.
+    pub fn with_min_size(mut self, w: Length, h: Length) -> Self {
+        self.min_width = w;
+        self.min_height = h;
         self
     }
 
@@ -253,6 +283,9 @@ impl LayoutStyle {
         };
         style.flex_grow = self.flex_grow;
         style.flex_shrink = self.flex_shrink;
+        if self.flex_basis != Length::Auto {
+            style.flex_basis = len_to_dim(self.flex_basis, scale_factor);
+        }
         style.aspect_ratio = self.aspect_ratio;
 
         style.size = taffy::Size {

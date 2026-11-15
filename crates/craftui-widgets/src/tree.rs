@@ -4,9 +4,9 @@ use crate::inspector::InspectorState;
 use crate::router::{Router, RouterTransition};
 use crate::toast::{ToastItem, ToastManager, ToastSeverity};
 use crate::widgets::{
-    BoolCallback, BoxStyle, CanvasPointerFn, CardVariant, CustomWidget, FloatCallback, HoverCallback,
-    IndexCallback, PinchRotateCallback, ReactiveValue, TapHandler, ToastDismissCallback,
-    WidgetKind,
+    BoolCallback, BoxStyle, CanvasPointerFn, CardVariant, CustomWidget, FloatCallback,
+    HoverCallback, IndexCallback, PinchRotateCallback, ReactiveValue, TapHandler,
+    ToastDismissCallback, WidgetKind,
 };
 use craftui_a11y::{A11yAction, A11yBridge, A11yMetadata, A11yRole, A11ySnapshotNode};
 use craftui_core::{
@@ -1025,7 +1025,10 @@ impl WidgetTree {
                         if let Some(ref t) = trailing {
                             let _ = t.get();
                         }
-                        mark_node_dirty(id, DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y);
+                        mark_node_dirty(
+                            id,
+                            DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y,
+                        );
                     });
                 }
             }
@@ -1044,7 +1047,10 @@ impl WidgetTree {
                         if let Some(ref i) = icon {
                             let _ = i.get();
                         }
-                        mark_node_dirty(id, DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y);
+                        mark_node_dirty(
+                            id,
+                            DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y,
+                        );
                     });
                 }
             }
@@ -1573,11 +1579,13 @@ impl WidgetTree {
         let initial_s = bound_signal
             .map(|s| s.get_untracked())
             .unwrap_or_else(|| initial.into());
+        let placeholder = placeholder.into();
+        let accessible_name = (!placeholder.is_empty()).then(|| placeholder.clone());
         let id = self.spawn_node(
             "TextInput",
             WidgetKind::TextInput {
                 editor: TextEditorState::new(initial_s.clone()),
-                placeholder: placeholder.into(),
+                placeholder,
                 style: TextStyle::default().with_size(14.0),
                 multiline: false,
                 bound_signal,
@@ -1592,6 +1600,8 @@ impl WidgetTree {
         if let Some(n) = self.nodes.get_mut(id) {
             n.box_style.radius = CornerRadii::all(8.0);
             n.a11y.role = A11yRole::TextInput;
+            // Without a name a screen reader only announces "edit text".
+            n.a11y.label = accessible_name;
             n.a11y.value = Some(initial_s);
             n.a11y.focusable = true;
         }
@@ -1609,11 +1619,13 @@ impl WidgetTree {
         let initial_s = bound_signal
             .map(|s| s.get_untracked())
             .unwrap_or_else(|| initial.into());
+        let placeholder = placeholder.into();
+        let accessible_name = (!placeholder.is_empty()).then(|| placeholder.clone());
         let id = self.spawn_node(
             "TextArea",
             WidgetKind::TextInput {
                 editor: TextEditorState::new(initial_s.clone()),
-                placeholder: placeholder.into(),
+                placeholder,
                 style: TextStyle::default().with_size(14.0),
                 multiline: true,
                 bound_signal,
@@ -1628,6 +1640,8 @@ impl WidgetTree {
         if let Some(n) = self.nodes.get_mut(id) {
             n.box_style.radius = CornerRadii::all(8.0);
             n.a11y.role = A11yRole::MultilineTextInput;
+            // Without a name a screen reader only announces "edit text".
+            n.a11y.label = accessible_name;
             n.a11y.value = Some(initial_s);
             n.a11y.focusable = true;
         }
@@ -2448,14 +2462,11 @@ impl WidgetTree {
     /// Mount a Material 3 Card panel container matching Flutter's `Card` (`Elevated`, `Filled`, `Outlined`).
     pub fn card(&mut self, scope: Scope, variant: CardVariant) -> NodeId {
         let layout = LayoutStyle::column().with_padding(Insets::all(16.0));
-        let mut box_style = BoxStyle::default();
-        box_style.radius = CornerRadii::all(12.0);
-        let id = self.spawn_node(
-            "Card",
-            WidgetKind::Card { variant },
-            layout,
-            scope,
-        );
+        let box_style = BoxStyle {
+            radius: CornerRadii::all(12.0),
+            ..BoxStyle::default()
+        };
+        let id = self.spawn_node("Card", WidgetKind::Card { variant }, layout, scope);
         if let Some(n) = self.nodes.get_mut(id) {
             n.box_style = box_style;
             n.a11y.role = A11yRole::Container;
@@ -3872,6 +3883,13 @@ impl WidgetTree {
         self.layout_engine.rect(node)
     }
 
+    /// Whether a node is mounted and shown: neither it nor any ancestor is
+    /// hidden by `visible`, a false `if` condition, a closed overlay or a
+    /// collapsed accordion.
+    pub fn is_visible(&self, node: NodeId) -> bool {
+        !self.is_effectively_hidden(node)
+    }
+
     fn is_effectively_hidden(&self, id: NodeId) -> bool {
         let mut cur = Some(id);
         while let Some(nid) = cur {
@@ -4057,8 +4075,11 @@ impl WidgetTree {
 
     /// Pull dirty flags from `craftui-reactive` and update layout + virtualized windows.
     pub fn layout(&mut self, metrics: WindowMetrics) -> usize {
-        if self.metrics != metrics {
-            self.metrics = metrics;
+        self.metrics = metrics;
+        // Platform runners assign `metrics` directly before the first frame, so
+        // comparing against the field alone would leave the reactive copy at
+        // its default and `Window.*` bindings would see the wrong size.
+        if self.metrics_signal.get_untracked() != metrics {
             self.metrics_signal.set(metrics);
         }
         let dirty_updates = drain_dirty_nodes();
@@ -5452,7 +5473,8 @@ impl WidgetTree {
                             theme.on_primary
                         };
                         if builtin_icon_svg(&txt).is_some() {
-                            let icon_sz = (rect.width - 8.0).min(rect.height - 8.0).clamp(12.0, 24.0);
+                            let icon_sz =
+                                (rect.width - 8.0).min(rect.height - 8.0).clamp(12.0, 24.0);
                             let ix = rect.x + (rect.width - icon_sz) * 0.5;
                             let iy = rect.y + (rect.height - icon_sz) * 0.5;
                             let icon_rect = Rect::new(ix, iy, icon_sz, icon_sz);
@@ -6880,8 +6902,9 @@ impl WidgetTree {
                 if let Some(trail) = trailing {
                     let trail_str = trail.get();
                     if !trail_str.is_empty() {
-                        let trail_st =
-                            TextStyle::default().with_size(18.0).with_color(theme.text_secondary);
+                        let trail_st = TextStyle::default()
+                            .with_size(18.0)
+                            .with_color(theme.text_secondary);
                         let tsz = self.text_engine.measure(&trail_str, &trail_st, None);
                         trailing_w = tsz.width + 16.0;
                         let trail_x = rect.x + rect.width - pad_x - tsz.width;
@@ -6907,12 +6930,19 @@ impl WidgetTree {
                     let sub_st = TextStyle::default()
                         .with_size(13.0)
                         .with_color(theme.text_secondary);
-                    let t_sz = self.text_engine.measure(&title_str, &title_st, Some(avail_w));
+                    let t_sz = self
+                        .text_engine
+                        .measure(&title_str, &title_st, Some(avail_w));
                     let s_sz = self.text_engine.measure(&sub_str, &sub_st, Some(avail_w));
                     let total_h = t_sz.height + s_sz.height + 2.0;
                     let start_y = rect.y + (rect.height - total_h) * 0.5;
 
-                    scene.draw_text(Point::new(cur_x, start_y), title_str, title_st, Some(avail_w));
+                    scene.draw_text(
+                        Point::new(cur_x, start_y),
+                        title_str,
+                        title_st,
+                        Some(avail_w),
+                    );
                     scene.draw_text(
                         Point::new(cur_x, start_y + t_sz.height + 2.0),
                         sub_str,
@@ -6920,9 +6950,16 @@ impl WidgetTree {
                         Some(avail_w),
                     );
                 } else {
-                    let t_sz = self.text_engine.measure(&title_str, &title_st, Some(avail_w));
+                    let t_sz = self
+                        .text_engine
+                        .measure(&title_str, &title_st, Some(avail_w));
                     let start_y = rect.y + (rect.height - t_sz.height) * 0.5;
-                    scene.draw_text(Point::new(cur_x, start_y), title_str, title_st, Some(avail_w));
+                    scene.draw_text(
+                        Point::new(cur_x, start_y),
+                        title_str,
+                        title_st,
+                        Some(avail_w),
+                    );
                 }
             }
             WidgetKind::Chip {
@@ -6942,16 +6979,14 @@ impl WidgetTree {
                     theme.surface
                 };
                 scene.fill_rect(rect, bg, rad);
-                let border_color = if is_sel {
-                    theme.primary
-                } else {
-                    theme.border
-                };
+                let border_color = if is_sel { theme.primary } else { theme.border };
                 scene.stroke_rect(rect, border_color, 1.0, rad);
 
                 let mut cur_x = rect.x + 10.0;
                 if is_sel && icon.is_none() {
-                    let check_st = TextStyle::default().with_size(14.0).with_color(theme.primary);
+                    let check_st = TextStyle::default()
+                        .with_size(14.0)
+                        .with_color(theme.primary);
                     let csz = self.text_engine.measure("✓", &check_st, None);
                     let cy = rect.y + (rect.height - csz.height) * 0.5;
                     scene.draw_text(Point::new(cur_x, cy), "✓", check_st, None);
@@ -6959,13 +6994,11 @@ impl WidgetTree {
                 } else if let Some(ic) = icon {
                     let ic_str = ic.get();
                     if !ic_str.is_empty() {
-                        let ic_st = TextStyle::default().with_size(14.0).with_color(
-                            if is_sel {
-                                theme.primary
-                            } else {
-                                theme.text_secondary
-                            },
-                        );
+                        let ic_st = TextStyle::default().with_size(14.0).with_color(if is_sel {
+                            theme.primary
+                        } else {
+                            theme.text_secondary
+                        });
                         let isz = self.text_engine.measure(&ic_str, &ic_st, None);
                         let iy = rect.y + (rect.height - isz.height) * 0.5;
                         scene.draw_text(Point::new(cur_x, iy), ic_str, ic_st, None);
@@ -7019,8 +7052,9 @@ impl WidgetTree {
                 if let Some(lead) = leading_icon {
                     let lead_str = lead.get();
                     if !lead_str.is_empty() {
-                        let lead_st =
-                            TextStyle::default().with_size(22.0).with_color(theme.text_primary);
+                        let lead_st = TextStyle::default()
+                            .with_size(22.0)
+                            .with_color(theme.text_primary);
                         let lsz = self.text_engine.measure(&lead_str, &lead_st, None);
                         let ly = rect.y + (rect.height - lsz.height) * 0.5;
                         scene.draw_text(Point::new(cur_x, ly), lead_str, lead_st, None);
@@ -7420,11 +7454,11 @@ impl WidgetTree {
                         WidgetKind::Button { hovered, .. }
                         | WidgetKind::FloatingActionButton { hovered, .. }
                         | WidgetKind::ListTile { hovered, .. }
-                        | WidgetKind::Chip { hovered, .. } => {
-                            if *hovered {
-                                *hovered = false;
-                                unhover = true;
-                            }
+                        | WidgetKind::Chip { hovered, .. }
+                            if *hovered =>
+                        {
+                            *hovered = false;
+                            unhover = true;
                         }
                         _ => {}
                     }
@@ -7459,11 +7493,11 @@ impl WidgetTree {
                         WidgetKind::Button { hovered, .. }
                         | WidgetKind::FloatingActionButton { hovered, .. }
                         | WidgetKind::ListTile { hovered, .. }
-                        | WidgetKind::Chip { hovered, .. } => {
-                            if !*hovered {
-                                *hovered = true;
-                                do_hover = true;
-                            }
+                        | WidgetKind::Chip { hovered, .. }
+                            if !*hovered =>
+                        {
+                            *hovered = true;
+                            do_hover = true;
                         }
                         _ => {}
                     }
@@ -7522,7 +7556,9 @@ impl WidgetTree {
                 }) => {
                     if let Ok(mut func) = cb.try_borrow_mut() {
                         func(rect, &local_pe);
-                        if !matches!(local_pe.phase, PointerPhase::Move) || local_pe.button.is_some() {
+                        if !matches!(local_pe.phase, PointerPhase::Move)
+                            || local_pe.button.is_some()
+                        {
                             changed = true;
                         }
                     }
@@ -8030,18 +8066,14 @@ impl WidgetTree {
                     action = on_tap.clone();
                 }
                 WidgetKind::Chip {
-                    selected,
-                    on_tap,
-                    ..
+                    selected, on_tap, ..
                 } => {
                     let next = !selected.get_untracked();
                     selected.set(next);
                     node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
                     action = on_tap.clone();
                 }
-                WidgetKind::AppBar {
-                    on_leading_tap, ..
-                } => {
+                WidgetKind::AppBar { on_leading_tap, .. } => {
                     action = on_leading_tap.clone();
                 }
                 WidgetKind::Drawer {

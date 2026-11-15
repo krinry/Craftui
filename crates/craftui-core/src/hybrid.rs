@@ -353,7 +353,11 @@ impl IpcRouter {
 
         let svc = services.clone();
         self.register("haptic", move |args| {
-            let style = match args.get("style").and_then(|v| v.as_str()).unwrap_or("medium") {
+            let style = match args
+                .get("style")
+                .and_then(|v| v.as_str())
+                .unwrap_or("medium")
+            {
                 "light" => HapticStyle::Light,
                 "heavy" => HapticStyle::Heavy,
                 "success" => HapticStyle::Success,
@@ -366,9 +370,18 @@ impl IpcRouter {
 
         let svc = services.clone();
         self.register("share", move |args| {
-            let title = args.get("title").and_then(|v| v.as_str()).map(ToString::to_string);
-            let text = args.get("text").and_then(|v| v.as_str()).map(ToString::to_string);
-            let url = args.get("url").and_then(|v| v.as_str()).map(ToString::to_string);
+            let title = args
+                .get("title")
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
+            let text = args
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
+            let url = args
+                .get("url")
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
             let payload = SharePayload {
                 title,
                 text,
@@ -468,32 +481,30 @@ impl TailwindTokens {
         let mut tokens = Self::default();
         for class in classes.split_whitespace() {
             // 1. Arbitrary Hex Colors e.g. bg-[#0E2938], text-[#00BCD4], border-[#1E293B]
-            if let Some(hex) = class.strip_prefix("bg-[").and_then(|s| s.strip_suffix(']')) {
-                if let Some(c) = Color::from_hex(hex) {
-                    tokens.background = Some(c);
-                    continue;
-                }
+            if let Some(hex) = class.strip_prefix("bg-[").and_then(|s| s.strip_suffix(']'))
+                && let Some(c) = Color::from_hex(hex)
+            {
+                tokens.background = Some(c);
+                continue;
             }
             if let Some(hex) = class
                 .strip_prefix("border-[")
                 .and_then(|s| s.strip_suffix(']'))
+                && let Some(c) = Color::from_hex(hex)
             {
-                if let Some(c) = Color::from_hex(hex) {
-                    tokens.border_color = Some(c);
-                    if tokens.border_width.is_none() {
-                        tokens.border_width = Some(1.0);
-                    }
-                    continue;
+                tokens.border_color = Some(c);
+                if tokens.border_width.is_none() {
+                    tokens.border_width = Some(1.0);
                 }
+                continue;
             }
             if let Some(hex) = class
                 .strip_prefix("text-[")
                 .and_then(|s| s.strip_suffix(']'))
+                && let Some(c) = Color::from_hex(hex)
             {
-                if let Some(c) = Color::from_hex(hex) {
-                    tokens.text_color = Some(c);
-                    continue;
-                }
+                tokens.text_color = Some(c);
+                continue;
             }
 
             match class {
@@ -771,7 +782,8 @@ mod tests {
             "args": { "permission": "device_admin" }
         })
         .to_string();
-        let resp2: IpcResponse = serde_json::from_str(&router.handle_invoke_json(&req_raw)).unwrap();
+        let resp2: IpcResponse =
+            serde_json::from_str(&router.handle_invoke_json(&req_raw)).unwrap();
         assert_eq!(resp2.id, "perm-2");
         assert_eq!(resp2.result.unwrap()["status"], "granted");
 
@@ -782,7 +794,8 @@ mod tests {
             "args": {}
         })
         .to_string();
-        let resp_admin: IpcResponse = serde_json::from_str(&router.handle_invoke_json(&admin_check)).unwrap();
+        let resp_admin: IpcResponse =
+            serde_json::from_str(&router.handle_invoke_json(&admin_check)).unwrap();
         assert_eq!(resp_admin.result.unwrap()["active"], false);
 
         let admin_req = serde_json::json!({
@@ -791,7 +804,8 @@ mod tests {
             "args": {}
         })
         .to_string();
-        let resp_req_admin: IpcResponse = serde_json::from_str(&router.handle_invoke_json(&admin_req)).unwrap();
+        let resp_req_admin: IpcResponse =
+            serde_json::from_str(&router.handle_invoke_json(&admin_req)).unwrap();
         assert_eq!(resp_req_admin.result.unwrap()["success"], true);
 
         // Verify that is_admin_active is now true
@@ -804,7 +818,8 @@ mod tests {
             "args": {}
         })
         .to_string();
-        let resp_open: IpcResponse = serde_json::from_str(&router.handle_invoke_json(&open_admin)).unwrap();
+        let resp_open: IpcResponse =
+            serde_json::from_str(&router.handle_invoke_json(&open_admin)).unwrap();
         assert_eq!(resp_open.result.unwrap()["success"], true);
         assert_eq!(mock_backend.admin_settings_open_count(), 1);
 
@@ -814,7 +829,8 @@ mod tests {
             "args": {}
         })
         .to_string();
-        let resp_a11y: IpcResponse = serde_json::from_str(&router.handle_invoke_json(&open_a11y)).unwrap();
+        let resp_a11y: IpcResponse =
+            serde_json::from_str(&router.handle_invoke_json(&open_a11y)).unwrap();
         assert_eq!(resp_a11y.result.unwrap()["success"], true);
         assert_eq!(mock_backend.accessibility_settings_open_count(), 1);
     }
