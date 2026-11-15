@@ -928,6 +928,7 @@ dependencies = [
  "craftui-runtime",
  "craftui-text",
  "craftui-widgets",
+ "jni",
  "pollster",
  "raw-window-handle",
  "serde",
