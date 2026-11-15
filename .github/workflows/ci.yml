@@ -38,6 +38,7 @@ jobs:
       - name: Clippy (annotate compiler errors)
         shell: bash
         run: |
+          set +e
           cargo clippy --workspace --all-targets --message-format json > clippy.jsonl 2>&1
           code=$?
           echo "::notice::clippy exit=$code jsonl_bytes=$(wc -c < clippy.jsonl | tr -d ' ') jsonl_lines=$(wc -l < clippy.jsonl | tr -d ' ') python3=$(command -v python3 || echo MISSING)"
