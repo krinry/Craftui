@@ -593,32 +593,30 @@ impl TailwindTokens {
         let mut tokens = Self::default();
         for class in classes.split_whitespace() {
             // 1. Arbitrary Hex Colors e.g. bg-[#0E2938], text-[#00BCD4], border-[#1E293B]
-            if let Some(hex) = class.strip_prefix("bg-[").and_then(|s| s.strip_suffix(']')) {
-                if let Some(c) = Color::from_hex(hex) {
-                    tokens.background = Some(c);
-                    continue;
-                }
+            if let Some(hex) = class.strip_prefix("bg-[").and_then(|s| s.strip_suffix(']'))
+                && let Some(c) = Color::from_hex(hex)
+            {
+                tokens.background = Some(c);
+                continue;
             }
             if let Some(hex) = class
                 .strip_prefix("border-[")
                 .and_then(|s| s.strip_suffix(']'))
+                && let Some(c) = Color::from_hex(hex)
             {
-                if let Some(c) = Color::from_hex(hex) {
-                    tokens.border_color = Some(c);
-                    if tokens.border_width.is_none() {
-                        tokens.border_width = Some(1.0);
-                    }
-                    continue;
+                tokens.border_color = Some(c);
+                if tokens.border_width.is_none() {
+                    tokens.border_width = Some(1.0);
                 }
+                continue;
             }
             if let Some(hex) = class
                 .strip_prefix("text-[")
                 .and_then(|s| s.strip_suffix(']'))
+                && let Some(c) = Color::from_hex(hex)
             {
-                if let Some(c) = Color::from_hex(hex) {
-                    tokens.text_color = Some(c);
-                    continue;
-                }
+                tokens.text_color = Some(c);
+                continue;
             }
 
             match class {

@@ -159,6 +159,22 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
             let mgr = locationManager ?? CLLocationManager()
             mgr.delegate = self
             locationManager = mgr
+            let currentStatus: CLAuthorizationStatus
+            if #available(iOS 14.0, *) {
+                currentStatus = mgr.authorizationStatus
+            } else {
+                currentStatus = CLLocationManager.authorizationStatus()
+            }
+            if currentStatus != .notDetermined {
+                let code: CraftUIPermissionCode = switch currentStatus {
+                case .authorizedAlways, .authorizedWhenInUse: .granted
+                case .denied: .permanentlyDenied
+                case .restricted: .restricted
+                default: .notDetermined
+                }
+                deliverResult(requestId: requestId, key: key, code: code, app: app)
+                return
+            }
             pendingLocationCompletions.append { code in
                 self.deliverResult(requestId: requestId, key: key, code: code, app: app)
             }
@@ -167,6 +183,22 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
             let mgr = locationManager ?? CLLocationManager()
             mgr.delegate = self
             locationManager = mgr
+            let currentStatus: CLAuthorizationStatus
+            if #available(iOS 14.0, *) {
+                currentStatus = mgr.authorizationStatus
+            } else {
+                currentStatus = CLLocationManager.authorizationStatus()
+            }
+            if currentStatus == .authorizedAlways || currentStatus == .denied || currentStatus == .restricted {
+                let code: CraftUIPermissionCode = switch currentStatus {
+                case .authorizedAlways: .granted
+                case .denied: .permanentlyDenied
+                case .restricted: .restricted
+                default: .notDetermined
+                }
+                deliverResult(requestId: requestId, key: key, code: code, app: app)
+                return
+            }
             pendingLocationCompletions.append { code in
                 self.deliverResult(requestId: requestId, key: key, code: code, app: app)
             }

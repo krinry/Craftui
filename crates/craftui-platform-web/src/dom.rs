@@ -129,8 +129,6 @@ impl ClipboardBackend for WebClipboard {
     }
 }
 
-/// Map a CraftUI [`Permission`] to its standard W3C Permissions API descriptor name, if any.
-
 /// Convert browser `KeyboardEvent.key` string into a CraftUI [`KeyEvent`].
 pub fn dom_key_to_craft(key: &str, pressed: bool, repeat: bool, modifiers: Modifiers) -> KeyEvent {
     let cmd = modifiers.command();

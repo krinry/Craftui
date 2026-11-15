@@ -344,6 +344,7 @@ where
                 }
                 MainEvent::Destroy => {
                     android_log("run_android_app: MainEvent::Destroy received!");
+                    host.bridge.terminate();
                     host.push_lifecycle_event(AppLifecycleEvent::Detached);
                     running = false;
                 }
@@ -365,6 +366,21 @@ where
         )]
         let (still_anim, did_paint, cmds) = host.step_frame_with_redraw(dt);
         animating = still_anim;
+        let platform_cmds = host.bridge.drain_commands();
+        for pcmd in platform_cmds {
+            match pcmd {
+                AndroidPlatformCommand::RequestPermissions { request_id, .. } => {
+                    tracing::debug!("Android platform command: RequestPermissions {request_id}");
+                }
+                AndroidPlatformCommand::OpenFileDialog { request_id, .. } => {
+                    tracing::debug!("Android platform command: OpenFileDialog {request_id}");
+                }
+                AndroidPlatformCommand::SaveFileDialog { request_id, .. } => {
+                    tracing::debug!("Android platform command: SaveFileDialog {request_id}");
+                }
+                _ => {}
+            }
+        }
         for cmd in cmds {
             match cmd {
                 AndroidImeCommand::ShowSoftInput => app.show_soft_input(true),
@@ -411,4 +427,5 @@ where
             }
         }
     }
+    host.bridge.terminate();
 }

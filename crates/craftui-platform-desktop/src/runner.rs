@@ -1,8 +1,10 @@
 use accesskit_winit::Adapter as AccessKitAdapter;
+#[cfg(feature = "hot-reload")]
+use craftui_core::KeyCode;
 use craftui_core::{
-    CraftError, ImeEvent, KeyCode, Modifiers, NodeId, PlatformServices, Point, PointerButton,
-    PointerEvent, PointerId, PointerPhase, Result, ScrollDelta, Size, UiDispatcher, UiEvent,
-    WindowMetrics, monotonic_ms,
+    CraftError, ImeEvent, Modifiers, NodeId, PlatformServices, Point, PointerButton, PointerEvent,
+    PointerId, PointerPhase, Result, ScrollDelta, Size, UiDispatcher, UiEvent, WindowMetrics,
+    monotonic_ms,
 };
 #[cfg(feature = "hot-reload")]
 use craftui_core::{ThemeMode, ThemeTokens};

@@ -614,10 +614,13 @@ pub mod wasm_runner {
             let dpr_now = window_raf.device_pixel_ratio() as f32;
             let cur_canvas = canvas_raf.borrow().clone();
             let bcr = cur_canvas.get_bounding_client_rect();
-            let (pw, ph) = h.resize_css(bcr.width() as f32, bcr.height() as f32, dpr_now);
+            let html: &web_sys::HtmlElement = cur_canvas.unchecked_ref();
+            let layout_w = html.offset_width() as f32;
+            let layout_h = html.offset_height() as f32;
+            let (pw, ph) = h.resize_css(layout_w, layout_h, dpr_now);
             if cur_canvas.width() != pw || cur_canvas.height() != ph {
-                let css_w = bcr.width();
-                let css_h = bcr.height();
+                let css_w = layout_w;
+                let css_h = layout_h;
                 let style = cur_canvas.style();
                 let _ = style.set_property("width", &format!("{css_w}px"));
                 let _ = style.set_property("height", &format!("{css_h}px"));
@@ -826,6 +829,8 @@ pub mod wasm_runner {
             let h_c = host.clone();
             let sched_k = scheduler.clone();
             let comp_k = is_composing.clone();
+            let hidden_clone = hidden_input.clone();
+            let win_clone = window.clone();
             let cb = Closure::wrap(Box::new(move |e: DomKeyboardEvent| {
                 let mods = Modifiers {
                     shift: e.shift_key(),
@@ -836,6 +841,39 @@ pub mod wasm_runner {
                 if comp_k.get() || e.is_composing() {
                     return;
                 }
+                // Do not intercept or cancel composition-initiating keys (e.g. dead keys)
+                let is_composition_start = e.key() == "Dead" || e.key().starts_with("Dead");
+                if is_composition_start {
+                    return;
+                }
+
+                // Verify keyboard event belongs to this CraftUI application.
+                // If focus is currently in an external form input (e.g. <input>, <textarea>, <select>, contenteditable)
+                // that is not our hidden input, do not capture or prevent default.
+                if let Some(target) = e.target()
+                    && let Ok(el) = target.dyn_into::<HtmlElement>()
+                {
+                    let tag = el.tag_name().to_ascii_uppercase();
+                    let is_external = (matches!(tag.as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+                        || el.is_content_editable())
+                        && !el.is_same_node(Some(&hidden_clone));
+                    if is_external {
+                        return;
+                    }
+                }
+                if let Some(doc) = win_clone.document()
+                    && let Some(active) = doc.active_element()
+                    && let Ok(el) = active.dyn_into::<HtmlElement>()
+                {
+                    let tag = el.tag_name().to_ascii_uppercase();
+                    let is_external = (matches!(tag.as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+                        || el.is_content_editable())
+                        && !el.is_same_node(Some(&hidden_clone));
+                    if is_external {
+                        return;
+                    }
+                }
+
                 // Defer Cmd/Ctrl+V keydown to the trusted DOM `paste` event so live OS clipboard
                 // contents from other tabs/apps arrive synchronously without double-pasting.
                 if pressed && mods.command() && !mods.alt && matches!(e.key().as_str(), "v" | "V") {

@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use craftui_core::{DirtyFlags, NodeId, UiDispatcher};
@@ -227,4 +227,30 @@ fn effect_untrack_write_during_initialization_preserves_subscriptions() {
     // Subsequent updates to the signal should still trigger the effect
     s.set(42);
     assert_eq!(run_count.get(), 3);
+}
+
+#[test]
+fn effect_registration_inside_batch_preserves_batch_contract() {
+    reset_runtime();
+    let cx = Scope::root();
+    let a = cx.signal(0);
+    let b = cx.signal(0);
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let obs = observed.clone();
+
+    cx.effect(move || {
+        obs.borrow_mut().push((a.get(), b.get()));
+    });
+
+    assert_eq!(*observed.borrow(), vec![(0, 0)]);
+
+    crate::arena::batch(|| {
+        a.set(1);
+        // Registering a new effect during batch must not flush pending effects prematurely
+        cx.effect(|| {});
+        b.set(1);
+    });
+
+    // The existing effect should only have observed initial (0, 0) and final (1, 1), not intermediate (1, 0)
+    assert_eq!(*observed.borrow(), vec![(0, 0), (1, 1)]);
 }

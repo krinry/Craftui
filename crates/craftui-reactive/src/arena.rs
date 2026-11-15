@@ -401,7 +401,7 @@ pub(crate) fn propagate_dirty(
 pub(crate) fn flush_effects() {
     let already_flushing = ARENA.with(|a| {
         let mut arena = a.borrow_mut();
-        if arena.flushing {
+        if arena.flushing || arena.batch_depth > 0 {
             return true;
         }
         arena.flushing = true;

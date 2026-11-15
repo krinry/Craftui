@@ -262,11 +262,11 @@ impl WidgetTree {
                         WidgetKind::Button { hovered, .. }
                         | WidgetKind::FloatingActionButton { hovered, .. }
                         | WidgetKind::ListTile { hovered, .. }
-                        | WidgetKind::Chip { hovered, .. } => {
-                            if *hovered {
-                                *hovered = false;
-                                unhover = true;
-                            }
+                        | WidgetKind::Chip { hovered, .. }
+                            if *hovered =>
+                        {
+                            *hovered = false;
+                            unhover = true;
                         }
                         _ => {}
                     }
@@ -301,11 +301,11 @@ impl WidgetTree {
                         WidgetKind::Button { hovered, .. }
                         | WidgetKind::FloatingActionButton { hovered, .. }
                         | WidgetKind::ListTile { hovered, .. }
-                        | WidgetKind::Chip { hovered, .. } => {
-                            if !*hovered {
-                                *hovered = true;
-                                do_hover = true;
-                            }
+                        | WidgetKind::Chip { hovered, .. }
+                            if !*hovered =>
+                        {
+                            *hovered = true;
+                            do_hover = true;
                         }
                         _ => {}
                     }
@@ -538,13 +538,28 @@ impl WidgetTree {
 
     /// Programmatically activate a tap on `node_id` (e.g. for accessibility actions).
     pub fn activate_node_tap(&mut self, node_id: NodeId) -> bool {
-        if self.nodes.contains_key(node_id) {
-            let center = self.node_visual_rect(node_id).center();
-            self.activate_tap(node_id, center, false);
-            true
-        } else {
-            false
+        let Some(node) = self.nodes.get(node_id) else {
+            return false;
+        };
+        if node.is_disabled() {
+            return false;
         }
+        if node.a11y.focusable {
+            if let Some(old) = self.focused
+                && old != node_id
+                && let Some(n) = self.nodes.get_mut(old)
+            {
+                n.dirty |= DirtyFlags::PAINT;
+            }
+            self.focused = Some(node_id);
+            self.focus_visible = false;
+            if let Some(n) = self.nodes.get_mut(node_id) {
+                n.dirty |= DirtyFlags::PAINT;
+            }
+        }
+        let center = self.node_visual_rect(node_id).center();
+        self.activate_tap(node_id, center, false);
+        true
     }
 
     pub(crate) fn activate_tap(&mut self, node_id: NodeId, pos: Point, is_screen_pos: bool) {

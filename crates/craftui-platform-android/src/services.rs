@@ -115,6 +115,8 @@ impl AndroidBridgeState {
     }
 
     pub fn terminate(&self) {
+        let _file_guard = self.pending_files.lock();
+        let _perm_guard = self.pending_perms.lock();
         self.terminated.store(true, Ordering::SeqCst);
         self.file_cv.notify_all();
         self.perm_cv.notify_all();
@@ -424,6 +426,7 @@ impl PermissionBackend for AndroidPermissionBackend {
             while pending
                 .get(&request_id)
                 .is_some_and(|entry| entry.resolved.is_none())
+                && !self.state.is_terminated()
             {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
@@ -607,10 +610,10 @@ impl AndroidFileDialogBridge {
         let is_android = cfg!(target_os = "android");
         let timeout = self.state.timeout();
         if let Ok(mut pending) = self.state.pending_files.lock() {
-            let deadline = if is_android {
-                None
-            } else if !timeout.is_zero() {
+            let deadline = if !timeout.is_zero() {
                 Some(Instant::now() + timeout)
+            } else if is_android {
+                Some(Instant::now() + Duration::from_secs(60))
             } else {
                 None
             };
@@ -692,6 +695,11 @@ pub fn active_android_bridge() -> Option<Arc<AndroidBridgeState>> {
     ACTIVE_ANDROID_BRIDGE.read().ok().and_then(|g| g.clone())
 }
 
+/// JNI export forwarding permission result arrays from Android `MainActivity` to the active bridge.
+///
+/// # Safety
+///
+/// Must be invoked by the JVM with valid JNI parameter handles and array references.
 #[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_craftui_app_MainActivity_nativeOnPermissionResults<
     'frame,
@@ -738,6 +746,11 @@ pub unsafe extern "system" fn Java_dev_craftui_app_MainActivity_nativeOnPermissi
     });
 }
 
+/// JNI export forwarding SAF file selection URI arrays from Android `MainActivity` to the active bridge.
+///
+/// # Safety
+///
+/// Must be invoked by the JVM with valid JNI parameter handles and array references.
 #[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_craftui_app_MainActivity_nativeOnFileDialogResults<
     'frame,
