@@ -47,7 +47,17 @@ jobs:
           blob=$(grep -E '"level":"(error|ice|failure-note)"' clippy.jsonl | head -40 | tr '\n' '|' | tail -c 1500 | sed 's/%/%25/g' | tr '\r' ' ')
           echo "::error::error_lines(latest<=1500B): $blob"
           exit $code
-      - run: cargo test --workspace
+      - name: Test (annotate failures)
+        shell: bash
+        run: |
+          set +e
+          cargo test --workspace > test.log 2>&1
+          code=$?
+          echo "::notice::test exit=$code log_bytes=$(wc -c < test.log | tr -d ' ') log_lines=$(wc -l < test.log | tr -d ' ')"
+          blob=$(grep -n -E 'failures|FAILED|panicked|failed;|^error' test.log | tail -c 1400 | sed 's/%/%25/g' | tr '\n' '|')
+          echo "::error::test_fail_lines: $blob"
+          echo "::error::test_tail: $(tail -c 1100 test.log | sed 's/%/%25/g' | tr '\n' '|')"
+          exit $code
       - name: Minimal-Feature Compile Check
         if: matrix.os == 'ubuntu-latest'
         run: cargo check -p craftui --no-default-features --features "desktop,dsl,hot-reload,embedded-fallback-font,gpu-sdf"
