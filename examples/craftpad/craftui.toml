@@ -1,0 +1,11 @@
+[app]
+name = "Craftpad"
+id = "dev.craftui.craftpad"
+version = "0.1.0"
+
+[android]
+min_sdk = 26
+target_sdk = 34
+
+[permissions]
+clipboard_read = "Allow one-click paste of component snippets into Craftpad."

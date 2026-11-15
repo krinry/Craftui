@@ -68,3 +68,38 @@ fn editor_selection_word_motion_undo_redo_and_cursor_clamp() {
     assert!(doc.sync_external("hi"));
     assert_eq!(doc.cursor, 2);
 }
+
+#[test]
+fn richtext_spans_plain_text_and_emoji_detection() {
+    use crate::style::{RichText, TextSpan, TextStyle, is_emoji_char};
+
+    let mut rich = RichText::new();
+    rich.push(TextSpan::new(
+        "Hello ",
+        TextStyle::default().with_weight(700.0),
+    ));
+    rich.push(TextSpan::new(
+        "World 🚀✨",
+        TextStyle::default().with_color(Color::rgb(0, 200, 255)),
+    ));
+
+    assert_eq!(rich.plain_text(), "Hello World 🚀✨");
+    assert!(!rich.is_empty());
+    assert!(rich.spans[1].has_emojis());
+    assert!(!rich.spans[0].has_emojis());
+
+    // Emoji code point range detection
+    assert!(is_emoji_char('🚀'));
+    assert!(is_emoji_char('✨'));
+    assert!(is_emoji_char('🎉'));
+    assert!(is_emoji_char('⭐')); // U+2B50 White Medium Star
+    assert!(!is_emoji_char('\u{1F700}')); // U+1F700 Alchemical Symbol is not emoji
+    assert!(!is_emoji_char('A'));
+    assert!(!is_emoji_char('9'));
+    assert!(!is_emoji_char(' '));
+
+    let star_span = TextSpan::new("Rating: ⭐⭐⭐", TextStyle::default());
+    assert!(star_span.has_emojis());
+    let alchem_span = TextSpan::new("Formula: \u{1F700}", TextStyle::default());
+    assert!(!alchem_span.has_emojis());
+}

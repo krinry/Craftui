@@ -10,4 +10,4 @@ mod tests;
 
 pub use editor::TextEditorState;
 pub use engine::TextEngine;
-pub use style::{TextAlign, TextOverflow, TextStyle};
+pub use style::{RichText, TextAlign, TextOverflow, TextSpan, TextStyle, is_emoji_char};

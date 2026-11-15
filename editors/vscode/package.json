@@ -47,6 +47,12 @@
         "path": "./syntaxes/craftui.tmLanguage.json"
       }
     ],
+    "snippets": [
+      {
+        "language": "craftui",
+        "path": "./snippets/cui.json"
+      }
+    ],
     "commands": [
       {
         "command": "craftui.preview",
@@ -61,6 +67,11 @@
       {
         "command": "craftui.permissionsCheck",
         "title": "CraftUI: Audit Permissions (craftui.toml)",
+        "category": "CraftUI"
+      },
+      {
+        "command": "craftui.startMcp",
+        "title": "CraftUI: Launch MCP Stdio Server",
         "category": "CraftUI"
       },
       {

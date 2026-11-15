@@ -1,0 +1,456 @@
+export component CraftpadStudio {
+    in-out property <string> selected_template: "Flutter Counter";
+    in-out property <string> source_code: "";
+    in-out property <string> status_text: "✓ Ready — 0 problems detected";
+    in-out property <int> demo_count: 0;
+    callback on_run();
+    callback on_reload();
+    callback on_select_template(string);
+
+    Container {
+        width: 100%;
+        height: 100%;
+        background: #0d121c;
+
+        Column {
+            width: 100%;
+            height: 100%;
+            align: Stretch;
+
+            // 1. Top Navigation Bar (DartPad style)
+            Container {
+                height: 48px;
+                background: #121824;
+                padding_x: 16px;
+                padding_y: 8px;
+
+                Row {
+                    justify: SpaceBetween;
+                    align: Center;
+
+                    Row {
+                        gap: 12px;
+                        align: Center;
+
+                        // Brand Logo
+                        Text {
+                            text: "Craftpad";
+                            font_size: 18px;
+                            font_weight: 700.0;
+                            color: #38bdf8;
+                        }
+
+                        // Beta Badge
+                        Container {
+                            background: #ef4444;
+                            padding_x: 6px;
+                            padding_y: 2px;
+                            border_radius: 3px;
+                            Text {
+                                text: "BETA";
+                                font_size: 9px;
+                                font_weight: 700.0;
+                                color: #ffffff;
+                            }
+                        }
+
+                        Button {
+                            text: "+ New";
+                            background: #1a2233;
+                            foreground: #f8fafc;
+                            padding: 6px;
+                            border_radius: 4px;
+                            on_tap => {
+                                on_select_template("counter");
+                            }
+                        }
+                    }
+
+                    // Template Switcher & Actions
+                    Row {
+                        gap: 8px;
+                        align: Center;
+
+                        Button {
+                            text: "Counter";
+                            background: #1a2233;
+                            foreground: #e2e8f0;
+                            padding: 6px;
+                            border_radius: 4px;
+                            on_tap => {
+                                selected_template = "Flutter Counter";
+                                on_select_template("counter");
+                            }
+                        }
+
+                        Button {
+                            text: "Slint Dialog";
+                            background: #1a2233;
+                            foreground: #e2e8f0;
+                            padding: 6px;
+                            border_radius: 4px;
+                            on_tap => {
+                                selected_template = "Slint Dialog";
+                                on_select_template("slint");
+                            }
+                        }
+
+                        Button {
+                            text: "Settings";
+                            background: #1a2233;
+                            foreground: #e2e8f0;
+                            padding: 6px;
+                            border_radius: 4px;
+                            on_tap => {
+                                selected_template = "Settings";
+                                on_select_template("settings");
+                            }
+                        }
+
+                        Button {
+                            text: "⚡ Reload";
+                            background: #243047;
+                            foreground: #38bdf8;
+                            padding: 6px;
+                            border_radius: 4px;
+                            on_tap => {
+                                on_reload();
+                            }
+                        }
+
+                        Button {
+                            text: "▷ Run";
+                            background: #0284c7;
+                            foreground: #ffffff;
+                            padding: 6px;
+                            border_radius: 4px;
+                            on_tap => {
+                                on_run();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Main 3-Pane Body
+            Row {
+                width: 100%;
+                flex_grow: 1.0;
+                align: Stretch;
+
+                // Pane A: Left Explorer Sidebar
+                Container {
+                    width: 200px;
+                    background: #121824;
+                    padding: 12px;
+
+                    Column {
+                        gap: 8px;
+                        align: Stretch;
+
+                        Row {
+                            justify: SpaceBetween;
+                            align: Center;
+
+                            Text {
+                                text: "EXPLORER";
+                                font_size: 11px;
+                                font_weight: 700.0;
+                                color: #94a3b8;
+                            }
+
+                            Text {
+                                text: "+ ❮";
+                                font_size: 11px;
+                                color: #64748b;
+                            }
+                        }
+
+                        Column {
+                            gap: 4px;
+                            align: Stretch;
+
+                            Text {
+                                text: "▾ 📁 lib";
+                                font_size: 13px;
+                                font_weight: 700.0;
+                                color: #cbd5e1;
+                            }
+
+                            Container {
+                                background: #243047;
+                                padding: 4px;
+                                border_radius: 4px;
+                                Text {
+                                    text: "   📄 main.cui";
+                                    font_size: 12px;
+                                    color: #38bdf8;
+                                }
+                            }
+
+                            Text {
+                                text: "ℹ️ README.md";
+                                font_size: 12px;
+                                color: #94a3b8;
+                            }
+
+                            Text {
+                                text: "❗ craftui.toml";
+                                font_size: 12px;
+                                color: #94a3b8;
+                            }
+
+                            Text {
+                                text: "📄 Cargo.toml";
+                                font_size: 12px;
+                                color: #94a3b8;
+                            }
+                        }
+                    }
+                }
+
+                // Pane B: Center Code Editor
+                Container {
+                    flex_grow: 1.2;
+                    background: #0d121c;
+                    padding: 12px;
+
+                    Column {
+                        gap: 8px;
+                        width: 100%;
+                        height: 100%;
+                        align: Stretch;
+
+                        // Tab Bar
+                        Row {
+                            justify: SpaceBetween;
+                            align: Center;
+
+                            Row {
+                                gap: 6px;
+                                align: Center;
+                                Container {
+                                    background: #121824;
+                                    padding_x: 10px;
+                                    padding_y: 4px;
+                                    border_radius: 4px;
+                                    Text {
+                                        text: "main.cui ×";
+                                        font_size: 12px;
+                                        color: #f1f5f9;
+                                    }
+                                }
+                                Text {
+                                    text: "lib > main.cui";
+                                    font_size: 11px;
+                                    color: #64748b;
+                                }
+                            }
+
+                            Button {
+                                text: "▷ Run";
+                                background: #0284c7;
+                                foreground: #ffffff;
+                                padding: 4px;
+                                border_radius: 4px;
+                                on_tap => {
+                                    on_run();
+                                }
+                            }
+                        }
+
+                        // Editor Area
+                        TextInput {
+                            value <=> source_code;
+                            multiline: true;
+                            background: #090c13;
+                            color: #f8fafc;
+                            font_size: 13px;
+                            padding: 12px;
+                            border_radius: 6px;
+                            flex_grow: 1.0;
+                        }
+
+                        // Bottom Problems & Console Dock
+                        Container {
+                            height: 70px;
+                            background: #121824;
+                            padding: 8px;
+                            border_radius: 4px;
+
+                            Column {
+                                gap: 4px;
+                                align: Stretch;
+
+                                Row {
+                                    gap: 12px;
+                                    align: Center;
+                                    Text {
+                                        text: "Problems (0)";
+                                        font_size: 12px;
+                                        font_weight: 700.0;
+                                        color: #f8fafc;
+                                    }
+                                    Text {
+                                        text: "Console";
+                                        font_size: 12px;
+                                        color: #94a3b8;
+                                    }
+                                }
+
+                                Text {
+                                    text: status_text;
+                                    font_size: 12px;
+                                    color: #34d399;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Pane C: Right Preview with DartPad Mobile Chassis (Screenshot 1)
+                Container {
+                    flex_grow: 1.0;
+                    background: #090c13;
+                    padding: 16px;
+
+                    Column {
+                        gap: 12px;
+                        width: 100%;
+                        height: 100%;
+                        align: Center;
+                        justify: Center;
+
+                        // Top Preview Toolbar
+                        Row {
+                            width: 100%;
+                            justify: SpaceBetween;
+                            align: Center;
+
+                            Text {
+                                text: "Preview • Mobile Chassis";
+                                font_size: 12px;
+                                color: #94a3b8;
+                            }
+
+                            Text {
+                                text: "60 FPS • wgpu SDF";
+                                font_size: 11px;
+                                color: #34d399;
+                            }
+                        }
+
+                        // Phone Frame (Screenshot 1 representation)
+                        Container {
+                            width: 320px;
+                            height: 520px;
+                            background: #ffffff;
+                            border_radius: 28px;
+                            border_color: #1e293b;
+                            border_width: 6px;
+
+                            Column {
+                                width: 100%;
+                                height: 100%;
+                                align: Stretch;
+
+                                // Light Purple AppBar (Flutter/DartPad style)
+                                Container {
+                                    height: 48px;
+                                    background: #e9d5ff;
+                                    padding_x: 16px;
+                                    padding_y: 12px;
+
+                                    Row {
+                                        justify: SpaceBetween;
+                                        align: Center;
+                                        Text {
+                                            text: "Flutter Demo Home Page";
+                                            font_size: 15px;
+                                            font_weight: 700.0;
+                                            color: #1e1b4b;
+                                        }
+                                        Text {
+                                            text: "DEBUG";
+                                            font_size: 8px;
+                                            font_weight: 700.0;
+                                            color: #ef4444;
+                                        }
+                                    }
+                                }
+
+                                // Centered Content
+                                Column {
+                                    flex_grow: 1.0;
+                                    align: Center;
+                                    justify: Center;
+                                    gap: 8px;
+
+                                    Text {
+                                        text: "You have pushed the button this many times:";
+                                        font_size: 12px;
+                                        color: #64748b;
+                                    }
+
+                                    Text {
+                                        text: demo_count;
+                                        font_size: 36px;
+                                        font_weight: 700.0;
+                                        color: #1e293b;
+                                    }
+                                }
+
+                                // Floating Action Button in bottom right
+                                Row {
+                                    justify: End;
+                                    padding: 20px;
+
+                                    Button {
+                                        text: "+";
+                                        background: #e9d5ff;
+                                        foreground: #4c1d95;
+                                        font_size: 20px;
+                                        border_radius: 14px;
+                                        padding: 12px;
+                                        on_tap => {
+                                            demo_count += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Bottom Status Footer (DartPad style)
+            Container {
+                height: 26px;
+                background: #121824;
+                padding_x: 16px;
+                padding_y: 4px;
+
+                Row {
+                    justify: SpaceBetween;
+                    align: Center;
+
+                    Row {
+                        gap: 12px;
+                        align: Center;
+                        Text { text: "⌨️ Shortcuts"; font_size: 11px; color: #94a3b8; }
+                        Text { text: "Privacy notice ↗"; font_size: 11px; color: #94a3b8; }
+                        Text { text: "Feedback ↗"; font_size: 11px; color: #94a3b8; }
+                    }
+
+                    Row {
+                        gap: 14px;
+                        align: Center;
+                        Text { text: "Starting analyzer 0.1s"; font_size: 11px; color: #0284c7; }
+                        Text { text: "CraftUI 0.1.0 • Pure Rust"; font_size: 11px; color: #94a3b8; }
+                        Text { text: "Beta channel"; font_size: 11px; color: #64748b; }
+                    }
+                }
+            }
+        }
+    }
+}

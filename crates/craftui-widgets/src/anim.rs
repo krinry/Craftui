@@ -303,6 +303,165 @@ impl Tween {
     }
 }
 
+/// Physical configuration parameters for damped harmonic spring simulations.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpringConfig {
+    pub mass: f32,
+    pub stiffness: f32,
+    pub damping: f32,
+}
+
+impl Default for SpringConfig {
+    fn default() -> Self {
+        Self::smooth()
+    }
+}
+
+impl SpringConfig {
+    pub fn new(mass: f32, stiffness: f32, damping: f32) -> Self {
+        Self {
+            mass: mass.max(0.001),
+            stiffness: stiffness.max(0.1),
+            damping: damping.max(0.0),
+        }
+    }
+
+    /// Critically-damped smooth spring without overshoot.
+    pub fn smooth() -> Self {
+        let stiffness: f32 = 260.0;
+        let mass: f32 = 1.0;
+        let damping = 2.0 * (mass * stiffness).sqrt(); // zeta = 1.0
+        Self {
+            mass,
+            stiffness,
+            damping,
+        }
+    }
+
+    /// Snappy spring for quick responsive button taps and micro-interactions.
+    pub fn snappy() -> Self {
+        Self {
+            mass: 1.0,
+            stiffness: 420.0,
+            damping: 32.0,
+        }
+    }
+
+    /// Bouncy spring with pleasant under-damped oscillation.
+    pub fn bouncy() -> Self {
+        Self {
+            mass: 1.0,
+            stiffness: 280.0,
+            damping: 16.0,
+        }
+    }
+
+    /// Gentle, floating spring for large page transitions or modal slides.
+    pub fn gentle() -> Self {
+        Self {
+            mass: 1.0,
+            stiffness: 160.0,
+            damping: 22.0,
+        }
+    }
+
+    /// Highly responsive spring with minimal latency for touch drag gestures.
+    pub fn interactive() -> Self {
+        Self {
+            mass: 1.0,
+            stiffness: 580.0,
+            damping: 42.0,
+        }
+    }
+
+    /// Damping ratio ($\zeta$).
+    pub fn damping_ratio(&self) -> f32 {
+        self.damping / (2.0 * (self.mass * self.stiffness).sqrt())
+    }
+
+    /// Undamped angular frequency ($\omega_0 = \sqrt{k/m}$).
+    pub fn natural_frequency(&self) -> f32 {
+        (self.stiffness / self.mass).sqrt()
+    }
+}
+
+/// Exact analytical solution to the 2nd-order damped harmonic oscillator differential equation.
+///
+/// Evaluates position and velocity in $O(1)$ time with zero cumulative numerical drift or instability.
+#[derive(Debug, Clone, Copy)]
+pub struct SpringSimulation {
+    config: SpringConfig,
+    start_value: f32,
+    target_value: f32,
+    initial_velocity: f32,
+}
+
+impl SpringSimulation {
+    pub fn new(config: SpringConfig, start: f32, target: f32, initial_velocity: f32) -> Self {
+        Self {
+            config,
+            start_value: start,
+            target_value: target,
+            initial_velocity,
+        }
+    }
+
+    /// Sample position and velocity at continuous time `t` (seconds).
+    pub fn sample(&self, t: f32) -> (f32, f32) {
+        if t <= 0.0 {
+            return (self.start_value, self.initial_velocity);
+        }
+
+        let zeta = self.config.damping_ratio();
+        let w0 = self.config.natural_frequency();
+        let x0 = self.start_value - self.target_value;
+        let v0 = self.initial_velocity;
+
+        if (zeta - 1.0).abs() < 1e-4 {
+            // Critically damped (zeta == 1.0)
+            let c1 = x0;
+            let c2 = v0 + w0 * x0;
+            let decay = (-w0 * t).exp();
+            let pos = self.target_value + decay * (c1 + c2 * t);
+            let vel = decay * (c2 - w0 * (c1 + c2 * t));
+            (pos, vel)
+        } else if zeta < 1.0 {
+            // Under-damped (zeta < 1.0): oscillates with decaying exponential envelope
+            let wd = w0 * (1.0 - zeta * zeta).sqrt();
+            let c1 = x0;
+            let c2 = (v0 + zeta * w0 * x0) / wd;
+            let decay = (-zeta * w0 * t).exp();
+            let cos_wt = (wd * t).cos();
+            let sin_wt = (wd * t).sin();
+            let pos = self.target_value + decay * (c1 * cos_wt + c2 * sin_wt);
+            let vel =
+                decay * ((wd * c2 - zeta * w0 * c1) * cos_wt - (wd * c1 + zeta * w0 * c2) * sin_wt);
+            (pos, vel)
+        } else {
+            // Over-damped (zeta > 1.0): two distinct decaying real exponential roots.
+            // Using r1 = -w0 / (zeta + sqrt(zeta^2 - 1)) avoids catastrophic cancellation
+            // when zeta >> 1.0 (where f32 sqrt(zeta^2 - 1) rounds to zeta, yielding r1 = 0).
+            let sqrt_term = (zeta * zeta - 1.0).sqrt();
+            let sum_term = zeta + sqrt_term;
+            let r1 = -w0 / sum_term;
+            let r2 = -w0 * sum_term;
+            let c1 = (v0 - r2 * x0) / (r1 - r2);
+            let c2 = x0 - c1;
+            let e1 = (r1 * t).exp();
+            let e2 = (r2 * t).exp();
+            let pos = self.target_value + c1 * e1 + c2 * e2;
+            let vel = c1 * r1 * e1 + c2 * r2 * e2;
+            (pos, vel)
+        }
+    }
+
+    /// Check if the simulation has settled at time `t` within position tolerance (0.001) and velocity tolerance (0.005).
+    pub fn is_settled(&self, t: f32) -> bool {
+        let (pos, vel) = self.sample(t);
+        (pos - self.target_value).abs() < 0.001 && vel.abs() < 0.005
+    }
+}
+
 /// Damped harmonic spring physics solver for smooth UI transitions and overscroll bounce.
 #[derive(Debug, Clone, Copy)]
 pub struct Spring {
@@ -372,6 +531,49 @@ mod tests {
             }
         }
         assert!((s.value - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn analytical_spring_simulation_under_and_critically_damped() {
+        // Critically damped simulation
+        let sim_crit = SpringSimulation::new(SpringConfig::smooth(), 0.0, 100.0, 0.0);
+        assert_eq!(sim_crit.sample(0.0).0, 0.0);
+        let (mid_pos, _) = sim_crit.sample(0.2);
+        assert!(mid_pos > 50.0 && mid_pos < 100.0);
+        assert!(sim_crit.is_settled(1.5));
+        assert!((sim_crit.sample(2.0).0 - 100.0).abs() < 0.001);
+
+        // Bouncy (under-damped) simulation should overshoot 100
+        let sim_bouncy = SpringSimulation::new(SpringConfig::bouncy(), 0.0, 100.0, 0.0);
+        assert!(sim_bouncy.config.damping_ratio() < 1.0);
+        let mut overshot = false;
+        for i in 1..100 {
+            let t = i as f32 * 0.01;
+            let (pos, _) = sim_bouncy.sample(t);
+            if pos > 100.0 {
+                overshot = true;
+                break;
+            }
+        }
+        assert!(
+            overshot,
+            "Under-damped bouncy spring should overshoot target"
+        );
+        assert!(sim_bouncy.is_settled(2.0));
+    }
+
+    #[test]
+    fn overdamped_spring_stable_cancellation_test() {
+        // High damping ratio zeta = 32768 / (2 * sqrt(1 * 1)) = 16384.0
+        let cfg = SpringConfig::new(1.0, 1.0, 32768.0);
+        let sim = SpringSimulation::new(cfg, 0.0, 1.0, 0.0);
+        let (pos, _) = sim.sample(32768.0);
+        // At t = 32768, pos should be approx 1 - e^(-1) ≈ 0.632
+        assert!(
+            (pos - 0.632).abs() < 0.05,
+            "Overdamped spring should reach ~0.632 at t=32768, got {}",
+            pos
+        );
     }
 
     #[test]

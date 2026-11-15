@@ -39,25 +39,56 @@ If you are using Claude Projects, Custom GPTs, or Gemini Gems, attach or paste:
 
 The **Model Context Protocol (MCP)** allows AI models to interact directly with local developer tools, run validations, and inspect components.
 
-### 3.1 Recommended MCP Setup for CraftUI
-You can expose CraftUI CLI tools to any MCP client (such as Claude Desktop, Cursor Agent, or Antigravity) using the standard command execution bridge.
+### 3.1 Native MCP Server Configuration
+CraftUI CLI ships with a built-in, native MCP server over `stdio` (`craftui mcp --stdio`).
 
-In your MCP configuration (`claude_desktop_config.json` or your agent's MCP settings):
+To connect CraftUI to Claude Desktop, Cursor, or any MCP client, add the following to your MCP configuration (e.g., `claude_desktop_config.json` or `.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "craftui": {
+      "command": "craftui",
+      "args": ["mcp", "--stdio"]
+    }
+  }
+}
+```
+
+Or when running from the source repository:
 
 ```json
 {
   "mcpServers": {
     "craftui": {
       "command": "cargo",
-      "args": ["run", "-p", "craftui-cli", "--"]
+      "args": ["run", "-p", "craftui-cli", "--", "mcp", "--stdio"]
     }
   }
 }
 ```
 
-### 3.2 What AI Can Do via MCP
-1. **Validate `.cui` syntax on the fly**:
-   An AI agent can execute:
+### 3.2 Available Native MCP Tools
+
+| Tool | Description | Input Parameters |
+| :--- | :--- | :--- |
+| `craftui_validate` | Real-time parser & validator returning exact line/column coordinates and fix hints | `code` (string), `path` (optional) |
+| `craftui_widget_catalog` | Machine-readable schema of all widgets, allowed properties, types, and event callbacks | `widget` (optional filter) |
+| `craftui_scaffold` | Generates 100% valid `.cui` templates (`counter`, `login_form`, `settings_card`, `search_filter`) and Rust controllers | `template`, `name` |
+| `craftui_render_preview` | Headlessly renders `.cui` to an RGBA PNG snapshot via `vello_cpu` and returns base64 image data | `code`, `width`, `height`, `out_path` |
+| `craftui_doctor` | Inspects toolchain readiness (Rust compiler, wasm32, android NDK, wasm-bindgen) | `path` |
+| `craftui_explain` | Architectural explanations for reactivity, layout, two-way bindings, and animations | `topic` |
+
+### 3.3 Available MCP Resources & Prompts
+
+- **Resources**:
+  - `craftui://docs/cheatsheet`: Complete one-page syntax & property reference.
+  - `craftui://docs/llms-full`: Full token-optimized specification for AI context windows.
+  - `craftui://templates/counter`: Reactive counter starter component.
+  - `craftui://templates/login`: Production login form template.
+- **Prompts**:
+  - `craftui_new_screen`: Guided workflow for creating new screens.
+  - `craftui_debug_component`: Guided debugging workflow for fixing compilation errors.
    ```bash
    craftui check ui/main.cui --json
    ```

@@ -1,6 +1,7 @@
 mod dev;
 mod doctor;
 mod manifest;
+pub mod mcp;
 mod permissions;
 mod platform;
 mod remote_server;
@@ -190,6 +191,11 @@ enum Commands {
         #[arg(long)]
         skip_cargo: bool,
     },
+    /// Run the CraftUI Model Context Protocol (MCP) server over stdio for AI assistants & IDEs
+    Mcp {
+        #[arg(long, default_value_t = true)]
+        stdio: bool,
+    },
 }
 
 fn main() {
@@ -365,5 +371,6 @@ fn run() -> Result<()> {
             out.as_deref(),
             skip_cargo,
         ),
+        Commands::Mcp { stdio } => mcp::run_mcp_server(stdio),
     }
 }
