@@ -2093,7 +2093,8 @@ fn flutter_design_widgets_card_list_tile_chip_app_bar_drawer_and_scaffold() {
 }
 
 #[test]
-fn metrics_assigned_directly_reach_the_reactive_signal() {    // Platform runners write `tree.metrics` before the first frame and then
+fn metrics_assigned_directly_reach_the_reactive_signal() {
+    // Platform runners write `tree.metrics` before the first frame and then
     // call `layout(tree.metrics)`. `Window.*` bindings read the signal, so
     // the signal must follow even though the field already has the value.
     reset_runtime();
@@ -2170,8 +2171,7 @@ fn text_fields_use_their_placeholder_as_the_accessible_name() {
     let body = tree.text_area(cx, "", "Start writing...", None);
     let unnamed = tree.text_input(cx, "", "", None);
 
-    let label =
-        |id: craftui_core::NodeId| tree.nodes.get(id).and_then(|n| n.a11y.label.clone());
+    let label = |id: craftui_core::NodeId| tree.nodes.get(id).and_then(|n| n.a11y.label.clone());
     assert_eq!(label(search).as_deref(), Some("Search notes"));
     assert_eq!(label(body).as_deref(), Some("Start writing..."));
     assert_eq!(label(unnamed), None);
