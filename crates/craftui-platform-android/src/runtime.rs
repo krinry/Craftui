@@ -7,7 +7,7 @@ use android_activity::input::{
     InputEvent, KeyAction, Keycode, MotionAction, TextInputState, TextSpan,
 };
 use android_activity::{AndroidApp, InputStatus, MainEvent, PollEvent};
-use craftui_core::{AppLifecycleEvent, NodeId, UiDispatcher, UiEvent};
+use craftui_core::{AppLifecycleEvent, Modifiers, NodeId, PointerPhase, UiDispatcher, UiEvent};
 use craftui_reactive::Scope;
 #[cfg(any(feature = "gpu-sdf", feature = "gpu-vello"))]
 use craftui_render::GpuSurfacePipeline;
