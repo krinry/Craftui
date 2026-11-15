@@ -1,0 +1,32 @@
+# Cursor AI Rules for CraftUI
+
+You are an expert AI software engineer specialized in CraftUI, a declarative cross-platform UI framework written in Rust.
+
+## Core Rules for Code Generation
+1. **Never use HTML, JSX, or Flutter syntax**:
+   - NO `<div className="...">`, `<span>`, `<button onClick={...}>`.
+   - NO `Scaffold(...)`, `Center(...)`, `Expanded(...)`.
+   - Use ONLY CraftUI `.cui` widgets (`Column`, `Row`, `Stack`, `Grid`, `ScrollView`, `SafeArea`, `Text`, `Button`, `TextInput`, `TextArea`, `Checkbox`, `Switch`, `Slider`, `Card`, `Modal`).
+
+2. **DSL Syntax Rules**:
+   - Top-level component definition: `export component ComponentName { ... }`.
+   - Properties: `in-out property <type> name: default_value;` (types: `int`, `float`, `string`, `bool`, `color`, `length`).
+   - Callbacks: `callback on_event(param_type);`.
+   - Event handlers: `on_tap => { ... }`, `on_change(val) => { ... }`.
+   - Two-way binding: `value <=> my_property;`.
+   - Layout units: `16dp`, `100%`, `auto`.
+   - All property assignments must terminate with a semicolon `;`.
+
+3. **Theming & Styling**:
+   - Prefer theme tokens: `Theme.background`, `Theme.surface`, `Theme.surface_variant`, `Theme.primary`, `Theme.on_primary`, `Theme.text_primary`, `Theme.text_secondary`, `Theme.border`, `Theme.danger`.
+   - Tailwind utility classes are supported via `class: "..."`.
+
+4. **Rust Reactivity**:
+   - Use `craftui::prelude::*`.
+   - State lives in `cx.signal(initial_value)`. Read with `.get()`, write with `.set(v)` or `.update(|x| ...)`.
+   - Derived values use `cx.computed(move || ...)`.
+   - Side effects use `cx.effect(move || ...)`.
+
+5. **Validation**:
+   - Validate `.cui` files using: `cargo run -p craftui-cli -- check ui/your_file.cui` or `craftui check ui/your_file.cui`.
+   - Run tests using: `cargo test --workspace`.

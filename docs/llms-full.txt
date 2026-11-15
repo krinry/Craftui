@@ -1,0 +1,278 @@
+# CraftUI Comprehensive LLM Specification & Reference
+
+This document is a complete, dense technical specification of the CraftUI framework designed for Large Language Models (LLMs), AI code assistants, and automated coding agents.
+
+---
+
+## 1. Core Architecture
+
+CraftUI combines:
+1. **`.cui` DSL**: Declarative layout and UI tree compiled to Rust structs via `craftui-dsl` build macro or interpreted by `craftui-runtime` in dev mode.
+2. **Reactive Rust Engine**: State and application logic live in Rust using fine-grained reactivity (`Scope`, `Signal`, `Computed`, `Effect`).
+3. **Multi-backend Canvas Renderer**: Direct GPU rendering via `wgpu` / `vello` or CPU rendering via `tiny-skia`.
+
+---
+
+## 2. `.cui` Language Syntax & Grammar
+
+### 2.1 File Structure
+A `.cui` file defines components, imports, structs, and enums:
+
+```cui
+// Imports
+import { Header, NavButton } from "components.cui"
+
+// Record struct (e.g. for lists)
+struct NoteItem {
+    id: int,
+    title: string,
+    pinned: bool = false,
+}
+
+// Enum
+enum FilterState {
+    All,
+    Active,
+    Done,
+}
+
+// Exported Component
+export component AppRoot {
+    // In-out properties (read/write from Rust or parent)
+    in-out property <string> app_title: "CraftUI App";
+    in-out property <int> counter: 0;
+    in-out property <bool> is_loading: false;
+
+    // Internal private properties
+    property <string> query: "";
+
+    // Callbacks to Rust
+    callback on_submit(string);
+    callback on_refresh();
+
+    // UI Tree
+    Column {
+        width: 100%;
+        height: 100%;
+        background: Theme.background;
+        padding: 16dp;
+        gap: 12dp;
+
+        Text {
+            text: app_title;
+            font_size: 24;
+            font_weight: Bold;
+            color: Theme.text_primary;
+        }
+
+        Row {
+            gap: 8dp;
+            align: Center;
+
+            Button {
+                text: "Increment";
+                background: Theme.primary;
+                foreground: Theme.on_primary;
+                on_tap => { counter += 1; }
+            }
+
+            Button {
+                text: "Refresh";
+                background: Theme.surface_variant;
+                foreground: Theme.text_primary;
+                on_tap => { on_refresh(); }
+            }
+        }
+    }
+}
+```
+
+### 2.2 Property Types
+- `int` (64-bit integer)
+- `float` (f64 floating-point)
+- `string` (UTF-8 string)
+- `bool` (boolean `true` / `false`)
+- `color` (hex string `#RRGGBB` / `#RRGGBBAA` or `Theme.<token>`)
+- `length` (e.g., `16dp`, `100%`, `auto`)
+- `[Type]` (Array/List of types)
+- Custom defined `struct` or `enum`
+
+### 2.3 Property Declarations
+- `in-out property <type> name: default_value;` (Accessible and bindable from Rust)
+- `property <type> name: default_value;` (Component-internal state)
+- `callback name(param_type, ...);` (Callable from `.cui`, implemented in Rust)
+
+### 2.4 Control Flow
+#### Conditional Rendering (`if` / `else`)
+```cui
+if is_loading : Column {
+    align: Center;
+    justify: Center;
+    Text { text: "Loading..."; color: Theme.text_secondary; }
+} else : Column {
+    Text { text: "Content loaded"; }
+}
+```
+
+#### Repeating Loops (`for`)
+```cui
+for item in items : Row {
+    gap: 8dp;
+    Text { text: item.title; flex_grow: 1.0; }
+    Button {
+        text: "Delete";
+        on_tap => { on_delete_item(item.id); }
+    }
+}
+```
+
+### 2.5 Two-Way Binding (`<=>`)
+Use `<=>` to synchronize input widgets with properties:
+```cui
+TextInput {
+    placeholder: "Search notes...";
+    value <=> query;
+}
+```
+
+---
+
+## 3. Built-In Widget Reference
+
+### 3.1 Layout Widgets
+- **`Column`**: Vertical flexbox layout.
+  - Properties: `gap`, `align` (`Start`, `Center`, `End`, `Stretch`), `justify` (`Start`, `Center`, `End`, `SpaceBetween`, `SpaceAround`, `SpaceEvenly`)
+- **`Row`**: Horizontal flexbox layout.
+  - Properties: `gap`, `align`, `justify`
+- **`Stack`**: Overlapping layer container. Position children with `top`, `bottom`, `left`, `right`.
+- **`Grid`**: Multi-column grid. Properties: `columns: 2;`, `gap`, `align`, `justify`.
+- **`ScrollView`**: Scrollable viewport. Properties: `direction: Vertical;` or `Horizontal;`.
+- **`SafeArea`**: Inset padding avoiding notches, system status bars, and home indicators.
+- **`Spacer`**: Flexible space. Use `flex_grow: 1.0;` to push siblings.
+- **`Divider`**: Separation line. Properties: `direction: Horizontal;`, `thickness: 1;`, `color: Theme.border;`.
+- **`SplitPane`**: Resizable two-pane divider. Properties: `direction`, `ratio <=> split_val;`, `min_first`, `min_second`.
+
+### 3.2 Basic Primitives
+- **`Text`**: Text display.
+  - Properties: `text`, `font_size`, `font_weight` (`Normal`, `Medium`, `SemiBold`, `Bold`), `color`, `max_lines`, `wrap`
+- **`Button`**: Interactive tap target.
+  - Properties: `text`, `background`, `foreground`, `border_radius`, `padding_x`, `padding_y`, `disabled`
+  - Events: `on_tap => { ... }`
+- **`TextInput`**: Single-line text input.
+  - Properties: `value <=> prop;`, `placeholder`, `font_size`, `font_weight`, `disabled`
+  - Events: `on_change(new_text) => { ... }`, `on_submit => { ... }`
+- **`TextArea`**: Multi-line text input.
+  - Properties: `value <=> prop;`, `placeholder`, `font_size`, `flex_grow: 1.0;`
+- **`Checkbox`**: Binary toggle box.
+  - Properties: `checked <=> is_checked;`, `label`
+  - Events: `on_change => { ... }` (exposes local `checked: bool`)
+- **`Switch`**: Slider toggle.
+  - Properties: `checked <=> is_active;`
+  - Events: `on_change => { ... }` (exposes local `checked: bool`)
+- **`Slider`**: Numeric continuous slider.
+  - Properties: `value <=> num_val;`, `min: 0.0;`, `max: 100.0;`, `label`
+  - Events: `on_change => { ... }` (exposes local `value: float`)
+- **`Icon`**: Vector SVG icon.
+  - Properties: `svg: "edit";` (or icon name), `size: 24;`, `color: Theme.text_primary;`
+- **`Image`**: Bitmap image.
+  - Properties: `source: "path.png";`, `width`, `height`, `fit: Cover;`
+- **`Canvas`**: Custom drawing surface.
+  - Properties: `on_paint => { ... }`, `on_pointer => { ... }`
+
+### 3.3 Panels & Overlays
+- **`Card`**: Elevated surface card.
+  - Properties: `variant: Elevated;` (or `Filled`, `Outlined`), `background`, `border_radius`
+- **`Modal`**: Center dialog overlay.
+  - Properties: `open <=> is_modal_open;`, `title: "Confirm";`
+- **`BottomSheet`**: Mobile slide-up sheet.
+  - Properties: `open <=> is_sheet_open;`
+- **`ToastHost`**: Toast notification overlay container.
+- **`VirtualList`**: High-performance windowed recycling list for 10,000+ items.
+- **`DataTable`**: Tabular data display with sorting and selection.
+
+---
+
+## 4. Common Layout & Styling Properties
+
+Every widget accepts common layout properties:
+- **Dimensions**: `width: 100%;`, `width: 300dp;`, `height: auto;`, `min_width: 0dp;`, `min_height: 0dp;`, `max_width: 720dp;`
+- **Padding & Margin**: `padding: 16dp;`, `padding_x: 12dp;`, `padding_y: 8dp;`, `margin: 10dp;`
+- **Flexbox**: `flex_grow: 1.0;`, `flex_shrink: 1.0;`, `flex_basis: 0dp;`
+- **Appearance**: `background: Theme.surface;`, `border_radius: 8dp;`, `border_color: Theme.border;`, `border_width: 1dp;`, `opacity: 0.9;`, `visible: true;`
+- **Tailwind Utility Classes**: `class: "bg-[#0E2938] text-white rounded-lg p-4 shadow-md";`
+
+---
+
+## 5. Built-In Theme Tokens
+
+Always prefer Theme tokens over hardcoded colors for dark/light mode consistency:
+- `Theme.background`: Main screen background.
+- `Theme.surface`: Surface for cards, dialogs, and panels.
+- `Theme.surface_variant`: Slightly contrasting surface (inputs, secondary buttons).
+- `Theme.primary`: Main brand accent color.
+- `Theme.on_primary`: Text/icon color drawn on top of `Theme.primary`.
+- `Theme.text_primary`: High-emphasis text.
+- `Theme.text_secondary`: Medium-emphasis text (subtitles, placeholders).
+- `Theme.border`: Outlines and divider borders.
+- `Theme.danger`: Error, warning, and destructive actions.
+- `Theme.on_error`: Text/icon color drawn on top of `Theme.danger`.
+
+---
+
+## 6. Rust Reactivity & Controller Integration
+
+### 6.1 Creating State & Signals
+```rust
+use craftui::prelude::*;
+
+// In a setup function or App controller
+let cx = Scope::root();
+
+// Reactive signals
+let count = cx.signal(0);
+let title = cx.signal(String::from("My Note"));
+
+// Computed derived values
+let doubled = cx.computed(move || count.get() * 2);
+
+// Effects for side effects / persistence
+cx.effect(move || {
+    println!("Current count: {}", count.get());
+});
+```
+
+### 6.2 Mounting the `.cui` Component
+When compiling `ui/app.cui` with component `AppRoot`:
+`build.rs` generates Rust code providing `AppRootScreen::new(cx)`.
+
+```rust
+use craftui::prelude::*;
+use crate::model::MyData;
+
+pub fn mount_app(cx: Scope, tree: &mut WidgetTree) -> NodeId {
+    let screen = AppRootScreen::new(cx);
+
+    // Bind Rust signals to screen properties
+    let count_signal = cx.signal(0);
+    screen.counter.bind(count_signal);
+
+    // Handle callbacks
+    screen.on_submit.set(cx, move |query: String| {
+        println!("User submitted: {}", query);
+    });
+
+    screen.root_node()
+}
+```
+
+---
+
+## 7. Anti-Hallucination Rules for AI
+
+When generating CraftUI code:
+1. **Never generate HTML / JSX tags**: `<div className="...">`, `<button onClick={...}>` do NOT exist.
+2. **Never generate Flutter code**: `Scaffold(body: ...)` does NOT exist.
+3. **Always use exact `.cui` types**: `int`, `float`, `string`, `bool`, `color`, `length`.
+4. **Always use exact event names**: `on_tap`, `on_change`, `on_toggle`, `on_submit`.
+5. **Layout container orientation**: Use `Column` for vertical, `Row` for horizontal. Do not write `flex-direction`.
+6. **Semicolon requirement**: Every property line inside a widget block must end with `;`.

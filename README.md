@@ -123,9 +123,12 @@ The book is in [`docs/`](docs/src/SUMMARY.md):
 - [Installation](docs/src/getting-started/installation-linux-android.md)
 - [Quickstart](docs/src/getting-started/quickstart.md)
 - [The `.cui` language](docs/src/dsl/syntax-guide.md)
+- [Cheatsheet & Quick Reference](docs/src/dsl/cheatsheet.md)
 - [Reactivity and Rust](docs/src/dsl/reactivity.md)
 - [Widget catalog](docs/src/widgets/catalog.md)
 - [Building the notes app](docs/src/guides/notes-app.md)
+- [UI Cookbook & Recipes](docs/src/guides/cookbook.md)
+- [Developing with AI & MCP](docs/src/guides/ai-and-mcp.md)
 - Platform guides: [desktop](docs/src/platforms/linux-desktop.md),
   [Android](docs/src/platforms/android-on-linux.md),
   [Web](docs/src/platforms/web.md)
@@ -137,6 +140,15 @@ Design notes and plans written before and during development are in
 [`docs/design/`](docs/design/README.md). They describe intent and are not always
 accurate about the current code; where they disagree with the book, the book is
 right.
+
+## AI & MCP Support
+
+CraftUI is designed so developers and AI agents can write and inspect code with confidence:
+
+- **[`llms.txt`](llms.txt) & [`docs/llms-full.txt`](docs/llms-full.txt)**: Standardized LLM context specification for Claude, ChatGPT, Gemini, and DeepSeek.
+- **`.cursorrules` & `.github/copilot-instructions.md`**: Zero-configuration prompt instructions for Cursor, Windsurf, and Copilot that enforce `.cui` grammar and prevent web/JSX hallucinations.
+- **Model Context Protocol (MCP)**: Connect AI coding agents directly to CraftUI tooling (`craftui check --json`, live preview, permissions audit). Read the [AI & MCP Guide](docs/src/guides/ai-and-mcp.md).
+- **Autonomous Agent Skill**: Built-in skill in [`.agents/skills/craftui/SKILL.md`](.agents/skills/craftui/SKILL.md) for agentic engineering workflows.
 
 ## Developing CraftUI
 

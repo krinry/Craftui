@@ -1,0 +1,29 @@
+# CraftUI
+
+> CraftUI is a cross-platform declarative UI framework written in Rust. It draws its own native interface on Desktop (Linux, macOS, Windows), Android, and Web (WebAssembly) from a single codebase.
+
+Interface screens are authored in `.cui` declarative files and compiled to native Rust at build time via `build.rs` or interpreted for hot reload. Application logic and state management are written in standard Rust using a fine-grained reactive signals engine.
+
+## Quick Links
+
+- [Full LLM Context Specification](docs/llms-full.txt): Complete, dense reference for AI models and code generators
+- [Syntax Guide](docs/src/dsl/syntax-guide.md): The `.cui` language grammar, types, components, and bindings
+- [Widget Catalog](docs/src/widgets/catalog.md): Complete list of built-in layout and interactive widgets
+- [Reactivity and Rust](docs/src/dsl/reactivity.md): `Scope`, `Signal`, `Computed`, and component mounting
+- [UI Cookbook](docs/src/guides/cookbook.md): Production UI patterns and recipes
+- [Cheatsheet](docs/src/dsl/cheatsheet.md): One-page syntax and properties reference
+- [AI & MCP Guide](docs/src/guides/ai-and-mcp.md): Connecting Cursor, Claude, Antigravity, and MCP tools
+
+## Key Rules for AI Code Generators (Anti-Hallucination)
+
+1. **Never use HTML or JSX elements**: Do NOT use `<div>`, `<span>`, `<button>`, `<input>`, or `className`.
+2. **Use valid `.cui` components**:
+   - Layout: `Column`, `Row`, `Stack`, `Grid`, `ScrollView`, `SafeArea`, `Spacer`, `Divider`, `SplitPane`
+   - Primitives: `Text`, `Button`, `TextInput`, `TextArea`, `Checkbox`, `Switch`, `Slider`, `Select`, `Icon`, `Image`, `Canvas`
+   - Material/Panels: `Card`, `Modal`, `BottomSheet`, `ToastHost`, `VirtualList`, `DataTable`
+3. **Property syntax**: Properties inside elements end with a semicolon `;` (e.g., `width: 100%; text: "Hello";`).
+4. **Event handlers**: Use `on_tap => { ... }` (NOT `onClick`, NOT `onTap:`).
+5. **Two-way binding**: Use `<=>` for two-way state binding (e.g., `value <=> draft_title;`).
+6. **Units**: Layout dimensions use `dp` (e.g. `16dp`), percentages (`100%`), or plain numbers.
+7. **Colors & Theming**: Reference theme tokens via `Theme.<token>` (e.g., `Theme.background`, `Theme.primary`, `Theme.text_primary`, `Theme.surface_variant`, `Theme.danger`).
+8. **Reactivity in Rust**: Rust manages state with `cx: Scope` and `cx.signal(value)`. Read with `sig.get()`, update with `sig.set(v)` or `sig.update(|n| ...)`.

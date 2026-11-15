@@ -9,12 +9,17 @@
 # The `.cui` DSL
 - [The `.cui` language](dsl/syntax-guide.md)
 - [Reactivity and Rust](dsl/reactivity.md)
+- [Cheatsheet](dsl/cheatsheet.md)
 
 # Widgets
 - [Widget catalog](widgets/catalog.md)
 
-# Tutorials
+# Tutorials & Recipes
 - [Building the Notes app](guides/notes-app.md)
+- [UI Cookbook & Patterns](guides/cookbook.md)
+
+# AI & Tooling
+- [Developing with AI & MCP](guides/ai-and-mcp.md)
 
 # Platform Guides
 - [Desktop](platforms/linux-desktop.md)
