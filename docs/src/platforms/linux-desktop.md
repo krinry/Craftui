@@ -1,34 +1,73 @@
-# Linux Desktop Development
+# Desktop
 
-Linux is the primary development and testing environment for CraftUI.
+The desktop runner opens a native window on Linux (Wayland or X11), macOS and
+Windows.
 
----
+## What is verified
 
-## 1. Wayland & X11 Windowing
+The test suite runs on Linux, macOS and Windows in CI on every change. It drives
+interfaces without opening a window, including the notes app at a desktop
+window size. No CI job opens a real window, so windowing, GPU rendering and
+system dialogs are checked by hand.
 
-CraftUI integrates seamlessly with modern Linux desktop environments (GNOME, KDE Plasma, Sway, Hyprland, XFCE):
-- Native Wayland client support with client-side decorations and fractional scaling.
-- Transparent X11 fallback when running on legacy display servers or inside Wine/containers.
-- Dual GPU backend support:
-  - **Vulkan** (primary): Ultra-low latency rendering via Mesa RADV, ANV, or NVIDIA drivers.
-  - **Software Fallback**: Fast CPU rasterization via Vello CPU or TinySkia if running in virtual machines or headless CI runners.
-
----
-
-## 2. In-Process Desktop Services
-
-Unlike frameworks that spawn external CLI subprocesses (e.g. calling `zenity` or `xclip`), CraftUI uses fast, safe, in-process Rust integrations:
-- **Clipboard:** Native Wayland (`wl-clipboard-rs`) and X11 (`x11-clipboard`) protocol integration.
-- **File Dialogs:** Native `xdg-desktop-portal` file dialogs (`rfd`), honoring your system's file manager and dark/light desktop theme.
-- **Multi-Window:** First-class support for spawning multiple native windows via `WindowLauncher`.
-
----
-
-## 3. Running with Hot-Reload
-
-During development, use hot-reload to iterate on `.cui` markup without waiting for Rust compilation:
+## Linux packages
 
 ```bash
+sudo apt install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-dev
+```
+
+## Starting a window
+
+```rust
+use craftui::prelude::*;
+
+fn main() -> craftui::core::Result<()> {
+    let window = WindowConfig {
+        title: "My app".to_string(),
+        width: 1100.0,
+        height: 720.0,
+        ..WindowConfig::default()
+    };
+    run_app(window, |cx, tree, _ctx| build_my_ui(cx, tree))
+}
+```
+
+`WindowConfig` also has `resizable` and `force_cpu`. Set `force_cpu` to draw
+with the CPU renderer, which is useful in a virtual machine or over remote
+desktop where no usable GPU is present.
+
+## Run
+
+```bash
+cargo run -p craftui-example-notes --features desktop
+# or, from a project folder:
 craftui run --platform desktop
 ```
-Changes saved in VS Code or your text editor reload in under 100 milliseconds while preserving component state!
+
+## Rendering
+
+The window is drawn with `wgpu`, which uses Vulkan on Linux, Metal on macOS and
+Direct3D 12 on Windows. A CPU renderer is used when `force_cpu` is set.
+
+## System services
+
+- **Clipboard** uses the Wayland and X11 protocols directly on Linux.
+- **File dialogs** go through `xdg-desktop-portal` on Linux, so they match the
+  desktop's own file chooser.
+- **More windows** can be opened with `WindowLauncher`.
+
+## Editing `.cui` while the app runs
+
+With the `hot-reload` feature (on by default), `run_hot_reload_cui` watches the
+`.cui` file it was given and rebuilds the interface when that file changes,
+without recompiling Rust. `craftui preview <file.cui>` opens a single file the
+same way.
+
+`run_app`, which the window example and the Notes app use, does **not** watch
+anything: editing a `.cui` file leaves a running app unchanged, even with the
+feature enabled. Use `craftui preview` or `run_hot_reload_cui` when you want
+live reload.
+
+Reload interprets the `.cui` file at run time, while a normal build compiles it
+to Rust. The two paths are separate implementations, so check a change in a
+real build before you rely on it.

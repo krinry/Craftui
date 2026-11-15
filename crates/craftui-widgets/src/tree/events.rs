@@ -364,7 +364,11 @@ impl WidgetTree {
                 }) => {
                     if let Ok(mut func) = cb.try_borrow_mut() {
                         func(rect, &local_pe);
-                        changed = true;
+                        if !matches!(local_pe.phase, PointerPhase::Move)
+                            || local_pe.button.is_some()
+                        {
+                            changed = true;
+                        }
                     }
                 }
                 Some(WidgetKind::Custom(cw)) => {

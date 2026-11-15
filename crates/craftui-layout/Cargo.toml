@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+authors.workspace = true
 description = "Taffy-backed Flexbox, CSS Grid, Stack, SafeArea, and RTL layout engine for CraftUI"
 
 [lints]

@@ -191,10 +191,10 @@ pub fn mount_whiteboard_app(
     let svc_json = services.clone();
     let d_sig3 = screen.drawer_open;
     screen.set_on_export_json(move || {
-        if let Ok(json_str) = elements_to_json(&ctrl_json.elements.get()) {
-            if let Some(svc) = &svc_json {
-                svc.write_clipboard(&json_str);
-            }
+        if let Ok(json_str) = elements_to_json(&ctrl_json.elements.get())
+            && let Some(svc) = &svc_json
+        {
+            svc.write_clipboard(&json_str);
         }
         d_sig3.set(false);
     });
@@ -205,13 +205,12 @@ pub fn mount_whiteboard_app(
     let d_sig4 = screen.drawer_open;
     let st_sig2 = screen.status_text;
     screen.set_on_import_json(move || {
-        if let Some(svc) = &svc_imp {
-            if let Some(text) = svc.read_clipboard() {
-                if let Ok(elems) = elements_from_json(&text) {
-                    st_sig2.set(format!("{} shapes", elems.len()));
-                    ctrl_imp.elements.set(elems);
-                }
-            }
+        if let Some(svc) = &svc_imp
+            && let Some(text) = svc.read_clipboard()
+            && let Ok(elems) = elements_from_json(&text)
+        {
+            st_sig2.set(format!("{} shapes", elems.len()));
+            ctrl_imp.elements.set(elems);
         }
         d_sig4.set(false);
     });

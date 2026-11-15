@@ -1,2 +1,5 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Store and check out every text file with LF line endings on all platforms, so
+# shell scripts run and files embedded with include_str! are identical on Windows.
+* text=auto eol=lf
+*.png binary
+*.ttf binary

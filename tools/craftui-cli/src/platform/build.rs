@@ -131,15 +131,14 @@ pub fn run_app_target(
                     let mut found: Option<PathBuf> = None;
                     if let Ok(entries) = std::fs::read_dir(&apk_search_dir) {
                         for sub in entries.flatten() {
-                            if sub.path().is_dir() {
-                                if let Ok(files) = std::fs::read_dir(sub.path()) {
-                                    for f in files.flatten() {
-                                        if f.path().extension().and_then(|e| e.to_str())
-                                            == Some("apk")
-                                        {
-                                            found = Some(f.path());
-                                            break;
-                                        }
+                            if sub.path().is_dir()
+                                && let Ok(files) = std::fs::read_dir(sub.path())
+                            {
+                                for f in files.flatten() {
+                                    if f.path().extension().and_then(|e| e.to_str()) == Some("apk")
+                                    {
+                                        found = Some(f.path());
+                                        break;
                                     }
                                 }
                             }

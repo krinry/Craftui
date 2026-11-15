@@ -63,7 +63,7 @@ flowchart TD
 
 ## 3. Live Physical Device Validation (Realme Android 16)
 
-* **Physical Device:** Realme `RMX5003` (Model `RMX5003IN`, Serial `Z9FA8TLVW8E6ZTCU`), Android 16 (`arm64-v8a`), 1080x2400.
+* **Physical Device:** Realme `RMX5003` (Model `RMX5003IN`), Android 16 (`arm64-v8a`), 1080x2400.
 * **Status:** Verified working live with full GPU rendering, dynamic `SafeArea` top cutout and bottom navigation insets, and responsive multi-touch.
 * **Apps Deployed & Verified:**
   1. `dev.craftui.craftui_app` (`libcraftui_platform_android.so`): Native title, subtitle, and interactive button.

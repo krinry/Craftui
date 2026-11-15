@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+authors.workspace = true
 description = "Hybrid GPU (gpu-sdf / vello) and CPU (vello_cpu / tiny-skia) 2D vector renderer with strict feature gating"
 
 [features]

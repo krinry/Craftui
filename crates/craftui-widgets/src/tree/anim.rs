@@ -5,6 +5,13 @@ impl WidgetTree {
         self.layout_engine.rect(node)
     }
 
+    /// Whether a node is mounted and shown: neither it nor any ancestor is
+    /// hidden by `visible`, a false `if` condition, a closed overlay or a
+    /// collapsed accordion.
+    pub fn is_visible(&self, node: NodeId) -> bool {
+        !self.is_effectively_hidden(node)
+    }
+
     pub(crate) fn is_effectively_hidden(&self, id: NodeId) -> bool {
         let mut cur = Some(id);
         while let Some(nid) = cur {

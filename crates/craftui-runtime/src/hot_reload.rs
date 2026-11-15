@@ -160,16 +160,16 @@ impl HotReloadSession {
 
         // Second pass: install reactive Window effects with full component properties map
         for prop in &comp.properties {
-            if let Some(ref def_expr) = prop.default_value {
-                if expr_references_window(def_expr) {
-                    let sig_c = self.store.props.get(&prop.name).copied().unwrap();
-                    let expr_c = def_expr.clone();
-                    let env_c = full_env.clone();
-                    mount_scope.effect(move || {
-                        let v = eval_expr_tracked(&expr_c, &env_c, true);
-                        sig_c.set(v);
-                    });
-                }
+            if let Some(ref def_expr) = prop.default_value
+                && expr_references_window(def_expr)
+            {
+                let sig_c = self.store.props.get(&prop.name).copied().unwrap();
+                let expr_c = def_expr.clone();
+                let env_c = full_env.clone();
+                mount_scope.effect(move || {
+                    let v = eval_expr_tracked(&expr_c, &env_c, true);
+                    sig_c.set(v);
+                });
             }
         }
 

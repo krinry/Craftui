@@ -3,11 +3,11 @@ authors = ["CraftUI Contributors"]
 language = "en"
 multilingual = false
 src = "src"
-title = "The CraftUI Book — Cross-Platform Native GUI Framework"
+title = "The CraftUI Book"
 
 [output.html]
-git-repository-url = "https://github.com/craftui/craftui"
-edit-url-template = "https://github.com/craftui/craftui/edit/main/docs/{path}"
+git-repository-url = "https://github.com/krinry/Craftui"
+edit-url-template = "https://github.com/krinry/Craftui/edit/main/docs/{path}"
 cname = "docs.craftui.dev"
 default-theme = "rust"
 preferred-dark-theme = "navy"

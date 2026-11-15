@@ -9,8 +9,11 @@ impl WidgetTree {
 
     /// Pull dirty flags from `craftui-reactive` and update layout + virtualized windows.
     pub fn layout(&mut self, metrics: WindowMetrics) -> usize {
-        if self.metrics != metrics {
-            self.metrics = metrics;
+        self.metrics = metrics;
+        // Platform runners assign `metrics` directly before the first frame, so
+        // comparing against the field alone would leave the reactive copy at
+        // its default and `Window.*` bindings would see the wrong size.
+        if self.metrics_signal.get_untracked() != metrics {
             self.metrics_signal.set(metrics);
         }
         let dirty_updates = drain_dirty_nodes();

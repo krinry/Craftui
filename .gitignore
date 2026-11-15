@@ -2,9 +2,10 @@
 **/target/
 **/*.rs.bk
 *.pdb
-*.png
+# Scratch screenshots dropped in the repository root. Images that belong to the
+# docs or to an example live in subdirectories and are tracked.
+/*.png
 .DS_Store
-Cargo.lock
 .agents/
 skills-lock.json
 

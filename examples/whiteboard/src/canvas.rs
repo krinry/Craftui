@@ -234,10 +234,10 @@ pub fn paint_whiteboard(bounds: Rect, scene: &mut PaintScene, ctrl: &WhiteboardC
     }
 
     // 4. Draw selection bounding box and corner handles
-    if let Some(sel_id) = selected_id {
-        if let Some(sel_elem) = elements.iter().find(|e| e.id == sel_id) {
-            paint_selection_halo(scene, sel_elem, view);
-        }
+    if let Some(sel_id) = selected_id
+        && let Some(sel_elem) = elements.iter().find(|e| e.id == sel_id)
+    {
+        paint_selection_halo(scene, sel_elem, view);
     }
 }
 
@@ -590,10 +590,10 @@ pub fn handle_pointer(_bounds: Rect, event: &PointerEvent, ctrl: &WhiteboardCont
                         *end = world_pos;
                     }
                     ElementKind::Freehand { points } => {
-                        if let Some(last) = points.last() {
-                            if last.distance_to(world_pos) > 2.0 {
-                                points.push(world_pos);
-                            }
+                        if let Some(last) = points.last()
+                            && last.distance_to(world_pos) > 2.0
+                        {
+                            points.push(world_pos);
                         }
                     }
                     _ => {}

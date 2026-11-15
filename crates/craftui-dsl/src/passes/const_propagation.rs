@@ -89,32 +89,32 @@ pub fn fold_expr(expr: &mut Expr) {
     match expr {
         Expr::Member(base, field) => {
             fold_expr(base);
-            if let Expr::Ident(id) = base.as_ref() {
-                if id == "Math" {
-                    match field.as_str() {
-                        "PI" => {
-                            *expr = Expr::Float(std::f64::consts::PI);
-                        }
-                        "E" => {
-                            *expr = Expr::Float(std::f64::consts::E);
-                        }
-                        "LN2" => {
-                            *expr = Expr::Float(std::f64::consts::LN_2);
-                        }
-                        "LN10" => {
-                            *expr = Expr::Float(std::f64::consts::LN_10);
-                        }
-                        "LOG2E" => {
-                            *expr = Expr::Float(std::f64::consts::LOG2_E);
-                        }
-                        "LOG10E" => {
-                            *expr = Expr::Float(std::f64::consts::LOG10_E);
-                        }
-                        "SQRT2" => {
-                            *expr = Expr::Float(std::f64::consts::SQRT_2);
-                        }
-                        _ => {}
+            if let Expr::Ident(id) = base.as_ref()
+                && id == "Math"
+            {
+                match field.as_str() {
+                    "PI" => {
+                        *expr = Expr::Float(std::f64::consts::PI);
                     }
+                    "E" => {
+                        *expr = Expr::Float(std::f64::consts::E);
+                    }
+                    "LN2" => {
+                        *expr = Expr::Float(std::f64::consts::LN_2);
+                    }
+                    "LN10" => {
+                        *expr = Expr::Float(std::f64::consts::LN_10);
+                    }
+                    "LOG2E" => {
+                        *expr = Expr::Float(std::f64::consts::LOG2_E);
+                    }
+                    "LOG10E" => {
+                        *expr = Expr::Float(std::f64::consts::LOG10_E);
+                    }
+                    "SQRT2" => {
+                        *expr = Expr::Float(std::f64::consts::SQRT_2);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -149,13 +149,12 @@ pub fn fold_expr(expr: &mut Expr) {
             for arg in args.iter_mut() {
                 fold_expr(arg);
             }
-            if let Expr::Ident(id) = recv.as_ref() {
-                if id == "Math" {
-                    if let Some(folded) = fold_math_call(method, args) {
-                        *expr = folded;
-                        return;
-                    }
-                }
+            if let Expr::Ident(id) = recv.as_ref()
+                && id == "Math"
+                && let Some(folded) = fold_math_call(method, args)
+            {
+                *expr = folded;
+                return;
             }
             if let Some(v) = get_num(recv) {
                 if args.is_empty() {
@@ -201,13 +200,12 @@ pub fn fold_expr(expr: &mut Expr) {
                             _ => {}
                         }
                     }
-                } else if args.len() == 2 {
-                    if let (Some(lo), Some(hi)) = (get_num(&args[0]), get_num(&args[1])) {
-                        if method == "clamp" {
-                            let hi_c = hi.max(lo);
-                            *expr = Expr::Float(v.clamp(lo, hi_c));
-                        }
-                    }
+                } else if args.len() == 2
+                    && let (Some(lo), Some(hi)) = (get_num(&args[0]), get_num(&args[1]))
+                    && method == "clamp"
+                {
+                    let hi_c = hi.max(lo);
+                    *expr = Expr::Float(v.clamp(lo, hi_c));
                 }
             }
         }

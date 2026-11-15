@@ -1,0 +1,55 @@
+[package]
+name = "craftui-example-notes"
+description = "A notes app built with CraftUI that runs on Android, the Web and desktop from one codebase."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+# The library name must stay equal to the package name with underscores: the
+# `craftui` CLI looks for `lib<package>.so` (Android) and `<package>.wasm` (Web).
+[lib]
+name = "craftui_example_notes"
+crate-type = ["lib", "cdylib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "craftui-notes"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[features]
+default = ["desktop"]
+# Desktop window (winit). Turned off for Android and Web builds, which the CLI
+# compiles with `--no-default-features`.
+desktop = ["craftui/desktop"]
+
+[lints]
+workspace = true
+
+[dependencies]
+craftui = { workspace = true, default-features = false, features = [
+    "dsl",
+    "embedded-fallback-font",
+    "gpu-sdf",
+    "gpu-vello",
+    "cpu-vello",
+    "cpu-tiny-skia",
+] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+craftui-platform-web = { workspace = true, features = ["gpu-sdf", "cpu-tiny-skia"] }
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+web-sys = { workspace = true, features = ["Window", "Storage"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+craftui = { workspace = true, default-features = false, features = ["android"] }
+
+[build-dependencies]
+craftui-dsl.workspace = true

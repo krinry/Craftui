@@ -533,15 +533,24 @@ fn text_input_undo_redo_word_nav_and_demand_caret_blink() {
     assert!(!tree.tick_blink_timers(1600));
 
     // Word delete backward ("world" -> "hello ")
+    // Word-jump is Ctrl everywhere except macOS/iOS, where it is Option/Alt.
+    let word_jump_mods = if cfg!(any(target_os = "macos", target_os = "ios")) {
+        Modifiers {
+            alt: true,
+            ..Default::default()
+        }
+    } else {
+        Modifiers {
+            ctrl: true,
+            ..Default::default()
+        }
+    };
     tree.handle_event(&UiEvent::Key(KeyEvent {
         code: KeyCode::Backspace,
         text: None,
         pressed: true,
         repeat: false,
-        modifiers: Modifiers {
-            ctrl: true,
-            ..Default::default()
-        },
+        modifiers: word_jump_mods,
     }));
     assert_eq!(text_sig.get(), "hello ");
 
@@ -2081,4 +2090,90 @@ fn flutter_design_widgets_card_list_tile_chip_app_bar_drawer_and_scaffold() {
         .iter()
         .any(|c| matches!(c, PaintCommand::DropShadow { .. }));
     assert!(has_drop_shadow);
+
+    #[test]
+    fn metrics_assigned_directly_reach_the_reactive_signal() {
+        // Platform runners write `tree.metrics` before the first frame and then
+        // call `layout(tree.metrics)`. `Window.*` bindings read the signal, so
+        // the signal must follow even though the field already has the value.
+        reset_runtime();
+        let cx = Scope::root();
+        let mut tree = WidgetTree::new(cx);
+        let root = tree.column(cx);
+        tree.set_root(root);
+
+        let seen_width = Rc::new(Cell::new(0.0f32));
+        let seen = seen_width.clone();
+        let signal = tree.metrics_signal;
+        cx.effect(move || seen.set(signal.get().logical_size.width));
+
+        tree.metrics = WindowMetrics {
+            logical_size: Size::new(390.0, 800.0),
+            ..Default::default()
+        };
+        tree.layout(tree.metrics);
+
+        assert_eq!(
+            tree.metrics_signal.get_untracked().logical_size.width,
+            390.0
+        );
+        assert_eq!(seen_width.get(), 390.0);
+    }
+
+    #[test]
+    fn is_visible_follows_visible_when_on_the_node_and_its_ancestors() {
+        reset_runtime();
+        let cx = Scope::root();
+        let shown = cx.signal(true);
+        let mut tree = WidgetTree::new(cx);
+
+        let root = tree.column(cx);
+        let panel = tree.column(cx);
+        let label = tree.text(cx, "inside", TextStyle::default());
+        tree.append_child(panel, label);
+        tree.append_child(root, panel);
+        tree.set_visible_when(panel, move || shown.get());
+        tree.set_root(root);
+
+        let metrics = WindowMetrics {
+            logical_size: Size::new(300.0, 200.0),
+            ..Default::default()
+        };
+        tree.layout(metrics);
+        assert!(tree.is_visible(panel));
+        assert!(tree.is_visible(label));
+
+        shown.set(false);
+        tree.layout(metrics);
+        assert!(tree.is_visible(root));
+        assert!(!tree.is_visible(panel));
+        assert!(
+            !tree.is_visible(label),
+            "a child of a hidden node is hidden"
+        );
+
+        shown.set(true);
+        tree.layout(metrics);
+        assert!(tree.is_visible(label));
+
+        tree.remove_subtree(panel);
+        assert!(!tree.is_visible(label), "a removed node is not visible");
+    }
+
+    #[test]
+    fn text_fields_use_their_placeholder_as_the_accessible_name() {
+        reset_runtime();
+        let cx = Scope::root();
+        let mut tree = WidgetTree::new(cx);
+
+        let search = tree.text_input(cx, "", "Search notes", None);
+        let body = tree.text_area(cx, "", "Start writing...", None);
+        let unnamed = tree.text_input(cx, "", "", None);
+
+        let label =
+            |id: craftui_core::NodeId| tree.nodes.get(id).and_then(|n| n.a11y.label.clone());
+        assert_eq!(label(search).as_deref(), Some("Search notes"));
+        assert_eq!(label(body).as_deref(), Some("Start writing..."));
+        assert_eq!(label(unnamed), None);
+    }
 }

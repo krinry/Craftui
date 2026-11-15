@@ -304,11 +304,13 @@ impl WidgetTree {
         let initial_s = bound_signal
             .map(|s| s.get_untracked())
             .unwrap_or_else(|| initial.into());
+        let placeholder = placeholder.into();
+        let accessible_name = (!placeholder.is_empty()).then(|| placeholder.clone());
         let id = self.spawn_node(
             "TextInput",
             WidgetKind::TextInput {
                 editor: TextEditorState::new(initial_s.clone()),
-                placeholder: placeholder.into(),
+                placeholder,
                 style: TextStyle::default().with_size(14.0),
                 multiline: false,
                 bound_signal,
@@ -323,6 +325,8 @@ impl WidgetTree {
         if let Some(n) = self.nodes.get_mut(id) {
             n.box_style.radius = CornerRadii::all(8.0);
             n.a11y.role = A11yRole::TextInput;
+            // Without a name a screen reader only announces "edit text".
+            n.a11y.label = accessible_name;
             n.a11y.value = Some(initial_s);
             n.a11y.focusable = true;
         }
@@ -340,11 +344,13 @@ impl WidgetTree {
         let initial_s = bound_signal
             .map(|s| s.get_untracked())
             .unwrap_or_else(|| initial.into());
+        let placeholder = placeholder.into();
+        let accessible_name = (!placeholder.is_empty()).then(|| placeholder.clone());
         let id = self.spawn_node(
             "TextArea",
             WidgetKind::TextInput {
                 editor: TextEditorState::new(initial_s.clone()),
-                placeholder: placeholder.into(),
+                placeholder,
                 style: TextStyle::default().with_size(14.0),
                 multiline: true,
                 bound_signal,
@@ -359,6 +365,8 @@ impl WidgetTree {
         if let Some(n) = self.nodes.get_mut(id) {
             n.box_style.radius = CornerRadii::all(8.0);
             n.a11y.role = A11yRole::MultilineTextInput;
+            // Without a name a screen reader only announces "edit text".
+            n.a11y.label = accessible_name;
             n.a11y.value = Some(initial_s);
             n.a11y.focusable = true;
         }

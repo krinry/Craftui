@@ -1,88 +1,446 @@
 name: CraftUI CI
 
+# Every push to `main` and every pull request runs all jobs: Linux, Windows and
+# macOS desktop, Web/WASM and Android.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only by default. The only job that needs more is `publish-logs`, which
+# is the only place `contents: write` is granted, and it runs on pushes to
+# `main` only. See `.github/scripts/publish-logs.sh`.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+# `GH_TOKEN` is deliberately not defined here: it is passed to the single step
+# in `publish-logs` that needs it, so build scripts and tests cannot read it.
 env:
-  CARGO_TERM_COLOR: always
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
 
 jobs:
   license-guard:
-    name: License Purity (cargo-deny)
+    name: License purity (cargo-deny)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check licenses
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: Check dependency licenses
+        run: .github/scripts/logged.sh deny cargo deny check licenses
+      - name: Upload the job logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-license-guard
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
 
-  test-desktop:
-    name: Test & Clippy (${{ matrix.os }})
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  lockfile:
+    name: Cargo.lock is up to date
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Re-resolve and compare with the committed lockfile
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci-logs"
+          cargo metadata --format-version 1 >/dev/null
+          cp Cargo.lock "$RUNNER_TEMP/ci-logs/Cargo.lock"
+          .github/scripts/logged.sh lockfile-diff git diff --exit-code --stat -- Cargo.lock
+      - name: Upload the job logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-lockfile
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+  linux:
+    name: Linux (fmt, clippy, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      - name: Install Linux System Deps
-        if: matrix.os == 'ubuntu-latest'
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-dev
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
-      - name: Minimal-Feature Compile Check
-        if: matrix.os == 'ubuntu-latest'
-        run: cargo check -p craftui --no-default-features --features "desktop,dsl,hot-reload,embedded-fallback-font,gpu-sdf"
+      - name: Format check
+        run: .github/scripts/logged.sh fmt cargo fmt --all -- --check
+      - name: Clippy report (all warnings, never fails on lints)
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh clippy-report cargo clippy --locked --workspace --all-targets
+      - name: Clippy (deny warnings)
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Tests
+        if: ${{ !cancelled() }}
+        # CRAFTUI_SNAPSHOT_DIR makes the notes example write PNG screenshots of
+        # its screens, rendered with the CPU backend, next to the logs.
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci-logs"
+          CRAFTUI_SNAPSHOT_DIR="$RUNNER_TEMP/ci-logs" .github/scripts/logged.sh test cargo test --locked --workspace --no-fail-fast
+      - name: Minimal-feature compile check
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh minimal cargo check --locked -p craftui --no-default-features --features "desktop,dsl,hot-reload,embedded-fallback-font,gpu-sdf"
+      - name: Save machine-applicable fixes as a patch
+        if: ${{ failure() }}
+        run: |
+          cargo clippy --fix --allow-dirty --allow-staged --locked --workspace --all-targets || true
+          cargo fmt --all || true
+          git diff >"$RUNNER_TEMP/ci-logs/autofix.patch"
+          git checkout -- .
+      - name: Upload the job logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-linux
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
 
-  check-wasm:
-    name: Web WASM Clippy & Minimal Check
+  desktop-matrix:
+    name: Test & Clippy (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows
+          - os: macos-latest
+            label: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy report (all warnings, never fails on lints)
+        run: .github/scripts/logged.sh clippy-report cargo clippy --locked --workspace --all-targets
+      - name: Clippy (deny warnings)
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh clippy cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Tests
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh test cargo test --locked --workspace --no-fail-fast
+      - name: Save machine-applicable fixes as a patch
+        if: ${{ failure() }}
+        run: |
+          cargo clippy --fix --allow-dirty --allow-staged --locked --workspace --all-targets || true
+          cargo fmt --all || true
+          log_dir="${RUNNER_TEMP//\\//}/ci-logs"
+          mkdir -p "$log_dir"
+          git diff >"$log_dir/autofix.patch"
+          git checkout -- .
+      - name: Upload the job logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-${{ matrix.label }}
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+  wasm:
+    name: Web WASM (clippy, minimal check)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-          components: clippy
-      - run: cargo clippy -p craftui-platform-web --target wasm32-unknown-unknown -- -D warnings
-      - run: cargo check -p craftui-platform-web --target wasm32-unknown-unknown --no-default-features --features gpu-sdf
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy report (all warnings, never fails on lints)
+        run: .github/scripts/logged.sh clippy-report cargo clippy --locked -p craftui-platform-web --target wasm32-unknown-unknown
+      - name: Clippy (deny warnings)
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh clippy cargo clippy --locked -p craftui-platform-web --target wasm32-unknown-unknown -- -D warnings
+      - name: Minimal-feature check
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh minimal cargo check --locked -p craftui-platform-web --target wasm32-unknown-unknown --no-default-features --features gpu-sdf
+      - name: Save machine-applicable fixes as a patch
+        if: ${{ failure() }}
+        run: |
+          cargo clippy --fix --allow-dirty --allow-staged --locked -p craftui-platform-web --target wasm32-unknown-unknown || true
+          cargo fmt --all || true
+          mkdir -p "$RUNNER_TEMP/ci-logs"
+          git diff >"$RUNNER_TEMP/ci-logs/autofix.patch"
+          git checkout -- .
+      - name: Upload the job logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-wasm
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
 
-  check-android:
-    name: Android Clippy & Minimal Check
+  android:
+    name: Android (clippy, minimal check)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
-          components: clippy
-      - name: Clippy & Minimal-Feature Check with preinstalled NDK
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Point cargo at the preinstalled NDK
         run: |
           NDK_BIN="${ANDROID_NDK_LATEST_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export CC_aarch64_linux_android="${NDK_BIN}/aarch64-linux-android26-clang"
-          export CXX_aarch64_linux_android="${NDK_BIN}/aarch64-linux-android26-clang++"
-          export AR_aarch64_linux_android="${NDK_BIN}/llvm-ar"
-          cargo clippy -p craftui-platform-android --target aarch64-linux-android -- -D warnings
-          cargo check -p craftui-platform-android --target aarch64-linux-android --no-default-features --features gpu-sdf
+          {
+            echo "CC_aarch64_linux_android=${NDK_BIN}/aarch64-linux-android26-clang"
+            echo "CXX_aarch64_linux_android=${NDK_BIN}/aarch64-linux-android26-clang++"
+            echo "AR_aarch64_linux_android=${NDK_BIN}/llvm-ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_BIN}/aarch64-linux-android26-clang"
+          } >> "$GITHUB_ENV"
+      - name: Clippy report (all warnings, never fails on lints)
+        run: .github/scripts/logged.sh clippy-report cargo clippy --locked -p craftui-platform-android --target aarch64-linux-android
+      - name: Clippy (deny warnings)
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh clippy cargo clippy --locked -p craftui-platform-android --target aarch64-linux-android -- -D warnings
+      - name: Minimal-feature check
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh minimal cargo check --locked -p craftui-platform-android --target aarch64-linux-android --no-default-features --features gpu-sdf
+      - name: Save machine-applicable fixes as a patch
+        if: ${{ failure() }}
+        run: |
+          cargo clippy --fix --allow-dirty --allow-staged --locked -p craftui-platform-android --target aarch64-linux-android || true
+          cargo fmt --all || true
+          mkdir -p "$RUNNER_TEMP/ci-logs"
+          git diff >"$RUNNER_TEMP/ci-logs/autofix.patch"
+          git checkout -- .
+      - name: Upload the job logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-android
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
 
-  bench-smoke:
-    name: Benchmark Smoke Check
+  # The notes example is the end-to-end proof that one codebase ships to the
+  # Web and to Android. Both jobs go through the `craftui` CLI, the same way a
+  # user would, instead of calling cargo with hand-picked flags.
+  notes-web:
+    name: Notes app (Web bundle + browser test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install Linux System Deps
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Linux system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-dev
-      - name: Run Perf Suite Smoke Benchmark
+      - name: Read the wasm-bindgen version from Cargo.lock
+        # The CLI must be the exact version of the `wasm-bindgen` crate in use.
         run: |
-          cargo bench -p craftui --bench perf_suite -- --quick --json > bench-smoke.json
-          cat bench-smoke.json
-          python3 -m json.tool bench-smoke.json > /dev/null
+          version="$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock)"
+          echo "wasm-bindgen ${version}"
+          echo "WASM_BINDGEN_VERSION=${version}" >> "$GITHUB_ENV"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@${{ env.WASM_BINDGEN_VERSION }}
+      - name: Build the web bundle with the CraftUI CLI
+        run: .github/scripts/logged.sh notes-web-build cargo run --locked -p craftui-cli -- build --platform web --release -p craftui-example-notes -o dist/notes-web
+      - name: Check the bundle contents
+        run: |
+          ls -l dist/notes-web | tee "$RUNNER_TEMP/ci-logs/notes-web-files.log"
+          test -s dist/notes-web/index.html
+          test -s dist/notes-web/craftui_app.js
+          test -s dist/notes-web/craftui_app_bg.wasm
+      - name: Run the app in headless Chrome
+        run: .github/scripts/logged.sh notes-web-smoke node .github/scripts/web-smoke.mjs dist/notes-web "$RUNNER_TEMP/ci-logs"
+      - name: Upload the web bundle
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: craftui-notes-web
+          path: dist/notes-web
+          if-no-files-found: ignore
+      - name: Upload the job logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-notes-web
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+  notes-android:
+    name: Notes app (Android APK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          # The Android Gradle Plugin version in the generated project needs Gradle 8.7+.
+          gradle-version: "8.10.2"
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-dev
+      - name: Select the preinstalled NDK
+        run: echo "ANDROID_NDK_HOME=${ANDROID_NDK_LATEST_HOME}" >> "$GITHUB_ENV"
+      - name: Build the native library and Gradle project with the CraftUI CLI
+        run: .github/scripts/logged.sh notes-android-build cargo run --locked -p craftui-cli -- build --platform android --release -p craftui-example-notes -o dist/notes-android
+      - name: Check the native library
+        run: |
+          so=dist/notes-android/app/src/main/jniLibs/arm64-v8a/libcraftui_example_notes.so
+          test -s "$so"
+          nm="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          "$nm" -D --defined-only "$so" > "$RUNNER_TEMP/notes-symbols.txt"
+          {
+            ls -l "$so"
+            file "$so"
+            echo "--- exported entry points"
+            grep -E ' (android_main|GameActivity_onCreate|Java_[A-Za-z0-9_]+)$' "$RUNNER_TEMP/notes-symbols.txt" || true
+          } | tee "$RUNNER_TEMP/ci-logs/notes-android-so.log"
+          # GameActivity (Java) loads the library and calls its native glue,
+          # which starts the thread that runs `android_main`. Both ends must be
+          # exported or the app cannot start.
+          grep -q ' android_main$' "$RUNNER_TEMP/notes-symbols.txt"
+          grep -qE ' (GameActivity_onCreate|Java_com_google_androidgamesdk_GameActivity_[A-Za-z0-9_]+)$' "$RUNNER_TEMP/notes-symbols.txt"
+      - name: Assemble the debug APK
+        working-directory: dist/notes-android
+        run: ../../.github/scripts/logged.sh notes-android-gradle gradle --no-daemon --console=plain assembleDebug
+      - name: Check the APK
+        run: |
+          apk=dist/notes-android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$apk"
+          aapt2="$(ls "${ANDROID_HOME}"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+          "$aapt2" dump badging "$apk" > "$RUNNER_TEMP/notes-badging.txt"
+          unzip -l "$apk" > "$RUNNER_TEMP/notes-apk-files.txt"
+          {
+            ls -l "$apk"
+            grep -E "^(package|sdkVersion|targetSdkVersion|application-label:|native-code|uses-permission)" "$RUNNER_TEMP/notes-badging.txt" || true
+            echo "--- native libraries"
+            grep -E 'lib/.*\.so' "$RUNNER_TEMP/notes-apk-files.txt" || true
+          } | tee "$RUNNER_TEMP/ci-logs/notes-android-apk.log"
+          grep -q "package: name='dev.craftui.notes'" "$RUNNER_TEMP/notes-badging.txt"
+          grep -q 'lib/arm64-v8a/libcraftui_example_notes.so' "$RUNNER_TEMP/notes-apk-files.txt"
+      - name: Upload the APK
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: craftui-notes-android-debug-apk
+          path: dist/notes-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: ignore
+      - name: Upload the job logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-notes-android
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+  bench-smoke:
+    name: Benchmark smoke check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-dev
+      - name: Run perf suite smoke benchmark
+        run: |
+          .github/scripts/logged.sh bench-build cargo bench --locked -p craftui --bench perf_suite --no-run
+          mkdir -p "$RUNNER_TEMP/ci-logs"
+          cargo bench --locked -p craftui --bench perf_suite -- --quick --json > "$RUNNER_TEMP/ci-logs/bench-smoke.json"
+          python3 -m json.tool "$RUNNER_TEMP/ci-logs/bench-smoke.json" > /dev/null
+      - name: Upload the job logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-bench-smoke
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Keeps the `ci-logs` blob feature: tools that can only reach api.github.com
+  # can read `repos/<owner>/<repo>/git/blobs/<sha>`. It runs after every job,
+  # on pushes to `main` only, and it is the only job with `contents: write`.
+  # Pull requests never reach it, so PR code never holds a write token and CI
+  # logs are never published from a PR.
+  publish-logs:
+    name: Publish job logs
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: [license-guard, lockfile, linux, desktop-matrix, wasm, android, notes-web, notes-android, bench-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download the job logs
+        # One directory per job: their log file names collide. The step is
+        # allowed to fail, because a run where no job produced logs has nothing
+        # to publish and must not turn into a red build.
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ci-logs-*
+          path: ${{ runner.temp }}/ci-logs
+          merge-multiple: false
+      - name: Publish the logs as one Git blob
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/publish-logs.sh "${GITHUB_RUN_ID}"

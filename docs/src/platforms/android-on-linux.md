@@ -1,72 +1,103 @@
-# Android Development on Linux
+# Android
 
-CraftUI provides a first-class developer experience for Android on Linux without requiring heavyweight IDEs or proprietary tooling.
+A CraftUI Android app is a native library (`.so`) that draws the whole
+interface itself, loaded by a small generated Gradle project.
 
----
+## What is verified
 
-## 1. Quick Device Verification
+CI builds `examples/notes` into a debug APK on every change and inspects it:
+package `dev.craftui.notes`, one `arm64-v8a` library that exports
+`android_main`, target SDK 35, size about 12 MB.
 
-Connect your Android phone or start an emulator, and test ADB communication:
+The APK has **not** been run on a phone or emulator in CI. Treat behaviour on a
+real device as untested until you have tried it.
+
+## What you need
+
+- The Rust target: `rustup target add aarch64-linux-android`
+- The Android SDK and NDK. Set `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) and
+  `ANDROID_NDK_HOME` (or `ANDROID_NDK_ROOT`).
+- JDK 17 and Gradle 8.7 or newer. The generated project uses the Android Gradle
+  Plugin 8.6.1, which needs 8.7+; CI uses 8.10.2.
+
+`craftui doctor` reports which of these it can find.
+
+## The entry point
+
+The library exports `android_main`. It starts the Android runner with a closure
+that builds the interface:
+
+```rust
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub fn android_main(app: craftui::platform_android::android_activity::AndroidApp) {
+    craftui::platform_android::android_runtime::run_android_app(
+        app,
+        |cx, tree, _textures, _dispatcher| build_my_ui(cx, tree),
+    );
+}
+```
+
+`examples/notes/src/lib.rs` has a complete version, including where it reads
+the app's private data directory.
+
+The package must build a `cdylib`:
+
+```toml
+[lib]
+crate-type = ["cdylib", "rlib"]
+```
+
+## Build an APK
 
 ```bash
-adb devices
+craftui build --platform android --release -p craftui-example-notes -o dist/notes-android
+gradle -p dist/notes-android assembleDebug
 ```
-If your device shows `device`, you are ready.
 
-Run `craftui doctor` to verify your NDK and ADB paths:
+The first command compiles the library with the NDK compiler and writes a
+Gradle project to the output folder. The second packages it. The APK is at
+`dist/notes-android/app/build/outputs/apk/debug/app-debug.apk`.
+
+Install it on a connected device:
+
 ```bash
-craftui doctor
+adb install -r dist/notes-android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
----
+`craftui run --platform android -p craftui-example-notes` does the build, runs
+Gradle, and when a device is connected installs the APK with `adb install -r`
+and starts it. Pass `-p` with your own package name: without it the CLI builds
+the default `craftui-platform-android` package instead of your app.
 
-## 2. Manifest Configuration (`craftui.toml`)
+Only `arm64-v8a` is built. Emulators on x86-64 machines need an ARM system
+image.
 
-CraftUI eliminates manual editing of complex Android XML manifests:
+## App settings (`craftui.toml`)
 
 ```toml
 [app]
-name = "CraftScan"
-id = "dev.craftui.scancraft"
+name = "CraftUI Notes"
+id = "dev.craftui.notes"
 version = "0.1.0"
 
 [android]
-package = "dev.craftui.scancraft"
 min_sdk = 26
-target_sdk = 34
-version_code = 100
+target_sdk = 35
+version_code = 1
 
 [permissions]
-camera = "Required to capture documents"
-photos = "Required to select existing photos"
-vibrate = "Provides haptic feedback on scan"
-notifications = "Alerts when document processing is complete"
+# camera = "Used to scan documents"
 ```
 
-Running `craftui permissions check` validates that:
-- Android `<uses-permission>` tags match official Google API standards.
-- Obsolete permissions are automatically scoped with `maxSdkVersion` (e.g. `READ_EXTERNAL_STORAGE` on SDK <= 32).
-- Feature flags like `<uses-feature android:name="android.hardware.camera" android:required="false" />` are generated so your app can install on devices without cameras.
+Each entry under `[permissions]` becomes the matching `<uses-permission>` in the
+generated manifest. `craftui permissions list` shows the names.
 
----
+## Known limits
 
-## 3. One-Command Build and Run
-
-To compile, build the APK, install to your phone, and launch the activity:
-
-```bash
-craftui run --platform android
-```
-
-CraftUI performs the following automatically:
-1. Compiles the Rust workspace using your local NDK `clang` toolchain (`aarch64-linux-android`).
-2. Bundles the compiled native `.so` library into the Android `jniLibs/arm64-v8a` directory.
-3. Invokes Gradle to package the debug APK.
-4. Executes `adb install -r` and starts the `GameActivity` intent.
-5. Streams real-time `logcat` output directly to your terminal.
-
----
-
-## 4. Hardware Acceleration & Insets
-- **GPU Rendering:** CraftUI renders directly to the native `ANativeWindow` surface using Vulkan or OpenGL ES via WGPU.
-- **Edge-to-Edge & Software Keyboard:** Real-time WindowInsets updates automatically populate the `SafeArea` widget, so on-screen keyboards smoothly slide the UI upward.
+- The generated project always declares `INTERNET`, and links a biometrics
+  library that adds `USE_BIOMETRIC` and `USE_FINGERPRINT`, even when
+  `[permissions]` is empty.
+- Only debug builds are produced by the documented commands. Release signing is
+  not covered.
+- Only the `arm64-v8a` ABI is built.

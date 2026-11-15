@@ -243,6 +243,9 @@ impl PermissionBackend for DesktopPermissionBackend {
         self.check(&Permission::AdminPrivileges) == PermissionStatus::Granted
     }
 
+    // On Windows the platform branch below is a constant, which clippy would
+    // ask to fold into the check above; the other platforms need both parts.
+    #[cfg_attr(target_os = "windows", allow(clippy::needless_bool))]
     fn request_admin_privileges(&self) -> bool {
         if self.is_admin_active() {
             return true;
