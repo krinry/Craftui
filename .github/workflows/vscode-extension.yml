@@ -36,14 +36,14 @@ jobs:
         with:
           node-version: 22
       - name: Test executable discovery
-        run: node --test editors/vscode/test/executable.test.js
+        run: .github/scripts/logged.sh vscode-tests node --test editors/vscode/test/executable.test.js
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-dev
       - name: Build CLI and language server
-        run: cargo build --locked --release -p craftui-cli -p craftui-lsp
+        run: .github/scripts/logged.sh vscode-build cargo build --locked --release -p craftui-cli -p craftui-lsp
       - name: Bundle binaries
         run: |
           mkdir -p editors/vscode/bin

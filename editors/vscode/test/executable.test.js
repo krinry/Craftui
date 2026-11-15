@@ -5,6 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+const bundled = (name) => path.join('/extension', 'bin', name);
+const workspaceBinary = (name) => path.join('/workspace', 'target', 'debug', name);
+
 const source = fs.readFileSync(path.join(__dirname, '..', 'extension.js'), 'utf8');
 
 function load({ existing, configured = {}, platform = 'linux' }) {
@@ -32,21 +35,21 @@ function load({ existing, configured = {}, platform = 'linux' }) {
 }
 
 test('configured executable overrides bundled and workspace binaries', () => {
-  const find = load({ existing: ['/custom/lsp', '/extension/bin/craftui-lsp'], configured: { lspPath: '/custom/lsp' } });
+  const find = load({ existing: ['/custom/lsp', bundled('craftui-lsp')], configured: { lspPath: '/custom/lsp' } });
   assert.equal(find('craftui-lsp'), '/custom/lsp');
 });
 
 test('bundled executable is preferred over workspace and PATH', () => {
-  const find = load({ existing: ['/extension/bin/craftui', '/workspace/target/debug/craftui'] });
-  assert.equal(find('craftui'), '/extension/bin/craftui');
+  const find = load({ existing: [bundled('craftui'), workspaceBinary('craftui')] });
+  assert.equal(find('craftui'), bundled('craftui'));
 });
 
 test('windows bundled executable uses exe extension', () => {
-  const find = load({ existing: ['/extension/bin/craftui-lsp.exe'], platform: 'win32' });
-  assert.equal(find('craftui-lsp'), '/extension/bin/craftui-lsp.exe');
+  const find = load({ existing: [bundled('craftui-lsp.exe')], platform: 'win32' });
+  assert.equal(find('craftui-lsp'), bundled('craftui-lsp.exe'));
 });
 
 test('development install falls back to workspace binary', () => {
-  const find = load({ existing: ['/workspace/target/debug/craftui-lsp'] });
-  assert.equal(find('craftui-lsp'), '/workspace/target/debug/craftui-lsp');
+  const find = load({ existing: [workspaceBinary('craftui-lsp')] });
+  assert.equal(find('craftui-lsp'), workspaceBinary('craftui-lsp'));
 });
