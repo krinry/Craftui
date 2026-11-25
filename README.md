@@ -21,8 +21,9 @@ export component Counter {
 ```
 
 > **Status: early.** Version 0.1.0, not published on crates.io, and the API
-> will change. Read the [status table](#status) before choosing it for a
-> project.
+> will change. Read the [status table](#status) and the
+> [Parity & Roadmap](docs/src/roadmap/parity-and-roadmap.md) before choosing it
+> for a project.
 
 ## Try the example app
 

@@ -8,6 +8,7 @@ pub mod geometry;
 pub mod hybrid;
 pub mod ids;
 pub mod platform;
+pub mod plugin;
 pub mod remote;
 pub mod style;
 pub mod theme;
@@ -36,6 +37,7 @@ pub use platform::{
     PermissionOutcome, PermissionStatus, PlatformServices, SecureStorageBackend, ShareBackend,
     SharePayload,
 };
+pub use plugin::{CraftPlugin, MethodCall, PluginRegistry};
 pub use remote::{DEFAULT_REMOTE_PREVIEW_PORT, RemotePreviewMessage};
 pub use style::{
     Alignment, Axis, BlendMode, Border, BoxShadow, Brush, ColorStop, CursorIcon, Direction, Fit,

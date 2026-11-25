@@ -1,3 +1,4 @@
+mod add;
 mod dev;
 mod doctor;
 mod manifest;
@@ -10,6 +11,7 @@ mod templates;
 #[cfg(test)]
 mod tests;
 
+use crate::add::run_add_crate;
 use crate::dev::{check_cui_paths, render_cui_file_to_png, run_dev_watcher};
 use crate::doctor::{run_doctor, run_setup};
 use crate::permissions::{run_permissions_check, run_permissions_list};
@@ -188,6 +190,17 @@ enum Commands {
         #[arg(short, long)]
         out: Option<PathBuf>,
         /// Generate platform packaging templates/bundles without invoking cargo cross-compilation
+        #[arg(long)]
+        skip_cargo: bool,
+    },
+    /// Add a crates.io dependency to Cargo.toml and record it in craftui.toml
+    Add {
+        /// Crate name or name@version (for example `reqwest` or `serde@1.0`)
+        crate_spec: String,
+        #[arg(long, value_delimiter = ',')]
+        features: Vec<String>,
+        #[arg(long, default_value = ".")]
+        path: PathBuf,
         #[arg(long)]
         skip_cargo: bool,
     },
@@ -371,6 +384,12 @@ fn run() -> Result<()> {
             out.as_deref(),
             skip_cargo,
         ),
+        Commands::Add {
+            crate_spec,
+            features,
+            path,
+            skip_cargo,
+        } => run_add_crate(&crate_spec, &features, &path, skip_cargo),
         Commands::Mcp { stdio } => mcp::run_mcp_server(stdio),
     }
 }

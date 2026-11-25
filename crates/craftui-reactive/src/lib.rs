@@ -7,6 +7,7 @@
 pub mod arena;
 pub mod computed;
 pub mod effect;
+pub mod resource;
 pub mod scope;
 pub mod signal;
 
@@ -19,5 +20,6 @@ pub use arena::{
 };
 pub use computed::Computed;
 pub use effect::Effect;
+pub use resource::ResourceState;
 pub use scope::{Scope, TaskHandle};
 pub use signal::{ReadSignal, Signal};

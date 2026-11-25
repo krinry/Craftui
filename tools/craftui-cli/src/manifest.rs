@@ -10,6 +10,8 @@ pub struct AppManifest {
     pub android: AndroidSection,
     pub ios: IosSection,
     pub permissions: BTreeMap<String, PermissionDeclaration>,
+    pub dependencies: BTreeMap<String, String>,
+    pub plugins: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,6 +193,14 @@ impl AppManifest {
                             reason,
                         },
                     );
+                }
+                "dependencies" => {
+                    let spec = parse_toml_string(val, line_no)?;
+                    manifest.dependencies.insert(key, spec);
+                }
+                "plugins" => {
+                    let spec = parse_toml_string(val, line_no)?;
+                    manifest.plugins.insert(key, spec);
                 }
                 other => {
                     return Err(CraftError::Platform(format!(
