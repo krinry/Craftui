@@ -15,8 +15,8 @@ use craftui_layout::LayoutStyle;
 use craftui_reactive::{Scope, Signal};
 use craftui_text::TextStyle;
 use craftui_widgets::{
-    AnimatableProp, Easing, IndexCallback, ReactiveValue, TapHandler, ToastItem, ToastSeverity,
-    TransitionCurve, VirtualItemFactory, WidgetTree,
+    AnimatableProp, CardVariant, Easing, IndexCallback, ReactiveValue, TapHandler, ToastItem,
+    ToastSeverity, TransitionCurve, VirtualItemFactory, WidgetTree,
 };
 
 use crate::dyn_value::{DynCallback, DynValue};
@@ -114,10 +114,16 @@ pub(crate) fn build_element(
             tree.grid(scope, cols, gap)
         }
         "Stack" => tree.stack(scope),
-        "Divider" => {
+        "Divider" | "HorizontalDivider" | "VerticalDivider" => {
+            let default_axis = if el.kind == "VerticalDivider" {
+                Axis::Vertical
+            } else {
+                Axis::Horizontal
+            };
             let axis = match find_prop(el, &["direction"]).map(|p| &p.value) {
                 Some(Expr::Ident(s)) if s == "Vertical" => Axis::Vertical,
-                _ => Axis::Horizontal,
+                Some(Expr::Ident(s)) if s == "Horizontal" => Axis::Horizontal,
+                _ => default_axis,
             };
             let thickness = eval_prop("thickness").map(|v| v.as_f32()).unwrap_or(1.0);
             let n = tree.divider(scope, axis, thickness);
@@ -153,17 +159,23 @@ pub(crate) fn build_element(
             let style_rv = emit_reactive_text_style(size_prop, weight_prop, &color_expr, env);
             tree.text(scope, text_rv, style_rv)
         }
-        "Button" => {
-            let text_rv = find_prop(el, &["text", "title", "label"])
+        "Button" | "button" | "FilledButton" | "ElevatedButton" | "TonalButton"
+        | "FilledTonalButton" | "OutlinedButton" | "TextButton" | "IconButton"
+        | "FilledIconButton" | "TonalIconButton" | "OutlinedIconButton" => {
+            let is_icon = matches!(
+                el.kind.as_str(),
+                "IconButton" | "FilledIconButton" | "TonalIconButton" | "OutlinedIconButton"
+            );
+            let text_rv = find_prop(el, &["text", "title", "label", "icon", "name"])
                 .map(|p| expr_to_reactive_string(&p.value, env))
                 .unwrap_or_else(|| {
-                    if el.children.is_empty() {
-                        ReactiveValue::Static("Button".to_string())
-                    } else {
+                    if is_icon || !el.children.is_empty() {
                         ReactiveValue::Static(String::new())
+                    } else {
+                        ReactiveValue::Static("Button".to_string())
                     }
                 });
-            let tap_handler = make_handler_opt(el, &["on_tap", "on_click"], env, None);
+            let tap_handler = make_handler_opt(el, &["on_tap", "on_click", "onTap", "onClick"], env, None);
             let n = tree.button(scope, text_rv, move || {
                 if let Some(ref h) = tap_handler
                     && let Ok(mut cb) = h.try_borrow_mut()
@@ -171,13 +183,146 @@ pub(crate) fn build_element(
                     cb();
                 }
             });
-            if let Some(fg) = find_prop(el, &["foreground", "color"]) {
-                let rv = expr_to_reactive_color(
-                    &fg.value,
-                    env,
-                    env.theme_sig.get_untracked().on_primary,
-                );
-                tree.set_button_foreground(n, rv);
+            let custom_fg = find_prop(el, &["foreground", "color"]).map(|fg| {
+                expr_to_reactive_color(&fg.value, env, env.theme_sig.get_untracked().on_primary)
+            });
+            let theme_sig = env.theme_sig;
+            let set_btn_style = |tree: &mut WidgetTree,
+                                 fg: ReactiveValue<Color>,
+                                 bg: Option<ReactiveValue<Brush>>,
+                                 border: Option<Border>,
+                                 border_col: Option<ReactiveValue<Color>>,
+                                 shadow: Option<BoxShadow>,
+                                 pad: Insets,
+                                 min_w: Option<f32>| {
+                tree.set_button_foreground(n, fg);
+                if let Some(mut bs) = tree.nodes.get(n).map(|nd| nd.box_style.clone()) {
+                    bs.radius = CornerRadii::all(20.0);
+                    bs.background = bg;
+                    if let Some(b) = border {
+                        bs.border = Some(b);
+                    }
+                    if let Some(bc) = border_col {
+                        bs.border_color = Some(bc);
+                    }
+                    if let Some(sh) = shadow {
+                        bs.shadow = Some(sh);
+                    }
+                    tree.set_box_style(n, bs);
+                }
+                if let Some(mut ls) = tree.nodes.get(n).map(|nd| nd.layout.clone()) {
+                    ls.padding = pad;
+                    ls.min_height = Length::Dp(40.0);
+                    if let Some(mw) = min_w {
+                        ls.min_width = Length::Dp(mw);
+                    }
+                    tree.set_layout(n, ls);
+                }
+            };
+            match el.kind.as_str() {
+                "FilledButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().on_primary))),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || Brush::Solid(theme_sig.get().primary)))),
+                    None,
+                    None,
+                    None,
+                    Insets::symmetric(24.0, 10.0),
+                    None,
+                ),
+                "ElevatedButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().primary))),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || Brush::Solid(theme_sig.get().surface)))),
+                    None,
+                    None,
+                    Some(BoxShadow::drop(0.0, 1.0, 3.0, 0.0, Color::rgba(0, 0, 0, 38))),
+                    Insets::symmetric(24.0, 10.0),
+                    None,
+                ),
+                "TonalButton" | "FilledTonalButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().text_primary))),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || Brush::Solid(theme_sig.get().surface_variant)))),
+                    None,
+                    None,
+                    None,
+                    Insets::symmetric(24.0, 10.0),
+                    None,
+                ),
+                "OutlinedButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().primary))),
+                    Some(ReactiveValue::Static(Brush::Solid(Color::TRANSPARENT))),
+                    Some(Border {
+                        width: 1.0,
+                        color: Color::TRANSPARENT,
+                        radius: CornerRadii::all(20.0),
+                    }),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().border))),
+                    None,
+                    Insets::symmetric(24.0, 10.0),
+                    None,
+                ),
+                "TextButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().primary))),
+                    Some(ReactiveValue::Static(Brush::Solid(Color::TRANSPARENT))),
+                    None,
+                    None,
+                    None,
+                    Insets::symmetric(12.0, 10.0),
+                    None,
+                ),
+                "IconButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().text_primary))),
+                    Some(ReactiveValue::Static(Brush::Solid(Color::TRANSPARENT))),
+                    None,
+                    None,
+                    None,
+                    Insets::all(8.0),
+                    Some(40.0),
+                ),
+                "FilledIconButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().on_primary))),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || Brush::Solid(theme_sig.get().primary)))),
+                    None,
+                    None,
+                    None,
+                    Insets::all(8.0),
+                    Some(40.0),
+                ),
+                "TonalIconButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().text_primary))),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || Brush::Solid(theme_sig.get().surface_variant)))),
+                    None,
+                    None,
+                    None,
+                    Insets::all(8.0),
+                    Some(40.0),
+                ),
+                "OutlinedIconButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().primary))),
+                    Some(ReactiveValue::Static(Brush::Solid(Color::TRANSPARENT))),
+                    Some(Border {
+                        width: 1.0,
+                        color: Color::TRANSPARENT,
+                        radius: CornerRadii::all(20.0),
+                    }),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().border))),
+                    None,
+                    Insets::all(8.0),
+                    Some(40.0),
+                ),
+                _ => {
+                    if let Some(fg) = custom_fg {
+                        tree.set_button_foreground(n, fg);
+                    }
+                }
             }
             n
         }
@@ -740,7 +885,7 @@ pub(crate) fn build_element(
                 .unwrap_or_else(|| ReactiveValue::Static(String::new()));
             tree.tooltip(scope, txt_rv)
         }
-        "ProgressIndicator" => {
+        "ProgressIndicator" | "LinearProgressIndicator" => {
             let prog_rv = match find_prop(el, &["progress", "value"]) {
                 Some(p) => {
                     let expr = p.value.clone();
@@ -763,7 +908,7 @@ pub(crate) fn build_element(
             };
             tree.progress_indicator(scope, prog_rv)
         }
-        "Spinner" => {
+        "Spinner" | "CircularProgressIndicator" => {
             let sz_p = find_prop(el, &["size"]);
             let th_p = find_prop(el, &["thickness"]);
             let col_p = find_prop(el, &["color", "foreground"]);
@@ -918,7 +1063,104 @@ pub(crate) fn build_element(
                 .unwrap_or_else(|| ReactiveValue::Static(String::new()));
             tree.html_view(scope, src_rv, html_rv, None)
         }
-        "div" | "section" | "nav" => {
+        "Card" | "ElevatedCard" | "FilledCard" | "OutlinedCard" => {
+            let variant = match el.kind.as_str() {
+                "ElevatedCard" => CardVariant::Elevated,
+                "FilledCard" => CardVariant::Filled,
+                "OutlinedCard" => CardVariant::Outlined,
+                _ => match eval_prop("variant").map(|v| v.as_str().to_lowercase()).as_deref() {
+                    Some("filled") => CardVariant::Filled,
+                    Some("outlined") => CardVariant::Outlined,
+                    _ => CardVariant::Elevated,
+                },
+            };
+            tree.card(scope, variant)
+        }
+        "ListTile" => {
+            let title_rv = find_prop(el, &["title"])
+                .map(|p| expr_to_reactive_string(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(String::new()));
+            let sub_rv = find_prop(el, &["subtitle"]).map(|p| expr_to_reactive_string(&p.value, env));
+            let lead_rv = find_prop(el, &["leading"]).map(|p| expr_to_reactive_string(&p.value, env));
+            let trail_rv = find_prop(el, &["trailing"]).map(|p| expr_to_reactive_string(&p.value, env));
+            let tap_handler = make_handler_opt(el, &["on_tap", "on_click", "onTap", "onClick"], env, None);
+            tree.list_tile(
+                scope,
+                title_rv,
+                sub_rv,
+                lead_rv,
+                trail_rv,
+                tap_handler.map(|h| {
+                    move || {
+                        if let Ok(mut cb) = h.try_borrow_mut() {
+                            cb();
+                        }
+                    }
+                }),
+            )
+        }
+        "Chip" | "FilterChip" | "ActionChip" | "ChoiceChip" | "InputChip" => {
+            let label_rv = find_prop(el, &["label", "text"])
+                .map(|p| expr_to_reactive_string(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(String::new()));
+            let sel_sig = bind_bool_signal(scope, find_prop(el, &["selected", "value"]), env, false);
+            let icon_rv = find_prop(el, &["icon", "leading_icon"])
+                .map(|p| expr_to_reactive_string(&p.value, env));
+            let tap_handler = make_handler_opt(el, &["on_tap", "on_click", "onTap", "onClick"], env, None);
+            tree.chip(
+                scope,
+                label_rv,
+                sel_sig,
+                icon_rv,
+                tap_handler.map(|h| {
+                    move || {
+                        if let Ok(mut cb) = h.try_borrow_mut() {
+                            cb();
+                        }
+                    }
+                }),
+            )
+        }
+        "AppBar" => {
+            let title_rv = find_prop(el, &["title"])
+                .map(|p| expr_to_reactive_string(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(String::new()));
+            let lead_rv = find_prop(el, &["leading", "leading_icon"])
+                .map(|p| expr_to_reactive_string(&p.value, env));
+            let elev = eval_prop("elevation").map(|v| v.as_f32()).unwrap_or(4.0);
+            let lead_handler = make_handler_opt(el, &["on_leading_tap", "on_menu_tap"], env, None);
+            tree.app_bar(
+                scope,
+                title_rv,
+                lead_rv,
+                elev,
+                lead_handler.map(|h| {
+                    move || {
+                        if let Ok(mut cb) = h.try_borrow_mut() {
+                            cb();
+                        }
+                    }
+                }),
+            )
+        }
+        "Drawer" => {
+            let open_sig = bind_bool_signal(scope, find_prop(el, &["open"]), env, false);
+            let width = eval_prop("width").map(|v| v.as_f32()).unwrap_or(304.0);
+            let close_handler = make_handler_opt(el, &["on_close"], env, None);
+            tree.drawer(
+                scope,
+                open_sig,
+                width,
+                close_handler.map(|h| {
+                    move || {
+                        if let Ok(mut cb) = h.try_borrow_mut() {
+                            cb();
+                        }
+                    }
+                }),
+            )
+        }
+        "div" | "section" | "nav" | "header" | "footer" | "main" | "article" | "aside" => {
             let class_str = find_prop(el, &["class"])
                 .map(|p| match eval_expr(&p.value, env) {
                     DynValue::String(s) => s,
@@ -943,12 +1185,6 @@ pub(crate) fn build_element(
                 .unwrap_or_else(|| ReactiveValue::Static(String::new()));
             let st = TextStyle::default().with_size(sz).with_weight(wt);
             tree.text(scope, content_rv, st)
-        }
-        "button" => {
-            let text_rv = find_prop(el, &["text", "title", "label"])
-                .map(|p| expr_to_reactive_string(&p.value, env))
-                .unwrap_or_else(|| ReactiveValue::Static("Button".into()));
-            tree.button(scope, text_rv, || {})
         }
         "input" => {
             let text_prop = find_prop(el, &["text", "value"]);

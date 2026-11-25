@@ -22,6 +22,7 @@ desktop = ["dep:craftui-platform-desktop"]
 android = ["dep:craftui-platform-android"]
 ios = ["dep:craftui-platform-ios"]
 web = ["dep:craftui-platform-web"]
+web-lean = ["web", "dsl", "embedded-fallback-font", "gpu-sdf", "cpu-tiny-skia"]
 dsl = ["dep:craftui-dsl"]
 hot-reload = [
     "dsl",

@@ -1064,3 +1064,76 @@ fn hot_reload_supports_children_slot_and_pickers_tree_view() {
     let row_slot = tree.nodes.get(root_node.children[1]).unwrap();
     assert_eq!(row_slot.children.len(), 7);
 }
+
+#[test]
+fn interpreter_matches_every_builtin_widget_and_material_variant() {
+    reset_runtime();
+    let state_scope = Scope::root();
+    let mut tree = WidgetTree::new(state_scope);
+    let mut session = HotReloadSession::new(state_scope);
+
+    for widget in craftui_dsl::BUILTIN_WIDGETS {
+        let src = format!("component Host {{ Column {{ {widget} {{ }} }} }}");
+        let root = session
+            .reload(&src, Some("Host"), &mut tree)
+            .unwrap_or_else(|e| panic!("interpreter failed on `{widget}`: {e}"));
+        tree.set_root(root);
+        tree.layout(WindowMetrics::default());
+        let col = tree.nodes.get(root).unwrap();
+        assert_eq!(col.children.len(), 1, "missing child for `{widget}`");
+    }
+
+    // Verify specific Material & alias widget kinds match AOT codegen
+    let src = r#"
+        component FullSuite {
+            in-out property <bool> drawer_open: false;
+            in-out property <bool> chip_sel: true;
+            Column {
+                AppBar { title: "Title"; }
+                ElevatedCard { ListTile { title: "Row"; } }
+                FilledButton { text: "Go"; }
+                FilterChip { label: "Rust"; selected <=> chip_sel; }
+                VerticalDivider { }
+                LinearProgressIndicator { progress: 0.5; }
+                CircularProgressIndicator { size: 20.0; }
+                Drawer { open <=> drawer_open; }
+            }
+        }
+    "#;
+    let root = session.reload(src, Some("FullSuite"), &mut tree).unwrap();
+    let col = tree.nodes.get(root).unwrap();
+    assert_eq!(col.children.len(), 8);
+    assert!(matches!(
+        tree.nodes.get(col.children[0]).unwrap().kind,
+        craftui_widgets::WidgetKind::AppBar { .. }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[1]).unwrap().kind,
+        craftui_widgets::WidgetKind::Card {
+            variant: craftui_widgets::CardVariant::Elevated
+        }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[3]).unwrap().kind,
+        craftui_widgets::WidgetKind::Chip { .. }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[4]).unwrap().kind,
+        craftui_widgets::WidgetKind::Divider {
+            axis: craftui_core::Axis::Vertical,
+            ..
+        }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[5]).unwrap().kind,
+        craftui_widgets::WidgetKind::ProgressIndicator { .. }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[6]).unwrap().kind,
+        craftui_widgets::WidgetKind::Spinner { .. }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[7]).unwrap().kind,
+        craftui_widgets::WidgetKind::Drawer { .. }
+    ));
+}

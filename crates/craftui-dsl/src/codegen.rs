@@ -750,7 +750,7 @@ fn emit_element(
                     );
                 }
                 "TonalButton" | "FilledTonalButton" => {
-                    let fg_code = custom_fg.unwrap_or_else(|| "ReactiveValue::Dynamic(std::rc::Rc::new(move || __ts_btn.get().on_surface))".into());
+                    let fg_code = custom_fg.unwrap_or_else(|| "ReactiveValue::Dynamic(std::rc::Rc::new(move || __ts_btn.get().text_primary))".into());
                     let _ = writeln!(
                         out,
                         "{indent}    {{ let __ts_btn = __theme_sig; {tr}.set_button_foreground(__btn, {fg_code}); if let Some(mut bs) = {tr}.nodes.get(__btn).map(|n| n.box_style.clone()) {{ bs.radius = CornerRadii::all(20.0); bs.background = Some(ReactiveValue::Dynamic(std::rc::Rc::new(move || Brush::Solid(__ts_btn.get().surface_variant)))); {tr}.set_box_style(__btn, bs); }} if let Some(mut ls) = {tr}.nodes.get(__btn).map(|n| n.layout.clone()) {{ ls.padding = Insets::symmetric(24.0, 10.0); ls.min_height = Length::Dp(40.0); {tr}.set_layout(__btn, ls); }} }}"
@@ -785,7 +785,7 @@ fn emit_element(
                     );
                 }
                 "TonalIconButton" => {
-                    let fg_code = custom_fg.unwrap_or_else(|| "ReactiveValue::Dynamic(std::rc::Rc::new(move || __ts_btn.get().on_surface))".into());
+                    let fg_code = custom_fg.unwrap_or_else(|| "ReactiveValue::Dynamic(std::rc::Rc::new(move || __ts_btn.get().text_primary))".into());
                     let _ = writeln!(
                         out,
                         "{indent}    {{ let __ts_btn = __theme_sig; {tr}.set_button_foreground(__btn, {fg_code}); if let Some(mut bs) = {tr}.nodes.get(__btn).map(|n| n.box_style.clone()) {{ bs.radius = CornerRadii::all(20.0); bs.background = Some(ReactiveValue::Dynamic(std::rc::Rc::new(move || Brush::Solid(__ts_btn.get().surface_variant)))); {tr}.set_box_style(__btn, bs); }} if let Some(mut ls) = {tr}.nodes.get(__btn).map(|n| n.layout.clone()) {{ ls.padding = Insets::all(8.0); ls.min_width = Length::Dp(40.0); ls.min_height = Length::Dp(40.0); {tr}.set_layout(__btn, ls); }} }}"

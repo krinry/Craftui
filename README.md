@@ -60,11 +60,12 @@ Known gaps:
 
 - Some widget names are accepted by the language but not implemented yet; see
   the end of the [widget catalog](docs/src/widgets/catalog.md).
-- Editing `.cui` files while the app runs uses a separate interpreter from the
-  build-time compiler, and the two can differ.
+- Editing `.cui` files while the app runs uses an interpreter (`craftui-runtime`)
+  separate from the build-time compiler (`craftui-dsl`); all built-in widgets
+  and Material 3 variants are aligned, though subtle expression edge cases can still differ.
 - The Android project template declares `INTERNET` and biometric permissions
   even when the app asks for none.
-- The WebAssembly file for the notes app is about 6.2 MB before compression.
+- The lean WebAssembly file for the notes app is about 4.1 MB before compression (~1.21 MB gzipped).
 
 ## What is in the box
 

@@ -147,12 +147,21 @@ pub fn emit_web_bundle(out_dir: &Path, app_name: &str, built_wasm: Option<&Path>
 
             let bg_wasm = out_dir.join("craftui_app_bg.wasm");
             if bg_wasm.is_file() && find_in_path("wasm-opt").is_some() {
-                let _ = Command::new("wasm-opt")
-                    .arg("-O3")
+                let oz_ok = Command::new("wasm-opt")
+                    .args(["-Oz", "--strip-debug"])
                     .arg(&bg_wasm)
                     .arg("-o")
                     .arg(&bg_wasm)
-                    .status();
+                    .status()
+                    .is_ok_and(|s| s.success());
+                if !oz_ok {
+                    let _ = Command::new("wasm-opt")
+                        .arg("-Oz")
+                        .arg(&bg_wasm)
+                        .arg("-o")
+                        .arg(&bg_wasm)
+                        .status();
+                }
             }
         }
     }
