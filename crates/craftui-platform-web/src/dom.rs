@@ -129,6 +129,34 @@ impl ClipboardBackend for WebClipboard {
     }
 }
 
+/// Convert browser `KeyboardEvent.code` + `KeyboardEvent.key` into a CraftUI [`KeyEvent`].
+/// Physical scancodes (`KeyF`, `BracketLeft`, `Digit1`, etc.) take priority over layout-mapped `key`.
+pub fn dom_keyboard_event_to_craft(
+    dom_code: &str,
+    key: &str,
+    pressed: bool,
+    repeat: bool,
+    modifiers: Modifiers,
+) -> KeyEvent {
+    let code = if let Some(phys) = KeyCode::from_dom_code(dom_code) {
+        phys
+    } else {
+        return dom_key_to_craft(key, pressed, repeat, modifiers);
+    };
+    let text = if key.chars().count() == 1 {
+        Some(key.to_string())
+    } else {
+        None
+    };
+    KeyEvent {
+        code,
+        text,
+        pressed,
+        repeat,
+        modifiers,
+    }
+}
+
 /// Convert browser `KeyboardEvent.key` string into a CraftUI [`KeyEvent`].
 pub fn dom_key_to_craft(key: &str, pressed: bool, repeat: bool, modifiers: Modifiers) -> KeyEvent {
     let cmd = modifiers.command();

@@ -82,6 +82,11 @@ impl TextStyle {
         self.max_lines = Some(max_lines);
         self
     }
+
+    pub fn with_family(mut self, family: impl Into<String>) -> Self {
+        self.font_family = Some(family.into());
+        self
+    }
 }
 
 /// A styled segment of text within a [`RichText`] container.

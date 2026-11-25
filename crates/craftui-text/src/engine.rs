@@ -80,6 +80,34 @@ impl TextEngine {
         self.cache.clear();
     }
 
+    /// Register custom font bytes and append them to the default sans-serif & system-ui fallback chain.
+    /// Useful for scripts like Devanagari on minimal Linux systems and WebAssembly builds.
+    pub fn register_fallback_font_bytes(&mut self, bytes: Vec<u8>) {
+        let registered = self.font_cx.collection.register_fonts(bytes.into(), None);
+        let ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
+        if !ids.is_empty() {
+            self.font_cx
+                .collection
+                .append_generic_families(GenericFamily::SansSerif, ids.iter().copied());
+            self.font_cx
+                .collection
+                .append_generic_families(GenericFamily::SystemUi, ids.iter().copied());
+        }
+        self.cache.clear();
+    }
+
+    /// Register custom monospace font bytes and append them to the `monospace` generic family.
+    pub fn register_monospace_font_bytes(&mut self, bytes: Vec<u8>) {
+        let registered = self.font_cx.collection.register_fonts(bytes.into(), None);
+        let ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
+        if !ids.is_empty() {
+            self.font_cx
+                .collection
+                .append_generic_families(GenericFamily::Monospace, ids.iter().copied());
+        }
+        self.cache.clear();
+    }
+
     /// Number of cache hits and misses recorded by the shaped layout LRU cache.
     pub fn cache_stats(&self) -> (u64, u64) {
         (self.cache.hits, self.cache.misses)
@@ -120,7 +148,26 @@ impl TextEngine {
             .as_deref()
             .filter(|f| !f.trim().is_empty())
         {
-            builder.push_default(StyleProperty::FontFamily(FontFamily::from(family)));
+            match family.trim().to_ascii_lowercase().as_str() {
+                "monospace" => {
+                    builder.push_default(StyleProperty::FontFamily(FontFamily::from(
+                        GenericFamily::Monospace,
+                    )));
+                }
+                "sans-serif" => {
+                    builder.push_default(StyleProperty::FontFamily(FontFamily::from(
+                        GenericFamily::SansSerif,
+                    )));
+                }
+                "serif" => {
+                    builder.push_default(StyleProperty::FontFamily(FontFamily::from(
+                        GenericFamily::Serif,
+                    )));
+                }
+                _ => {
+                    builder.push_default(StyleProperty::FontFamily(FontFamily::from(family)));
+                }
+            }
         } else {
             builder.push_default(StyleProperty::FontFamily(FontFamily::from(
                 GenericFamily::SansSerif,

@@ -197,6 +197,27 @@ pub trait CustomWidget {
         false
     }
 
+    /// Whether this custom widget can hold keyboard focus via pointer clicks or Tab traversal.
+    fn focusable(&self) -> bool {
+        false
+    }
+
+    /// Whether this custom widget intercepts `Tab` key presses instead of advancing focus.
+    fn wants_tab(&self) -> bool {
+        false
+    }
+
+    /// Whether this custom widget receives key-release (`pressed: false`) events while focused.
+    fn wants_key_up(&self) -> bool {
+        false
+    }
+
+    /// Whether this visible custom widget should automatically receive focus on keyboard input
+    /// when no other visible widget currently holds focus.
+    fn autofocus(&self) -> bool {
+        false
+    }
+
     fn a11y(&self) -> A11yMetadata {
         A11yMetadata::default()
     }

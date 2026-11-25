@@ -788,6 +788,7 @@ pub mod wasm_runner {
                     ctrl: e.ctrl_key(),
                     alt: e.alt_key(),
                     super_key: e.meta_key(),
+                    ..Default::default()
                 };
                 let raw_button = if phase == PointerPhase::Move {
                     let b = e.buttons();
@@ -891,6 +892,8 @@ pub mod wasm_runner {
                     ctrl: e.ctrl_key(),
                     alt: e.alt_key(),
                     super_key: e.meta_key(),
+                    alt_gr: e.get_modifier_state("AltGraph"),
+                    caps_lock: e.get_modifier_state("CapsLock"),
                 };
                 if comp_k.get() || e.is_composing() {
                     return;
@@ -933,7 +936,7 @@ pub mod wasm_runner {
                 if pressed && mods.command() && !mods.alt && matches!(e.key().as_str(), "v" | "V") {
                     return;
                 }
-                let ke = dom_key_to_craft(&e.key(), pressed, e.repeat(), mods);
+                let ke = dom_keyboard_event_to_craft(&e.code(), &e.key(), pressed, e.repeat(), mods);
                 if h_c.borrow_mut().handle_ui_event(&UiEvent::Key(ke)) {
                     e.prevent_default();
                     sched_k.request_frame();

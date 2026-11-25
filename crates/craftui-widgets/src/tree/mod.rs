@@ -426,6 +426,44 @@ impl WidgetTree {
         self.root = Some(root);
     }
 
+    /// Return the currently focused node, if any.
+    pub fn focused(&self) -> Option<NodeId> {
+        self.focused
+    }
+
+    /// Programmatically move keyboard focus to `node` (or clear it when `None`).
+    pub fn set_focus(&mut self, node: Option<NodeId>, focus_visible: bool) {
+        if let Some(old) = self.focused
+            && self.focused != node
+            && let Some(on) = self.nodes.get_mut(old)
+        {
+            on.dirty |= DirtyFlags::PAINT;
+        }
+        self.focused = node.filter(|id| self.nodes.contains_key(*id));
+        self.focus_visible = focus_visible;
+        if let Some(fid) = self.focused
+            && let Some(nn) = self.nodes.get_mut(fid)
+        {
+            nn.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+        }
+        self.reset_caret_blink(craftui_core::monotonic_ms());
+    }
+
+    /// Register raw font bytes (`ttf`/`otf`) with the shared `TextEngine`.
+    pub fn register_font_bytes(&mut self, bytes: Vec<u8>) {
+        self.text_engine.register_font_bytes(bytes);
+    }
+
+    /// Register custom font bytes and append them to the sans-serif & system-ui fallback chain.
+    pub fn register_fallback_font_bytes(&mut self, bytes: Vec<u8>) {
+        self.text_engine.register_fallback_font_bytes(bytes);
+    }
+
+    /// Register custom monospace font bytes and append them to the `monospace` generic family.
+    pub fn register_monospace_font_bytes(&mut self, bytes: Vec<u8>) {
+        self.text_engine.register_monospace_font_bytes(bytes);
+    }
+
     /// Associate a string identifier (`id: "..."`) with `node` for host lookups (e.g., `Canvas` or `PlatformView`).
     pub fn register_node_id(&mut self, node: NodeId, id: impl Into<String>) {
         if self.nodes.contains_key(node) {

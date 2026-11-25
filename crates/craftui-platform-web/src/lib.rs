@@ -15,8 +15,8 @@ mod tests;
 
 pub use dom::{
     WebAriaNode, WebClipboard, craft_cursor_to_css, craft_role_to_aria, dom_button_to_craft,
-    dom_composition_to_ime, dom_input_to_events, dom_key_to_craft, dom_pointer_event,
-    dom_wheel_event,
+    dom_composition_to_ime, dom_input_to_events, dom_key_to_craft, dom_keyboard_event_to_craft,
+    dom_pointer_event, dom_wheel_event,
 };
 pub use host::WebAppHost;
 pub use route::{BrowserRouteSync, HiddenImeInputState, RouteBridge, WebBridgeConfig};

@@ -1,4 +1,5 @@
 use super::*;
+use crate::dom::dom_keyboard_event_to_craft;
 use craftui_a11y::A11yRole;
 use craftui_core::*;
 use craftui_layout::LayoutStyle;
@@ -291,4 +292,22 @@ fn dom_pointer_and_wheel_events_convert_scaled_coordinates_to_logical_space() {
     } else {
         panic!("expected scroll event");
     }
+}
+
+#[test]
+fn dom_keyboard_event_preserves_physical_scancodes_and_modifiers() {
+    let mods = Modifiers {
+        shift: true,
+        alt_gr: true,
+        caps_lock: true,
+        ..Default::default()
+    };
+    let ev = dom_keyboard_event_to_craft("KeyF", "थ", true, false, mods);
+    assert_eq!(ev.code, KeyCode::KeyF);
+    assert_eq!(ev.code.dom_code(), Some("KeyF"));
+    assert!(ev.modifiers.alt_gr && ev.modifiers.caps_lock && ev.modifiers.shift);
+
+    let sym = dom_keyboard_event_to_craft("BracketLeft", "ड", true, false, Modifiers::default());
+    assert_eq!(sym.code, KeyCode::BracketLeft);
+    assert_eq!(sym.code.dom_code(), Some("BracketLeft"));
 }

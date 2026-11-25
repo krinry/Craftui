@@ -376,6 +376,11 @@ impl WidgetTree {
                     }
                 }
                 Some(WidgetKind::Custom(cw)) => {
+                    let focusable = cw.try_borrow().is_ok_and(|g| g.focusable());
+                    if matches!(pe.phase, PointerPhase::Down) && focusable {
+                        self.set_focus(Some(t), false);
+                        changed = true;
+                    }
                     if let Ok(mut guard) = cw.try_borrow_mut()
                         && guard.handle_event(rect, &UiEvent::Pointer(local_pe))
                     {
@@ -1438,9 +1443,15 @@ impl WidgetTree {
         let focusables: Vec<NodeId> = nodes
             .into_iter()
             .filter(|&id| {
-                self.nodes
-                    .get(id)
-                    .is_some_and(|n| n.a11y.focusable && !n.is_disabled())
+                self.nodes.get(id).is_some_and(|n| {
+                    if n.is_disabled() {
+                        return false;
+                    }
+                    if n.a11y.focusable {
+                        return true;
+                    }
+                    matches!(&n.kind, WidgetKind::Custom(cw) if cw.try_borrow().is_ok_and(|g| g.focusable()))
+                })
             })
             .collect();
         if focusables.is_empty() {
@@ -1481,6 +1492,16 @@ impl WidgetTree {
 
     pub(crate) fn handle_key(&mut self, ke: &KeyEvent) -> bool {
         if !ke.pressed {
+            if let Some(focused) = self.focused
+                && let Some(WidgetKind::Custom(cw)) =
+                    self.nodes.get(focused).map(|n| n.kind.clone())
+                && cw.try_borrow().is_ok_and(|g| g.wants_key_up())
+            {
+                let rect = self.node_visual_rect(focused);
+                if let Ok(mut guard) = cw.try_borrow_mut() {
+                    return guard.handle_event(rect, &UiEvent::Key(ke.clone()));
+                }
+            }
             return false;
         }
 
@@ -1495,9 +1516,49 @@ impl WidgetTree {
             return true;
         }
 
-        // Tab / Shift+Tab traverses focusable widgets cleanly (trapping inside open modal)
+        // Let focused custom widgets that opt into `wants_tab()` consume Tab (e.g. typing shortcuts)
         if matches!(ke.code, KeyCode::Tab) {
+            if let Some(focused) = self.focused
+                && let Some(WidgetKind::Custom(cw)) =
+                    self.nodes.get(focused).map(|n| n.kind.clone())
+                && cw.try_borrow().is_ok_and(|g| g.wants_tab())
+            {
+                let rect = self.node_visual_rect(focused);
+                if let Ok(mut guard) = cw.try_borrow_mut()
+                    && guard.handle_event(rect, &UiEvent::Key(ke.clone()))
+                {
+                    return true;
+                }
+            }
             return self.advance_focus(ke.modifiers.shift);
+        }
+
+        // If no visible widget is currently focused, route keyboard input to the first visible autofocus CustomWidget.
+        let focus_is_visible = self.focused.is_some_and(|mut id| {
+            while let Some(n) = self.nodes.get(id) {
+                if n.layout.hidden || n.taffy_hidden_by_parent || n.is_disabled() {
+                    return false;
+                }
+                match n.parent {
+                    Some(p) => id = p,
+                    None => return true,
+                }
+            }
+            false
+        });
+        if !focus_is_visible
+            && let Some(scope_root) = self.active_focus_root()
+        {
+            let mut order = Vec::new();
+            self.collect_preorder(scope_root, &mut order);
+            if let Some(auto_id) = order.into_iter().find(|&id| {
+                self.nodes.get(id).is_some_and(|n| {
+                    !n.is_disabled()
+                        && matches!(&n.kind, WidgetKind::Custom(cw) if cw.try_borrow().is_ok_and(|g| g.autofocus()))
+                })
+            }) {
+                self.set_focus(Some(auto_id), true);
+            }
         }
 
         let Some(focused) = self.focused else {

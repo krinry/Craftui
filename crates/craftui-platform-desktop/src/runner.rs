@@ -33,8 +33,8 @@ use winit::event_loop::{
 use winit::window::{CursorIcon as WinitCursorIcon, Window, WindowAttributes, WindowId};
 
 use crate::events::{
-    DesktopUserEvent, translate_modifiers, translate_mouse_button, translate_scroll_delta,
-    translate_winit_cursor, translate_winit_key,
+    DesktopUserEvent, sync_modifiers_from_key, translate_modifiers, translate_mouse_button,
+    translate_scroll_delta, translate_winit_cursor, translate_winit_key,
 };
 #[cfg(feature = "hot-reload")]
 use crate::hot_reload::{HotReloadSpec, paint_live_preview_overlays, should_trigger_hot_reload};
@@ -774,9 +774,13 @@ impl ApplicationHandler<DesktopUserEvent> for DesktopRunner {
                 }
             }
             WindowEvent::ModifiersChanged(mods) => {
-                state.modifiers = translate_modifiers(mods.state());
+                let mut next = translate_modifiers(mods.state());
+                next.alt_gr = state.modifiers.alt_gr;
+                next.caps_lock = state.modifiers.caps_lock;
+                state.modifiers = next;
             }
             WindowEvent::KeyboardInput { event: key_ev, .. } => {
+                sync_modifiers_from_key(&mut state.modifiers, &key_ev);
                 let ke = translate_winit_key(&key_ev, state.modifiers);
                 #[cfg(feature = "hot-reload")]
                 if key_ev.state == ElementState::Pressed

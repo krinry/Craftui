@@ -2287,3 +2287,185 @@ fn rich_text_link_dispatches_only_for_its_shaped_range() {
     );
     assert_eq!(clicked.borrow().len(), 1);
 }
+
+#[test]
+fn custom_widget_focus_wants_tab_and_key_up_plus_dom_code_roundtrip() {
+    struct StageWidget {
+        events: Rc<RefCell<Vec<(Option<&'static str>, bool)>>>,
+    }
+
+    impl CustomWidget for StageWidget {
+        fn debug_name(&self) -> &'static str {
+            "StageWidget"
+        }
+
+        fn measure(
+            &mut self,
+            c: craftui_core::Constraints,
+            _: &mut craftui_text::TextEngine,
+            _: &craftui_core::ThemeTokens,
+        ) -> Size {
+            Size::new(c.max_width.min(300.0), 80.0)
+        }
+
+        fn paint(
+            &mut self,
+            _: craftui_core::Rect,
+            _: &mut PaintScene,
+            _: &mut craftui_text::TextEngine,
+            _: &craftui_core::ThemeTokens,
+            _: bool,
+        ) {
+        }
+
+        fn focusable(&self) -> bool {
+            true
+        }
+
+        fn wants_tab(&self) -> bool {
+            true
+        }
+
+        fn wants_key_up(&self) -> bool {
+            true
+        }
+
+        fn handle_event(&mut self, _rect: craftui_core::Rect, event: &UiEvent) -> bool {
+            if let UiEvent::Key(ke) = event {
+                self.events.borrow_mut().push((ke.code.dom_code(), ke.pressed));
+                return true;
+            }
+            false
+        }
+    }
+
+    reset_runtime();
+    let scope = Scope::root();
+    let mut tree = WidgetTree::new(scope);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let stage = tree.custom_widget(
+        scope,
+        StageWidget {
+            events: Rc::clone(&events),
+        },
+        LayoutStyle::default(),
+    );
+    tree.set_root(stage);
+    tree.layout(WindowMetrics::default());
+    tree.set_focus(Some(stage), true);
+    assert_eq!(tree.focused(), Some(stage));
+
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::Tab,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::KeyF,
+        text: Some("f".into()),
+        pressed: false,
+        repeat: false,
+        modifiers: Modifiers {
+            caps_lock: true,
+            alt_gr: true,
+            ..Default::default()
+        },
+    })));
+
+    assert_eq!(
+        events.borrow().as_slice(),
+        &[(Some("Tab"), true), (Some("KeyF"), false)]
+    );
+    assert_eq!(KeyCode::from_dom_code("Semicolon"), Some(KeyCode::Semicolon));
+    assert_eq!(KeyCode::Semicolon.dom_code(), Some("Semicolon"));
+}
+
+#[test]
+fn autofocus_custom_widget_recovers_focus_when_previous_focus_is_hidden() {
+    struct AutoFocusStage {
+        received: Rc<RefCell<Vec<KeyCode>>>,
+    }
+
+    impl CustomWidget for AutoFocusStage {
+        fn debug_name(&self) -> &'static str {
+            "AutoFocusStage"
+        }
+
+        fn measure(
+            &mut self,
+            c: craftui_core::Constraints,
+            _: &mut craftui_text::TextEngine,
+            _: &craftui_core::ThemeTokens,
+        ) -> Size {
+            Size::new(c.max_width.min(240.0), 80.0)
+        }
+
+        fn paint(
+            &mut self,
+            _: craftui_core::Rect,
+            _: &mut PaintScene,
+            _: &mut craftui_text::TextEngine,
+            _: &craftui_core::ThemeTokens,
+            _: bool,
+        ) {
+        }
+
+        fn focusable(&self) -> bool {
+            true
+        }
+
+        fn autofocus(&self) -> bool {
+            true
+        }
+
+        fn handle_event(&mut self, _rect: craftui_core::Rect, event: &UiEvent) -> bool {
+            if let UiEvent::Key(ke) = event {
+                self.received.borrow_mut().push(ke.code.clone());
+                return true;
+            }
+            false
+        }
+    }
+
+    reset_runtime();
+    let scope = Scope::root();
+    let mut tree = WidgetTree::new(scope);
+    let show_btn = scope.signal(true);
+    let received = Rc::new(RefCell::new(Vec::new()));
+
+    let root = tree.column(scope);
+    let btn = tree.button(scope, "Enter Stage", || {});
+    tree.set_visible_when(btn, move || show_btn.get());
+    let stage = tree.custom_widget(
+        scope,
+        AutoFocusStage {
+            received: Rc::clone(&received),
+        },
+        LayoutStyle::default(),
+    );
+    tree.set_visible_when(stage, move || !show_btn.get());
+    tree.append_child(root, btn);
+    tree.append_child(root, stage);
+    tree.set_root(root);
+
+    let metrics = WindowMetrics::default();
+    tree.layout(metrics);
+    tree.set_focus(Some(btn), true);
+    assert_eq!(tree.focused(), Some(btn));
+
+    // Hide the previously focused button and reveal the autofocus CustomWidget.
+    show_btn.set(false);
+    tree.layout(metrics);
+
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::KeyA,
+        text: Some("a".into()),
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert_eq!(tree.focused(), Some(stage));
+    assert_eq!(received.borrow().as_slice(), &[KeyCode::KeyA]);
+}

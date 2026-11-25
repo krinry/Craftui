@@ -305,6 +305,7 @@ where
                                     ctrl: meta.ctrl_on(),
                                     alt: meta.alt_on(),
                                     super_key: meta.meta_on(),
+                                    ..Default::default()
                                 };
                                 let code = map_activity_keycode(ke.key_code(), meta);
                                 if host.handle_android_key_event(code, pressed, repeat, mods) {

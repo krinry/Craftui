@@ -1413,6 +1413,7 @@ impl WidgetTree {
     ) -> NodeId {
         let dbg = widget.debug_name();
         let a11y = widget.a11y();
+        let is_focusable = widget.focusable() || a11y.focusable;
         let id = self.spawn_node(
             dbg,
             WidgetKind::Custom(Rc::new(RefCell::new(widget))),
@@ -1421,6 +1422,7 @@ impl WidgetTree {
         );
         if let Some(n) = self.nodes.get_mut(id) {
             n.a11y = a11y;
+            n.a11y.focusable = is_focusable;
         }
         id
     }
