@@ -184,6 +184,7 @@ impl WidgetTree {
                     | WidgetKind::DatePicker { .. }
                     | WidgetKind::TimePicker { .. }
                     | WidgetKind::TreeView { .. }
+                    | WidgetKind::ReorderableList { .. }
                     | WidgetKind::Custom(_)
             )
     }
@@ -434,6 +435,25 @@ impl WidgetTree {
                             changed = true;
                         }
                     }
+                    WidgetKind::ReorderableList {
+                        items,
+                        dragging_index,
+                        target_index,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let rh = row_height.max(24.0);
+                        let len = items.get_untracked().len();
+                        let idx = ((h_local.y - (h_rect.y + 4.0) + *scroll_offset) / rh).floor()
+                            as isize;
+                        if idx >= 0 && (idx as usize) < len && h_local.x <= h_rect.x + 40.0 {
+                            *dragging_index = Some(idx as usize);
+                            *target_index = Some(idx as usize);
+                            n.dirty |= DirtyFlags::PAINT;
+                            changed = true;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -452,6 +472,7 @@ impl WidgetTree {
         }
         if matches!(pe.phase, PointerPhase::Up | PointerPhase::Cancel) {
             let mut released = Vec::new();
+            let mut reorder_cbs: Vec<(crate::ReorderCallback, usize, usize)> = Vec::new();
             for (nid, node) in &mut self.nodes {
                 match &mut node.kind {
                     WidgetKind::Button { pressed, .. }
@@ -469,7 +490,40 @@ impl WidgetTree {
                         node.dirty |= DirtyFlags::PAINT;
                         changed = true;
                     }
+                    WidgetKind::ReorderableList {
+                        items,
+                        selected,
+                        dragging_index,
+                        target_index,
+                        on_reorder,
+                        ..
+                    } if dragging_index.is_some() => {
+                        let from = dragging_index.take();
+                        let to = target_index.take();
+                        if let (Some(f), Some(t)) = (from, to)
+                            && f != t
+                        {
+                            items.update(|list| {
+                                if f < list.len() && t < list.len() {
+                                    let el = list.remove(f);
+                                    list.insert(t, el);
+                                }
+                            });
+                            selected.set(t);
+                            node.a11y.numeric_value = Some(t as f64);
+                            if let Some(cb) = on_reorder.clone() {
+                                reorder_cbs.push((cb, f, t));
+                            }
+                        }
+                        node.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y;
+                        changed = true;
+                    }
                     _ => {}
+                }
+            }
+            for (cb, f, t) in reorder_cbs {
+                if let Ok(mut func) = cb.try_borrow_mut() {
+                    func(f, t);
                 }
             }
             for nid in released {
@@ -1085,6 +1139,28 @@ impl WidgetTree {
                         }
                     }
                 }
+                WidgetKind::ReorderableList {
+                    items,
+                    selected,
+                    row_height,
+                    scroll_offset,
+                    on_select,
+                    ..
+                } => {
+                    let rh = (*row_height).max(24.0);
+                    let len = items.get_untracked().len();
+                    let idx =
+                        ((local_pos.y - (rect.y + 4.0) + *scroll_offset) / rh).floor() as isize;
+                    if idx >= 0 && (idx as usize) < len {
+                        let u = idx as usize;
+                        selected.set(u);
+                        node.a11y.numeric_value = Some(u as f64);
+                        node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                        if let Some(cb) = on_select.clone() {
+                            idx_cb = Some((cb, u));
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -1222,6 +1298,27 @@ impl WidgetTree {
                             ));
                             matched = true;
                         }
+                    }
+                    WidgetKind::ReorderableList {
+                        items,
+                        dragging_index: Some(_from),
+                        target_index,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let len = items.get_untracked().len();
+                        if len > 0 {
+                            let rh = (*row_height).max(24.0);
+                            let raw_to =
+                                ((local_pos.y - (r.y + 4.0) + *scroll_offset) / rh).floor() as isize;
+                            let to = raw_to.clamp(0, len as isize - 1) as usize;
+                            if *target_index != Some(to) {
+                                *target_index = Some(to);
+                                node.dirty |= DirtyFlags::PAINT;
+                            }
+                        }
+                        matched = true;
                     }
                     WidgetKind::ScrollView {
                         axis,
@@ -1397,6 +1494,19 @@ impl WidgetTree {
                             crate::pickers::derive_visible_tree_rows(&list, &collapsed.borrow())
                                 .len();
                         let total_h = vis_len as f32 * rh + 8.0;
+                        let max_off = (total_h - rect.height).max(0.0);
+                        *scroll_offset = (*scroll_offset - dy).clamp(0.0, max_off);
+                        node.dirty |= DirtyFlags::PAINT;
+                        return true;
+                    }
+                    WidgetKind::ReorderableList {
+                        items,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let rh = (*row_height).max(24.0);
+                        let total_h = items.get_untracked().len() as f32 * rh + 8.0;
                         let max_off = (total_h - rect.height).max(0.0);
                         *scroll_offset = (*scroll_offset - dy).clamp(0.0, max_off);
                         node.dirty |= DirtyFlags::PAINT;
@@ -1722,6 +1832,7 @@ impl WidgetTree {
         let mut reset_caret = false;
         let mut idx_cb: Option<(IndexCallback, usize)> = None;
         let mut float_cb: Option<(FloatCallback, f32)> = None;
+        let mut reorder_cb: Option<(crate::ReorderCallback, usize, usize)> = None;
 
         // Read clipboard outside node borrow
         let paste_clip = if ke.modifiers.command() && ke.code.matches_ascii_letter('V') {
@@ -2184,6 +2295,59 @@ impl WidgetTree {
                         }
                     }
                 }
+                WidgetKind::ReorderableList {
+                    items,
+                    selected,
+                    on_reorder,
+                    on_select,
+                    ..
+                } => {
+                    let len = items.get_untracked().len();
+                    if len > 0 {
+                        let cur = selected.get_untracked().min(len - 1);
+                        match ke.code {
+                            KeyCode::ArrowDown if ke.modifiers.alt && cur + 1 < len => {
+                                let next = cur + 1;
+                                items.update(|list| list.swap(cur, next));
+                                selected.set(next);
+                                node.a11y.numeric_value = Some(next as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_reorder.clone() {
+                                    reorder_cb = Some((cb, cur, next));
+                                }
+                            }
+                            KeyCode::ArrowUp if ke.modifiers.alt && cur > 0 => {
+                                let next = cur - 1;
+                                items.update(|list| list.swap(cur, next));
+                                selected.set(next);
+                                node.a11y.numeric_value = Some(next as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_reorder.clone() {
+                                    reorder_cb = Some((cb, cur, next));
+                                }
+                            }
+                            KeyCode::ArrowDown => {
+                                let next = (cur + 1).min(len - 1);
+                                selected.set(next);
+                                node.a11y.numeric_value = Some(next as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_select.clone() {
+                                    idx_cb = Some((cb, next));
+                                }
+                            }
+                            KeyCode::ArrowUp => {
+                                let next = cur.saturating_sub(1);
+                                selected.set(next);
+                                node.a11y.numeric_value = Some(next as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_select.clone() {
+                                    idx_cb = Some((cb, next));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -2213,6 +2377,11 @@ impl WidgetTree {
             && let Ok(mut f) = cb.try_borrow_mut()
         {
             f(v);
+        }
+        if let Some((cb, from, to)) = reorder_cb
+            && let Ok(mut f) = cb.try_borrow_mut()
+        {
+            f(from, to);
         }
 
         if let Some(txt) = text_changed {

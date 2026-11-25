@@ -2583,3 +2583,94 @@ fn date_picker_time_picker_and_tree_view_interactions_and_paint() {
     tree.paint(&mut scene);
     assert!(!scene.commands.is_empty());
 }
+
+#[test]
+fn reorderable_list_drag_and_keyboard_reorder() {
+    reset_runtime();
+    let scope = Scope::root();
+    let mut tree = WidgetTree::new(scope);
+
+    let items_sig = scope.signal(vec![
+        "Alpha".to_string(),
+        "Beta".to_string(),
+        "Gamma".to_string(),
+    ]);
+    let sel_sig = scope.signal(0usize);
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let log_c = Rc::clone(&log);
+
+    let rl = tree.reorderable_list(
+        scope,
+        items_sig,
+        sel_sig,
+        Some(move |from: usize, to: usize| {
+            log_c.borrow_mut().push((from, to));
+        }),
+    );
+    tree.set_root(rl);
+    tree.layout(WindowMetrics::default());
+
+    // 1. Keyboard Alt+ArrowDown moves item 0 -> 1
+    tree.set_focus(Some(rl), true);
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowDown,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers {
+            alt: true,
+            ..Default::default()
+        },
+    })));
+    assert_eq!(
+        items_sig.get_untracked(),
+        vec!["Beta".to_string(), "Alpha".to_string(), "Gamma".to_string()]
+    );
+    assert_eq!(sel_sig.get_untracked(), 1);
+    assert_eq!(log.borrow().as_slice(), &[(0, 1)]);
+
+    // 2. Pointer drag on left grip moves row 1 ("Alpha") down to row 2
+    let rect = tree.layout_engine.rect(rl);
+    let grip_x = rect.x + 16.0;
+    let start_y = rect.y + 4.0 + 38.0 + 18.0; // row 1
+    let end_y = rect.y + 4.0 + 2.0 * 38.0 + 18.0; // row 2
+
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: Point::new(grip_x, start_y),
+        phase: PointerPhase::Down,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 100,
+    }));
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: Point::new(grip_x, end_y),
+        phase: PointerPhase::Move,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 120,
+    }));
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: Point::new(grip_x, end_y),
+        phase: PointerPhase::Up,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 140,
+    }));
+
+    assert_eq!(
+        items_sig.get_untracked(),
+        vec!["Beta".to_string(), "Gamma".to_string(), "Alpha".to_string()]
+    );
+    assert_eq!(sel_sig.get_untracked(), 2);
+    assert_eq!(log.borrow().as_slice(), &[(0, 1), (1, 2)]);
+
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    assert!(!scene.commands.is_empty());
+}

@@ -558,6 +558,14 @@ class MainActivity : GameActivity() {{
         }}
     }}
 
+    private fun onNativeMethodChannelResult(requestId: Long, ok: Boolean, payloadJson: String) {{
+        try {{
+            nativeOnMethodChannelResult(requestId, ok, payloadJson)
+        }} catch (_: UnsatisfiedLinkError) {{
+            // Native library not yet initialized or bridge unavailable
+        }}
+    }}
+
     private external fun nativeOnPermissionResults(
         requestId: Long,
         permissions: Array<String>,
@@ -568,6 +576,12 @@ class MainActivity : GameActivity() {{
     private external fun nativeOnFileDialogResults(
         requestId: Long,
         uris: Array<String>
+    )
+
+    private external fun nativeOnMethodChannelResult(
+        requestId: Long,
+        ok: Boolean,
+        payloadJson: String
     )
 }}
 "#

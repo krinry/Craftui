@@ -712,6 +712,10 @@ fn children_slot_and_new_picker_tree_widgets_validate_and_codegen() {
                     items: ["Workspace", "Workspace/src", "Workspace/src/main.rs"];
                     selected <=> selected_item;
                 }
+                ReorderableList {
+                    items: ["Task A", "Task B"];
+                    selected <=> selected_item;
+                }
             }
         }
     "#;
@@ -731,4 +735,5 @@ fn children_slot_and_new_picker_tree_widgets_validate_and_codegen() {
     assert!(rust.contains(".date_picker("));
     assert!(rust.contains(".time_picker("));
     assert!(rust.contains(".tree_view("));
+    assert!(rust.contains(".reorderable_list("));
 }

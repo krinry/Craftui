@@ -93,6 +93,23 @@ impl AndroidHost {
         self.tree.services.plugins().invoke(channel, method, args)
     }
 
+    /// Queue a native Kotlin `MethodChannel` invocation via [`AndroidBridgeState`] and await its result.
+    pub fn invoke_native_channel(
+        &self,
+        channel: &str,
+        method: &str,
+        args: serde_json::Value,
+    ) -> craftui_core::Result<serde_json::Value> {
+        self.bridge.invoke_method_channel(channel, method, args)
+    }
+
+    /// Deliver an asynchronous Kotlin `MethodChannel` JSON response for `request_id`.
+    pub fn push_method_channel_result(&mut self, request_id: u64, ok: bool, payload_json: &str) {
+        self.bridge
+            .push_method_channel_result(request_id, ok, payload_json);
+        self.needs_redraw = true;
+    }
+
     /// Enable background TCP remote live preview client connecting to host via ADB reverse tunnel.
     pub fn enable_remote_preview(&mut self, port: u16) {
         self.remote_preview = Some(remote_preview::RemotePreviewClient::start(

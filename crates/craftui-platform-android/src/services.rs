@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use jni::EnvUnowned;
 use jni::objects::{JBooleanArray, JClass, JIntArray, JObjectArray, JString};
-use jni::sys::jlong;
+use jni::sys::{jboolean, jlong};
 
 /// Android manifest permission entry (`0 = PERMISSION_GRANTED`, `-1 = PERMISSION_DENIED`).
 pub const ANDROID_PERMISSION_GRANTED: i32 = 0;
@@ -43,6 +43,12 @@ pub enum AndroidPlatformCommand {
         request_id: u64,
         request: FileDialogRequest,
     },
+    InvokeMethodChannel {
+        request_id: u64,
+        channel: String,
+        method: String,
+        args_json: String,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -69,6 +75,8 @@ pub struct AndroidBridgeState {
     perm_cv: Condvar,
     pending_files: Mutex<HashMap<u64, PendingFileDialogRequest>>,
     file_cv: Condvar,
+    pending_plugins: Mutex<HashMap<u64, Option<std::result::Result<serde_json::Value, String>>>>,
+    plugin_cv: Condvar,
     request_timeout: Mutex<Duration>,
     secure_entries: Mutex<HashMap<String, String>>,
     pub(crate) device_info: Mutex<DeviceInfo>,
@@ -95,6 +103,8 @@ impl AndroidBridgeState {
             perm_cv: Condvar::new(),
             pending_files: Mutex::new(HashMap::new()),
             file_cv: Condvar::new(),
+            pending_plugins: Mutex::new(HashMap::new()),
+            plugin_cv: Condvar::new(),
             request_timeout: Mutex::new(Duration::from_millis(if cfg!(target_os = "android") {
                 30_000
             } else {
@@ -117,9 +127,11 @@ impl AndroidBridgeState {
     pub fn terminate(&self) {
         let _file_guard = self.pending_files.lock();
         let _perm_guard = self.pending_perms.lock();
+        let _plugin_guard = self.pending_plugins.lock();
         self.terminated.store(true, Ordering::SeqCst);
         self.file_cv.notify_all();
         self.perm_cv.notify_all();
+        self.plugin_cv.notify_all();
     }
 
     pub fn is_terminated(&self) -> bool {
@@ -150,6 +162,83 @@ impl AndroidBridgeState {
             .lock()
             .map(|mut guard| guard.drain(..).collect())
             .unwrap_or_default()
+    }
+
+    /// Queue an asynchronous native Kotlin `MethodChannel` invocation and await its JSON response.
+    pub fn invoke_method_channel(
+        &self,
+        channel: &str,
+        method: &str,
+        args: serde_json::Value,
+    ) -> craftui_core::Result<serde_json::Value> {
+        if self.is_terminated() {
+            return Err(craftui_core::CraftError::Platform(
+                "android bridge terminated".into(),
+            ));
+        }
+        let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
+        let args_json = args.to_string();
+        if let Ok(mut pending) = self.pending_plugins.lock() {
+            pending.insert(request_id, None);
+        }
+        self.push_command(AndroidPlatformCommand::InvokeMethodChannel {
+            request_id,
+            channel: channel.to_string(),
+            method: method.to_string(),
+            args_json,
+        });
+
+        let deadline = Instant::now() + self.timeout();
+        let mut guard = self.pending_plugins.lock().map_err(|_| {
+            craftui_core::CraftError::Platform("android plugin waiter poisoned".into())
+        })?;
+        loop {
+            if self.is_terminated() {
+                guard.remove(&request_id);
+                return Err(craftui_core::CraftError::Platform(
+                    "android bridge terminated".into(),
+                ));
+            }
+            if let Some(Some(res)) = guard.get(&request_id).cloned() {
+                guard.remove(&request_id);
+                return res.map_err(craftui_core::CraftError::Platform);
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                guard.remove(&request_id);
+                return Err(craftui_core::CraftError::Platform(format!(
+                    "android method channel `{channel}.{method}` timed out"
+                )));
+            }
+            let (next_guard, wait_res) = self.plugin_cv.wait_timeout(guard, remaining).map_err(
+                |_| craftui_core::CraftError::Platform("android plugin condvar poisoned".into()),
+            )?;
+            guard = next_guard;
+            if wait_res.timed_out() {
+                if let Some(Some(res)) = guard.remove(&request_id) {
+                    return res.map_err(craftui_core::CraftError::Platform);
+                }
+                return Err(craftui_core::CraftError::Platform(format!(
+                    "android method channel `{channel}.{method}` timed out"
+                )));
+            }
+        }
+    }
+
+    /// Resolve a queued `InvokeMethodChannel` request from Kotlin/JNI.
+    pub fn push_method_channel_result(&self, request_id: u64, ok: bool, payload_json: &str) {
+        let parsed = if ok {
+            serde_json::from_str::<serde_json::Value>(payload_json)
+                .map_err(|e| format!("invalid method channel JSON payload: {e}"))
+        } else {
+            Err(payload_json.to_string())
+        };
+        if let Ok(mut pending) = self.pending_plugins.lock()
+            && let Some(slot) = pending.get_mut(&request_id)
+        {
+            *slot = Some(parsed);
+            self.plugin_cv.notify_all();
+        }
     }
 
     pub fn set_permission_status(
@@ -775,6 +864,31 @@ pub unsafe extern "system" fn Java_dev_craftui_app_MainActivity_nativeOnFileDial
         }
 
         bridge.push_file_dialog_result(request_id as u64, paths);
+        Ok::<(), jni::errors::Error>(())
+    });
+}
+
+/// JNI export forwarding native `MethodChannel` JSON results from Android `MainActivity` to Rust.
+///
+/// # Safety
+///
+/// Must be invoked by the JVM with valid JNI parameter handles and string reference.
+#[unsafe(no_mangle)]
+pub unsafe extern "system" fn Java_dev_craftui_app_MainActivity_nativeOnMethodChannelResult<
+    'frame,
+>(
+    mut unowned_env: EnvUnowned<'frame>,
+    _class: JClass<'frame>,
+    request_id: jlong,
+    ok: jboolean,
+    payload_json: JString<'frame>,
+) {
+    let Some(bridge) = active_android_bridge() else {
+        return;
+    };
+    let _ = unowned_env.with_env(|_env| {
+        let payload = payload_json.to_string();
+        bridge.push_method_channel_result(request_id as u64, ok, &payload);
         Ok::<(), jni::errors::Error>(())
     });
 }

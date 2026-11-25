@@ -700,6 +700,7 @@ pub fn lookup_hover(text: &str, pos: Position) -> Option<Hover> {
         "DatePicker" => "Interactive calendar date picker (`<=> value: string` in `YYYY-MM-DD`, `on_change`).",
         "TimePicker" => "Interactive 24h/12h time picker (`<=> value: string` in `HH:MM`, `use_24h`, `on_change`).",
         "TreeView" => "Collapsible hierarchical tree view (`items: [string]` slash-delimited paths, `<=> selected`, `on_select`).",
+        "ReorderableList" => "Drag-to-reorder and keyboard-reorderable list (`<=> items: [string]`, `<=> selected`, `on_reorder`, `on_select`).",
         "@children" => "Child-slot placeholder inside a reusable component forwarding caller-supplied child elements.",
         "Theme" => {
             "Reactive `ThemeTokens` design system palette (`background`, `surface`, `primary`, `border`, etc.)."

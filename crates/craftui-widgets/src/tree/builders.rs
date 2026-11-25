@@ -1486,6 +1486,37 @@ impl WidgetTree {
         id
     }
 
+    /// Build an interactive drag-to-reorder `ReorderableList` bound to a `Signal<Vec<String>>`.
+    pub fn reorderable_list(
+        &mut self,
+        scope: Scope,
+        items: Signal<Vec<String>>,
+        selected: Signal<usize>,
+        on_reorder: Option<impl FnMut(usize, usize) + 'static>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "ReorderableList",
+            WidgetKind::ReorderableList {
+                items,
+                selected,
+                dragging_index: None,
+                target_index: None,
+                row_height: 38.0,
+                scroll_offset: 0.0,
+                on_reorder: on_reorder.map(|f| Rc::new(RefCell::new(f)) as crate::ReorderCallback),
+                on_select: None,
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::List;
+            n.a11y.focusable = true;
+            n.a11y.label = Some("ReorderableList".into());
+        }
+        id
+    }
+
     /// Mount any custom user-defined widget implementing [`CustomWidget`].
     pub fn custom_widget<W: CustomWidget + 'static>(
         &mut self,

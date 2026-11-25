@@ -1036,6 +1036,10 @@ fn hot_reload_supports_children_slot_and_pickers_tree_view() {
                     items: ["src", "src/lib.rs"];
                     selected <=> tree_idx;
                 }
+                ReorderableList {
+                    items: ["First", "Second"];
+                    selected <=> tree_idx;
+                }
             }
         }
     "#;
@@ -1047,5 +1051,5 @@ fn hot_reload_supports_children_slot_and_pickers_tree_view() {
     let root_node = tree.nodes.get(root).unwrap();
     assert_eq!(root_node.children.len(), 2);
     let row_slot = tree.nodes.get(root_node.children[1]).unwrap();
-    assert_eq!(row_slot.children.len(), 3);
+    assert_eq!(row_slot.children.len(), 4);
 }

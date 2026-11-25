@@ -19,8 +19,8 @@ pub use toast::{ToastItem, ToastManager, ToastSeverity};
 pub use tree::{TreeUiSnapshot, VirtualItemFactory, WidgetNode, WidgetTree};
 pub use widgets::{
     BoolCallback, BoxStyle, CanvasPaintFn, CanvasPointerFn, CardVariant, CustomWidget,
-    FloatCallback, HoverCallback, IndexCallback, PinchRotateCallback, ReactiveValue, TapHandler,
-    TextCallback, ToastDismissCallback, WidgetKind,
+    FloatCallback, HoverCallback, IndexCallback, PinchRotateCallback, ReactiveValue,
+    ReorderCallback, TapHandler, TextCallback, ToastDismissCallback, WidgetKind,
 };
 
 /// Composable declarative view mountable onto a [`WidgetTree`].

@@ -153,6 +153,7 @@ pub type BoolCallback = Rc<RefCell<dyn FnMut(bool)>>;
 pub type FloatCallback = Rc<RefCell<dyn FnMut(f32)>>;
 pub type IndexCallback = Rc<RefCell<dyn FnMut(usize)>>;
 pub type TextCallback = Rc<RefCell<dyn FnMut(String)>>;
+pub type ReorderCallback = Rc<RefCell<dyn FnMut(usize, usize)>>;
 pub type PinchRotateCallback = Rc<RefCell<dyn FnMut(Point, f32, f32)>>;
 pub type CanvasPaintFn = Rc<dyn Fn(Rect, &mut PaintScene)>;
 pub type CanvasPointerFn = Rc<RefCell<dyn FnMut(Rect, &craftui_core::PointerEvent)>>;
@@ -472,6 +473,17 @@ pub enum WidgetKind {
         collapsed: Rc<RefCell<std::collections::HashSet<String>>>,
         row_height: f32,
         scroll_offset: f32,
+        on_select: Option<IndexCallback>,
+    },
+    /// Drag-to-reorder and keyboard-reorderable list bound to a `Signal<Vec<String>>`.
+    ReorderableList {
+        items: Signal<Vec<String>>,
+        selected: Signal<usize>,
+        dragging_index: Option<usize>,
+        target_index: Option<usize>,
+        row_height: f32,
+        scroll_offset: f32,
+        on_reorder: Option<ReorderCallback>,
         on_select: Option<IndexCallback>,
     },
     Custom(Rc<RefCell<dyn CustomWidget>>),

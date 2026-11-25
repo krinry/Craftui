@@ -328,4 +328,48 @@ fn test_ios_method_channel_plugin_dispatch() {
         )
         .expect("registered ios plugin should respond");
     assert_eq!(out, serde_json::json!({ "canLaunch": true }));
+
+    // Async Swift C-FFI MethodChannel roundtrip
+    let app = craftui_ios_app_create(390.0, 844.0, 3.0);
+    unsafe {
+        let host_ref = &*app;
+        let bridge = host_ref.bridge();
+        let handle = std::thread::spawn(move || {
+            bridge.invoke_method_channel(
+                "dev.craftui.biometrics",
+                "authenticate",
+                serde_json::json!({ "reason": "Unlock vault" }),
+            )
+        });
+
+        let mut req_id = None;
+        let mut buf = [0u8; 512];
+        for _ in 0..50 {
+            let n = craftui_ios_app_poll_command_json(app, buf.as_mut_ptr(), buf.len());
+            if n > 0 {
+                let s = std::str::from_utf8(&buf[..n as usize]).unwrap();
+                if s.contains("\"method_channel\"")
+                    && let Ok(v) = serde_json::from_str::<serde_json::Value>(s)
+                {
+                    assert_eq!(v["channel"], "dev.craftui.biometrics");
+                    assert_eq!(v["method"], "authenticate");
+                    req_id = v["request_id"].as_u64();
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        let rid = req_id.expect("iOS method_channel command must be polled as JSON");
+        let payload = br#"{"verified":true}"#;
+        craftui_ios_app_deliver_method_channel_result(
+            app,
+            rid,
+            true,
+            payload.as_ptr(),
+            payload.len(),
+        );
+        let native_res = handle.join().unwrap().expect("async iOS method channel result");
+        assert_eq!(native_res, serde_json::json!({ "verified": true }));
+        craftui_ios_app_destroy(app);
+    }
 }

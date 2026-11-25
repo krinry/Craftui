@@ -170,7 +170,8 @@ impl WidgetTree {
                     | WidgetKind::TimePicker { value, .. } => {
                         node.a11y.value = Some(value.get_untracked());
                     }
-                    WidgetKind::TreeView { selected, .. } => {
+                    WidgetKind::TreeView { selected, .. }
+                    | WidgetKind::ReorderableList { selected, .. } => {
                         node.a11y.numeric_value = Some(selected.get_untracked() as f64);
                     }
                     WidgetKind::Custom(cw) => {
@@ -504,6 +505,24 @@ impl WidgetTree {
                                 constraints.max_height
                             } else {
                                 320.0
+                            },
+                        );
+                        Size::new(w, h)
+                    }
+                    WidgetKind::ReorderableList {
+                        items, row_height, ..
+                    } => {
+                        let count = items.get().len().max(1);
+                        let w = if constraints.max_width.is_finite() {
+                            constraints.max_width.min(360.0)
+                        } else {
+                            280.0
+                        };
+                        let h = (count as f32 * row_height.max(24.0) + 8.0).min(
+                            if constraints.max_height.is_finite() {
+                                constraints.max_height
+                            } else {
+                                360.0
                             },
                         );
                         Size::new(w, h)

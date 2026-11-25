@@ -637,6 +637,25 @@ pub(crate) fn build_element(
             wire_index_change(n, el, env, tree);
             n
         }
+        "ReorderableList" => {
+            let items_prop = find_prop(el, &["items", "options"]);
+            let items_sig = bind_string_list_signal(scope, items_prop, env);
+            let idx_prop = find_prop(el, &["selected", "value"]);
+            let idx_sig = bind_usize_signal(scope, idx_prop, env, 0);
+            let n = tree.reorderable_list(scope, items_sig, idx_sig, None::<fn(usize, usize)>);
+            if let Some(h) = el.handlers.iter().find(|h| h.event == "on_reorder") {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_reorder(n, move |from, to| {
+                    let mut h_env = env_c.clone();
+                    h_env.locals.insert("from".into(), DynValue::Int(from as i64));
+                    h_env.locals.insert("to".into(), DynValue::Int(to as i64));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            wire_index_change(n, el, env, tree);
+            n
+        }
         "PopupMenu" => {
             let open_prop = find_prop(el, &["open", "visible"]);
             let open_rv = open_prop
@@ -2237,6 +2256,54 @@ fn bind_string_signal(
         return (init, Some(str_sig));
     }
     (init, None)
+}
+
+fn bind_string_list_signal(
+    scope: Scope,
+    prop: Option<&PropBinding>,
+    env: &DynEnv,
+) -> Signal<Vec<String>> {
+    let to_vec = |dv: DynValue| -> Vec<String> {
+        match dv {
+            DynValue::List(items) => items.into_iter().map(|v| v.as_str()).collect(),
+            _ => Vec::new(),
+        }
+    };
+    let Some(p) = prop else {
+        return scope.signal(Vec::new());
+    };
+    let init = to_vec(eval_expr(&p.value, env));
+    let list_sig = scope.signal(init);
+    if let Some(dyn_sig) = env.find_prop_signal(&p.value) {
+        list_sig.set(to_vec(dyn_sig.get_untracked()));
+        scope.effect(move || {
+            let nv = to_vec(dyn_sig.get());
+            if list_sig.get_untracked() != nv {
+                list_sig.set(nv);
+            }
+        });
+        if p.two_way {
+            scope.effect(move || {
+                let nv = list_sig.get();
+                let cur = to_vec(dyn_sig.get_untracked());
+                if cur != nv {
+                    dyn_sig.set(DynValue::List(
+                        nv.into_iter().map(DynValue::String).collect(),
+                    ));
+                }
+            });
+        }
+    } else if expr_has_reactivity(&p.value, env) {
+        let expr = p.value.clone();
+        let env_c = env.clone();
+        scope.effect(move || {
+            let nv = to_vec(eval_expr_tracked(&expr, &env_c, true));
+            if list_sig.get_untracked() != nv {
+                list_sig.set(nv);
+            }
+        });
+    }
+    list_sig
 }
 
 fn wire_index_change(node: NodeId, el: &ElementNode, env: &DynEnv, tree: &mut WidgetTree) {

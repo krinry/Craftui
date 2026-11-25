@@ -86,6 +86,23 @@ impl IosAppHost {
         self.tree.services.plugins().invoke(channel, method, args)
     }
 
+    /// Queue a native Swift `MethodChannel` invocation via [`IosBridgeState`] and await its result.
+    pub fn invoke_native_channel(
+        &self,
+        channel: &str,
+        method: &str,
+        args: serde_json::Value,
+    ) -> craftui_core::Result<serde_json::Value> {
+        self.bridge.invoke_method_channel(channel, method, args)
+    }
+
+    /// Deliver an asynchronous Swift `MethodChannel` JSON response for `request_id`.
+    pub fn deliver_method_channel_result(&mut self, request_id: u64, ok: bool, payload_json: &str) {
+        self.bridge
+            .deliver_method_channel_result(request_id, ok, payload_json);
+        self.needs_redraw = true;
+    }
+
     pub fn set_permission_wait_timeout(&self, timeout: Duration) {
         self.bridge.set_request_timeout(timeout);
     }

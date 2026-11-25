@@ -785,11 +785,24 @@ impl WidgetTree {
                 }
                 WidgetKind::DataTable { on_select, .. }
                 | WidgetKind::PopupMenu { on_select, .. }
-                | WidgetKind::TreeView { on_select, .. } => {
+                | WidgetKind::TreeView { on_select, .. }
+                | WidgetKind::ReorderableList { on_select, .. } => {
                     *on_select = Some(rc);
                 }
                 _ => {}
             }
+        }
+    }
+
+    pub fn set_on_reorder(
+        &mut self,
+        node: NodeId,
+        cb: impl FnMut(usize, usize) + 'static,
+    ) {
+        if let Some(n) = self.nodes.get_mut(node)
+            && let WidgetKind::ReorderableList { on_reorder, .. } = &mut n.kind
+        {
+            *on_reorder = Some(Rc::new(RefCell::new(cb)));
         }
     }
 

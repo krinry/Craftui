@@ -82,6 +82,7 @@ pub const BUILTIN_WIDGETS: &[&str] = &[
     "DatePicker",
     "TimePicker",
     "TreeView",
+    "ReorderableList",
     "div",
     "span",
     "p",
@@ -554,6 +555,9 @@ pub fn props_for_widget(kind: &str) -> Vec<&'static str> {
         "TreeView" => {
             out.extend_from_slice(&["items", "options", "selected", "row_height"]);
         }
+        "ReorderableList" => {
+            out.extend_from_slice(&["items", "options", "selected", "row_height"]);
+        }
         "div" | "section" | "nav" | "header" | "footer" | "main" | "article" | "aside" => {
             out.extend_from_slice(CONTAINER_PROPS);
         }
@@ -579,6 +583,9 @@ pub fn events_for_widget(kind: &str) -> Vec<&'static str> {
         | "RadioGroup" | "TreeView" => {
             out.extend_from_slice(&["on_change", "on_select"]);
         }
+        "ReorderableList" => {
+            out.extend_from_slice(&["on_reorder", "on_select", "on_change"]);
+        }
         "Accordion" => out.extend_from_slice(&["on_change", "on_toggle"]),
         "DataTable" => out.extend_from_slice(&["on_select", "on_change", "on_sort"]),
         "PopupMenu" => out.extend_from_slice(&["on_select", "on_change", "on_close"]),
@@ -601,6 +608,7 @@ fn widget_supports_two_way(kind: &str, prop: &str) -> bool {
         }
         "Accordion" => matches!(prop, "expanded" | "open"),
         "DataTable" | "TreeView" => prop == "selected",
+        "ReorderableList" => matches!(prop, "items" | "selected"),
         "DatePicker" | "TimePicker" => prop == "value",
         "Select" | "Dropdown" | "RadioGroup" => matches!(prop, "selected" | "value"),
         "Modal" | "BottomSheet" | "PopupMenu" | "Drawer" => matches!(prop, "open" | "visible"),
@@ -1031,7 +1039,7 @@ fn populate_handler_locals(
         }
         (
             "Tabs" | "TabBar" | "SegmentedControl" | "BottomNavBar" | "Select" | "Dropdown"
-            | "RadioGroup" | "PopupMenu" | "TreeView",
+            | "RadioGroup" | "PopupMenu" | "TreeView" | "ReorderableList",
             "on_change" | "on_select",
         ) => {
             locals.insert("index".into(), TypeExpr::Named("int".into()));
@@ -1039,6 +1047,10 @@ fn populate_handler_locals(
             locals.insert("selected".into(), TypeExpr::Named("int".into()));
             locals.insert("active".into(), TypeExpr::Named("int".into()));
             locals.insert("value".into(), TypeExpr::Named("int".into()));
+        }
+        ("ReorderableList", "on_reorder") => {
+            locals.insert("from".into(), TypeExpr::Named("int".into()));
+            locals.insert("to".into(), TypeExpr::Named("int".into()));
         }
         ("Accordion", "on_change" | "on_toggle") => {
             locals.insert("expanded".into(), TypeExpr::Named("bool".into()));

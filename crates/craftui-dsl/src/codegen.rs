@@ -1297,6 +1297,39 @@ fn emit_element(
             );
             emit_index_change_handler(out, &var, el, indent, ctx);
         }
+        "ReorderableList" => {
+            let items_prop = find_prop(el, &["items", "options"]);
+            let items_sig = emit_string_list_signal_adapter(items_prop, cx, ctx);
+            let idx_sig = emit_usize_signal_adapter(find_prop(el, &["selected", "value"]), cx, ctx);
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.reorderable_list({cx}, {items_sig}, {idx_sig}, None::<fn(usize, usize)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_reorder"]) {
+                let mut h_locals = ctx.locals.clone();
+                let mut alias_stmts = String::new();
+                if can_bind_handler_local("from", ctx) {
+                    h_locals.insert("from".into(), "i32".into());
+                    alias_stmts.push_str("let from = __from as i32; ");
+                }
+                if can_bind_handler_local("to", ctx) {
+                    h_locals.insert("to".into(), "i32".into());
+                    alias_stmts.push_str("let to = __to as i32; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_reorder({var}, move |__from, __to| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+            emit_index_change_handler(out, &var, el, indent, ctx);
+        }
         "PopupMenu" => {
             let open_prop = find_prop(el, &["open", "visible"]);
             let open_rv = open_prop
@@ -3231,6 +3264,37 @@ fn emit_string_signal_adapter(
             }
         }
         None => format!("{cx}.signal({default_expr})"),
+    }
+}
+
+fn emit_string_list_signal_adapter(
+    prop: Option<&PropBinding>,
+    cx: &str,
+    ctx: &EmitCtx<'_>,
+) -> String {
+    match prop {
+        Some(p)
+            if p.two_way
+                && matches!(&p.value, Expr::Ident(id) if ctx.signal_type(id.as_str()) == Some("Vec<String>")) =>
+        {
+            let Expr::Ident(id) = &p.value else {
+                unreachable!()
+            };
+            ctx.prop_access(id)
+        }
+        Some(p) => {
+            let init_v = expr_to_typed_rust(&p.value, "Vec<String>", ctx);
+            if expr_has_reactive_props(&p.value, ctx) {
+                let captures = emit_signal_captures(ctx, &[]);
+                let dyn_v = expr_to_typed_rust_captured(&p.value, "Vec<String>", ctx);
+                format!(
+                    "{{ {captures} let __ls = {cx}.signal({init_v}); {cx}.effect(move || {{ let v = {dyn_v}; if __ls.get_untracked() != v {{ __ls.set(v); }} }}); __ls }}"
+                )
+            } else {
+                format!("{cx}.signal({init_v})")
+            }
+        }
+        None => format!("{cx}.signal(Vec::<String>::new())"),
     }
 }
 

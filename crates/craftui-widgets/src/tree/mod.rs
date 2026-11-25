@@ -1145,6 +1145,12 @@ impl WidgetTree {
                     });
                 }
             }
+            WidgetKind::ReorderableList {
+                items, selected, ..
+            } => {
+                items.bind_node(id, DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y);
+                selected.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+            }
             _ => {}
         }
 

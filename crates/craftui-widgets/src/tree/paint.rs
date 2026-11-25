@@ -2453,6 +2453,93 @@ impl WidgetTree {
                     scene.stroke_rect(rect.inflate(1.5, 1.5), theme.primary, 1.5, rad);
                 }
             }
+            WidgetKind::ReorderableList {
+                items,
+                selected,
+                dragging_index,
+                target_index,
+                row_height,
+                scroll_offset,
+                ..
+            } => {
+                let rad = CornerRadii::all(10.0);
+                let bg = box_style
+                    .background
+                    .as_ref()
+                    .map(|b| b.get())
+                    .unwrap_or(Brush::Solid(theme.surface));
+                scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), rad);
+                scene.push(PaintCommand::PushClip { rect, radius: rad });
+
+                let list = items.get();
+                let sel_idx = selected.get();
+                let rh = row_height.max(24.0);
+
+                for (i, label) in list.iter().enumerate() {
+                    let ry = rect.y + 4.0 + i as f32 * rh - scroll_offset;
+                    if ry + rh < rect.y || ry > rect.max_y() {
+                        continue;
+                    }
+                    let row_r = Rect::new(rect.x + 4.0, ry + 1.0, (rect.width - 8.0).max(20.0), rh - 2.0);
+                    let is_dragging = dragging_index == Some(i);
+                    let is_sel = i == sel_idx;
+                    if is_dragging {
+                        scene.fill_rect(
+                            row_r,
+                            theme.primary.with_alpha(0.28),
+                            CornerRadii::all(6.0),
+                        );
+                    } else if is_sel {
+                        scene.fill_rect(
+                            row_r,
+                            theme.primary.with_alpha(0.14),
+                            CornerRadii::all(6.0),
+                        );
+                    }
+                    let grip_st = TextStyle::default()
+                        .with_size(13.0)
+                        .with_weight(700.0)
+                        .with_color(theme.text_secondary);
+                    scene.draw_text(
+                        Point::new(row_r.x + 10.0, ry + (rh - 15.0) * 0.5),
+                        "::",
+                        grip_st,
+                        None,
+                    );
+                    let lst = TextStyle::default()
+                        .with_size(13.5)
+                        .with_weight(if is_sel || is_dragging { 600.0 } else { 400.0 })
+                        .with_color(if is_sel || is_dragging {
+                            theme.primary
+                        } else {
+                            theme.text_primary
+                        });
+                    scene.draw_text(
+                        Point::new(row_r.x + 30.0, ry + (rh - 16.0) * 0.5),
+                        label,
+                        lst,
+                        Some((row_r.width - 38.0).max(20.0)),
+                    );
+                }
+
+                if let (Some(_from), Some(to)) = (dragging_index, target_index) {
+                    let drop_y = (rect.y + 4.0 + to as f32 * rh - scroll_offset)
+                        .clamp(rect.y + 2.0, rect.max_y() - 3.0);
+                    scene.fill_rect(
+                        Rect::new(rect.x + 6.0, drop_y, (rect.width - 12.0).max(12.0), 2.5),
+                        theme.primary,
+                        CornerRadii::all(1.25),
+                    );
+                }
+
+                scene.push(PaintCommand::PopClip);
+                if box_style.border.is_none() {
+                    scene.stroke_rect(rect, theme.border, 1.0, rad);
+                }
+                if is_focused {
+                    scene.stroke_rect(rect.inflate(1.5, 1.5), theme.primary, 1.5, rad);
+                }
+            }
             WidgetKind::Custom(cw) => {
                 if let Ok(mut guard) = cw.try_borrow_mut() {
                     guard.paint(rect, scene, &mut self.text_engine, theme, is_focused);

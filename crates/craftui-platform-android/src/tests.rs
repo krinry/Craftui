@@ -487,7 +487,7 @@ fn test_android_method_channel_plugin_dispatch() {
         }
     }
 
-    let host = AndroidHost::new(UiDispatcher::new(), 1080, 2400, 2.5);
+    let mut host = AndroidHost::new(UiDispatcher::new(), 1080, 2400, 2.5);
     host.register_plugin(SharedPrefsStub);
     let out = host
         .invoke_plugin(
@@ -497,4 +497,39 @@ fn test_android_method_channel_plugin_dispatch() {
         )
         .expect("registered android plugin should respond");
     assert_eq!(out, serde_json::json!({ "theme": "amoled" }));
+
+    // Async Kotlin MethodChannel roundtrip via AndroidBridgeState queue
+    let bridge = host.bridge();
+    let handle = std::thread::spawn(move || {
+        bridge.invoke_method_channel(
+            "dev.craftui.camera",
+            "takePhoto",
+            serde_json::json!({ "quality": 90 }),
+        )
+    });
+
+    let mut req_id = None;
+    for _ in 0..50 {
+        for cmd in host.drain_platform_commands() {
+            if let crate::AndroidPlatformCommand::InvokeMethodChannel {
+                request_id,
+                channel,
+                method,
+                ..
+            } = cmd
+            {
+                assert_eq!(channel, "dev.craftui.camera");
+                assert_eq!(method, "takePhoto");
+                req_id = Some(request_id);
+            }
+        }
+        if req_id.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let rid = req_id.expect("InvokeMethodChannel command must be queued");
+    host.push_method_channel_result(rid, true, r#"{"path":"/sdcard/photo.jpg"}"#);
+    let native_res = handle.join().unwrap().expect("async method channel result");
+    assert_eq!(native_res, serde_json::json!({ "path": "/sdcard/photo.jpg" }));
 }
