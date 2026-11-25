@@ -297,3 +297,35 @@ fn ios_c_abi_permissions_commands_haptics_share_and_telemetry_work() {
         craftui_ios_app_destroy(app);
     }
 }
+
+#[test]
+fn test_ios_method_channel_plugin_dispatch() {
+    struct UrlLauncherStub;
+    impl craftui_core::CraftPlugin for UrlLauncherStub {
+        fn name(&self) -> &str {
+            "plugins.flutter.io/url_launcher"
+        }
+
+        fn handle(&self, call: &craftui_core::MethodCall) -> craftui_core::Result<serde_json::Value> {
+            match call.method.as_str() {
+                "canLaunch" => Ok(serde_json::json!({
+                    "canLaunch": call.args.get("url").and_then(|v| v.as_str()).is_some()
+                })),
+                other => Err(craftui_core::CraftError::Platform(format!(
+                    "unsupported method `{other}`"
+                ))),
+            }
+        }
+    }
+
+    let host = IosAppHost::new(UiDispatcher::new(), 390.0, 844.0, 3.0);
+    host.register_plugin(UrlLauncherStub);
+    let out = host
+        .invoke_plugin(
+            "plugins.flutter.io/url_launcher",
+            "canLaunch",
+            serde_json::json!({ "url": "https://craftui.dev" }),
+        )
+        .expect("registered ios plugin should respond");
+    assert_eq!(out, serde_json::json!({ "canLaunch": true }));
+}

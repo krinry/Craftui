@@ -1004,3 +1004,48 @@ fn test_runtime_window_responsive_breakpoints() {
     assert_eq!(mobile_sig.get(), DynValue::Bool(false));
     assert_eq!(desktop_sig.get(), DynValue::Bool(true));
 }
+
+#[test]
+fn hot_reload_supports_children_slot_and_pickers_tree_view() {
+    reset_runtime();
+    let state_scope = Scope::root();
+    let mut tree = WidgetTree::new(state_scope);
+    let mut session = HotReloadSession::new(state_scope);
+
+    let src = r#"
+        component CardWrapper {
+            in property <string> heading: "Section";
+            Column {
+                Text { text: root.heading; }
+                Row {
+                    @children;
+                }
+            }
+        }
+
+        component App {
+            in-out property <string> date_val: "2026-11-25";
+            in-out property <string> time_val: "14:15";
+            in-out property <int> tree_idx: 1;
+
+            CardWrapper {
+                heading: "Planner";
+                DatePicker { value <=> date_val; }
+                TimePicker { value <=> time_val; }
+                TreeView {
+                    items: ["src", "src/lib.rs"];
+                    selected <=> tree_idx;
+                }
+            }
+        }
+    "#;
+
+    let root = session.reload(src, Some("App"), &mut tree).unwrap();
+    tree.set_root(root);
+    tree.layout(WindowMetrics::default());
+
+    let root_node = tree.nodes.get(root).unwrap();
+    assert_eq!(root_node.children.len(), 2);
+    let row_slot = tree.nodes.get(root_node.children[1]).unwrap();
+    assert_eq!(row_slot.children.len(), 3);
+}

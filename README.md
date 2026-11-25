@@ -60,7 +60,6 @@ Known gaps:
 
 - Some widget names are accepted by the language but not implemented yet; see
   the end of the [widget catalog](docs/src/widgets/catalog.md).
-- A component cannot take child elements from the place it is used.
 - Editing `.cui` files while the app runs uses a separate interpreter from the
   build-time compiler, and the two can differ.
 - The Android project template declares `INTERNET` and biometric permissions

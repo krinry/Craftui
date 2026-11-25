@@ -26,6 +26,7 @@ fn prune_element(el: &mut ElementNode) {
                     prune_element(else_b);
                 }
             }
+            ChildItem::ChildrenSlot { .. } => {}
         }
     }
 

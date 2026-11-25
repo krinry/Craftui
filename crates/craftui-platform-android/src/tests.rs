@@ -468,3 +468,33 @@ fn test_android_remote_preview_hot_reload_pipeline() {
     assert!(did_paint);
     assert!(!host.needs_redraw);
 }
+
+#[test]
+fn test_android_method_channel_plugin_dispatch() {
+    struct SharedPrefsStub;
+    impl craftui_core::CraftPlugin for SharedPrefsStub {
+        fn name(&self) -> &str {
+            "plugins.flutter.io/shared_preferences"
+        }
+
+        fn handle(&self, call: &craftui_core::MethodCall) -> craftui_core::Result<serde_json::Value> {
+            match call.method.as_str() {
+                "getAll" => Ok(serde_json::json!({ "theme": "amoled" })),
+                other => Err(craftui_core::CraftError::Platform(format!(
+                    "unsupported method `{other}`"
+                ))),
+            }
+        }
+    }
+
+    let host = AndroidHost::new(UiDispatcher::new(), 1080, 2400, 2.5);
+    host.register_plugin(SharedPrefsStub);
+    let out = host
+        .invoke_plugin(
+            "plugins.flutter.io/shared_preferences",
+            "getAll",
+            serde_json::json!({}),
+        )
+        .expect("registered android plugin should respond");
+    assert_eq!(out, serde_json::json!({ "theme": "amoled" }));
+}

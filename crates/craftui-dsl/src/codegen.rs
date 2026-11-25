@@ -275,20 +275,47 @@ fn emit_component(
         let _ = writeln!(out);
     }
 
+    let has_slot = component_has_children_slot(comp);
+    if has_slot {
+        let _ = writeln!(out, "    #[allow(dead_code)]");
+        let _ = writeln!(
+            out,
+            "    pub fn build(&self, cx: Scope, tree: &mut WidgetTree) -> NodeId {{"
+        );
+        let _ = writeln!(
+            out,
+            "        self.build_with_children(cx, tree, std::rc::Rc::new(|_, _, _| {{}}))"
+        );
+        let _ = writeln!(out, "    }}");
+        let _ = writeln!(out);
+    }
+
     let _ = writeln!(
         out,
         "    #[allow(dead_code, unused_variables, unused_parens, unused_mut, clippy::double_parens, clippy::clone_on_copy, clippy::unnecessary_cast, clippy::redundant_locals, clippy::type_complexity, clippy::let_and_return, clippy::needless_parens_on_range_literals, clippy::overly_complex_bool_expr, clippy::needless_update, clippy::possible_missing_else, clippy::format_in_format_args)]"
     );
-    let _ = writeln!(
-        out,
-        "    pub fn build(&self, cx: Scope, tree: &mut WidgetTree) -> NodeId {{"
-    );
+    if has_slot {
+        let _ = writeln!(
+            out,
+            "    pub fn build_with_children(&self, cx: Scope, tree: &mut WidgetTree, __slot_children: std::rc::Rc<dyn Fn(Scope, &mut WidgetTree, NodeId)>) -> NodeId {{"
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "    pub fn build(&self, cx: Scope, tree: &mut WidgetTree) -> NodeId {{"
+        );
+    }
     let _ = writeln!(out, "        let __theme_sig = tree.theme_signal;");
     let _ = writeln!(
         out,
         "        let __theme_ov_sig = tree.theme_override_signal;"
     );
     let _ = writeln!(out, "        let __metrics_sig = tree.metrics_signal;");
+
+    let mut slot_locals = empty_locals.clone();
+    if has_slot {
+        slot_locals.insert("__slot_children".into(), "Rc".into());
+    }
 
     if let Some(ref root) = comp.root {
         let mut counter = 0usize;
@@ -299,7 +326,7 @@ fn emit_component(
             prop_types: &prop_types,
             signal_locals: &empty_sig_locals,
             cb_params: &cb_params,
-            locals: &empty_locals,
+            locals: &slot_locals,
             scope_var: "cx",
             tree_var: "tree",
             use_self: true,
@@ -312,6 +339,28 @@ fn emit_component(
     let _ = writeln!(out, "    }}");
     let _ = writeln!(out, "}}");
     let _ = writeln!(out);
+}
+
+fn element_has_children_slot(el: &ElementNode) -> bool {
+    el.children.iter().any(|c| match c {
+        ChildItem::ChildrenSlot { .. } => true,
+        ChildItem::Element(inner) => element_has_children_slot(inner),
+        ChildItem::For { body, .. } => element_has_children_slot(body),
+        ChildItem::If {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            element_has_children_slot(then_branch)
+                || else_branch
+                    .as_ref()
+                    .is_some_and(|eb| element_has_children_slot(eb))
+        }
+    })
+}
+
+fn component_has_children_slot(comp: &ComponentDecl) -> bool {
+    comp.root.as_ref().is_some_and(element_has_children_slot)
 }
 
 #[derive(Clone, Copy)]
@@ -555,15 +604,42 @@ fn emit_element(
                 );
             }
         }
-        let _ = writeln!(out, "{indent}    let __sub_node = __sub.build({cx}, {tr});");
-        emit_children(
-            out,
-            "__sub_node",
-            el,
-            counter,
-            &format!("{indent}    "),
-            ctx,
-        );
+        if component_has_children_slot(sub) {
+            let slot_captures = emit_signal_captures(ctx, &[]);
+            let slot_ctx = EmitCtx {
+                scope_var: "__slot_cx",
+                tree_var: "__slot_tree",
+                use_self: false,
+                ..*ctx
+            };
+            let mut slot_buf = String::new();
+            emit_children(
+                &mut slot_buf,
+                "__slot_parent",
+                el,
+                counter,
+                &format!("{indent}        "),
+                &slot_ctx,
+            );
+            let _ = writeln!(
+                out,
+                "{indent}    let __sub_slot: std::rc::Rc<dyn Fn(Scope, &mut WidgetTree, NodeId)> = {{ {slot_captures} std::rc::Rc::new(move |__slot_cx, __slot_tree, __slot_parent| {{\n{slot_buf}{indent}    }}) }};"
+            );
+            let _ = writeln!(
+                out,
+                "{indent}    let __sub_node = __sub.build_with_children({cx}, {tr}, __sub_slot);"
+            );
+        } else {
+            let _ = writeln!(out, "{indent}    let __sub_node = __sub.build({cx}, {tr});");
+            emit_children(
+                out,
+                "__sub_node",
+                el,
+                counter,
+                &format!("{indent}    "),
+                ctx,
+            );
+        }
         emit_common_props_and_events(out, "__sub_node", el, &format!("{indent}    "), ctx, true);
         let _ = writeln!(out, "{indent}    __sub_node");
         let _ = writeln!(out, "{indent}}};");
@@ -1122,6 +1198,102 @@ fn emit_element(
             let _ = writeln!(
                 out,
                 "{indent}let {var} = {tr}.radio_group({cx}, {opts_rv}, {idx_sig}, {axis});"
+            );
+            emit_index_change_handler(out, &var, el, indent, ctx);
+        }
+        "DatePicker" => {
+            let val_sig = emit_string_signal_adapter(
+                find_prop(el, &["value"]),
+                cx,
+                ctx,
+                "\"2026-01-15\".to_string()",
+            );
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.date_picker({cx}, {val_sig}, None::<fn(String)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_change"]) {
+                let mut h_locals = ctx.locals.clone();
+                let bind_val = can_bind_handler_local("value", ctx);
+                let bind_txt = can_bind_handler_local("text", ctx);
+                let mut alias_stmts = String::new();
+                if bind_val {
+                    h_locals.insert("value".into(), "String".into());
+                    if bind_txt {
+                        alias_stmts.push_str("let value = __val.clone(); ");
+                    } else {
+                        alias_stmts.push_str("let value = __val; ");
+                    }
+                }
+                if bind_txt {
+                    h_locals.insert("text".into(), "String".into());
+                    alias_stmts.push_str("let text = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_change({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
+        "TimePicker" => {
+            let val_sig = emit_string_signal_adapter(
+                find_prop(el, &["value"]),
+                cx,
+                ctx,
+                "\"09:30\".to_string()",
+            );
+            let use_24h = find_prop(el, &["use_24h"])
+                .map(|p| expr_to_typed_rust(&p.value, "bool", ctx))
+                .unwrap_or_else(|| "true".into());
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.time_picker({cx}, {val_sig}, {use_24h}, None::<fn(String)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_change"]) {
+                let mut h_locals = ctx.locals.clone();
+                let bind_val = can_bind_handler_local("value", ctx);
+                let bind_txt = can_bind_handler_local("text", ctx);
+                let mut alias_stmts = String::new();
+                if bind_val {
+                    h_locals.insert("value".into(), "String".into());
+                    if bind_txt {
+                        alias_stmts.push_str("let value = __val.clone(); ");
+                    } else {
+                        alias_stmts.push_str("let value = __val; ");
+                    }
+                }
+                if bind_txt {
+                    h_locals.insert("text".into(), "String".into());
+                    alias_stmts.push_str("let text = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_change({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
+        "TreeView" => {
+            let items_rv = find_prop(el, &["items", "options"])
+                .map(|p| expr_to_reactive_string_list(&p.value, ctx))
+                .unwrap_or_else(|| "ReactiveValue::Static(Vec::<String>::new())".into());
+            let idx_sig = emit_usize_signal_adapter(find_prop(el, &["selected", "value"]), cx, ctx);
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.tree_view({cx}, {items_rv}, {idx_sig}, None::<fn(usize)>);"
             );
             emit_index_change_handler(out, &var, el, indent, ctx);
         }
@@ -2838,6 +3010,9 @@ fn emit_children(
                     let _ = writeln!(out, "{indent}{tr}.append_child({var}, {cvar});");
                 }
             }
+            ChildItem::ChildrenSlot { .. } => {
+                let _ = writeln!(out, "{indent}__slot_children({cx}, {tr}, {var});");
+            }
         }
     }
 }
@@ -3024,6 +3199,38 @@ fn emit_usize_signal_adapter(prop: Option<&PropBinding>, cx: &str, ctx: &EmitCtx
             }
         }
         None => format!("{cx}.signal(0usize)"),
+    }
+}
+
+fn emit_string_signal_adapter(
+    prop: Option<&PropBinding>,
+    cx: &str,
+    ctx: &EmitCtx<'_>,
+    default_expr: &str,
+) -> String {
+    match prop {
+        Some(p)
+            if p.two_way
+                && matches!(&p.value, Expr::Ident(id) if ctx.signal_type(id.as_str()) == Some("String")) =>
+        {
+            let Expr::Ident(id) = &p.value else {
+                unreachable!()
+            };
+            ctx.prop_access(id)
+        }
+        Some(p) => {
+            let init_s = expr_to_typed_rust(&p.value, "String", ctx);
+            if expr_has_reactive_props(&p.value, ctx) {
+                let captures = emit_signal_captures(ctx, &[]);
+                let dyn_s = expr_to_typed_rust_captured(&p.value, "String", ctx);
+                format!(
+                    "{{ {captures} let __ss = {cx}.signal({init_s}); {cx}.effect(move || {{ let v = {dyn_s}; if __ss.get_untracked() != v {{ __ss.set(v); }} }}); __ss }}"
+                )
+            } else {
+                format!("{cx}.signal({init_s})")
+            }
+        }
+        None => format!("{cx}.signal({default_expr})"),
     }
 }
 

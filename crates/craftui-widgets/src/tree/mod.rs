@@ -1127,6 +1127,24 @@ impl WidgetTree {
             WidgetKind::Drawer { open, .. } => {
                 open.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
             }
+            WidgetKind::DatePicker { value, .. } | WidgetKind::TimePicker { value, .. } => {
+                value.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+            }
+            WidgetKind::TreeView {
+                items, selected, ..
+            } => {
+                selected.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+                let items = items.clone();
+                if items.is_dynamic() {
+                    scope.effect(move || {
+                        let _ = items.get();
+                        mark_node_dirty(
+                            id,
+                            DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y,
+                        );
+                    });
+                }
+            }
             _ => {}
         }
 

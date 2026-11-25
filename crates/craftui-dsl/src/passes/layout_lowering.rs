@@ -27,6 +27,7 @@ fn lower_layout_element(el: &mut ElementNode) {
                     lower_layout_element(else_b);
                 }
             }
+            ChildItem::ChildrenSlot { .. } => {}
         }
     }
 

@@ -79,6 +79,9 @@ pub const BUILTIN_WIDGETS: &[&str] = &[
     "AppBar",
     "Drawer",
     "Scaffold",
+    "DatePicker",
+    "TimePicker",
+    "TreeView",
     "div",
     "span",
     "p",
@@ -542,6 +545,15 @@ pub fn props_for_widget(kind: &str) -> Vec<&'static str> {
         "Scaffold" => {
             out.extend_from_slice(CONTAINER_PROPS);
         }
+        "DatePicker" => {
+            out.extend_from_slice(&["value"]);
+        }
+        "TimePicker" => {
+            out.extend_from_slice(&["value", "use_24h"]);
+        }
+        "TreeView" => {
+            out.extend_from_slice(&["items", "options", "selected", "row_height"]);
+        }
         "div" | "section" | "nav" | "header" | "footer" | "main" | "article" | "aside" => {
             out.extend_from_slice(CONTAINER_PROPS);
         }
@@ -559,10 +571,12 @@ pub fn props_for_widget(kind: &str) -> Vec<&'static str> {
 pub fn events_for_widget(kind: &str) -> Vec<&'static str> {
     let mut out = COMMON_EVENTS.to_vec();
     match kind {
-        "Slider" | "Checkbox" | "Switch" | "SplitPane" => out.push("on_change"),
+        "Slider" | "Checkbox" | "Switch" | "SplitPane" | "DatePicker" | "TimePicker" => {
+            out.push("on_change")
+        }
         "TextInput" | "TextArea" | "input" => out.extend_from_slice(&["on_change", "on_submit"]),
         "Tabs" | "TabBar" | "SegmentedControl" | "BottomNavBar" | "Select" | "Dropdown"
-        | "RadioGroup" => {
+        | "RadioGroup" | "TreeView" => {
             out.extend_from_slice(&["on_change", "on_select"]);
         }
         "Accordion" => out.extend_from_slice(&["on_change", "on_toggle"]),
@@ -586,7 +600,8 @@ fn widget_supports_two_way(kind: &str, prop: &str) -> bool {
             matches!(prop, "active" | "selected" | "value")
         }
         "Accordion" => matches!(prop, "expanded" | "open"),
-        "DataTable" => prop == "selected",
+        "DataTable" | "TreeView" => prop == "selected",
+        "DatePicker" | "TimePicker" => prop == "value",
         "Select" | "Dropdown" | "RadioGroup" => matches!(prop, "selected" | "value"),
         "Modal" | "BottomSheet" | "PopupMenu" | "Drawer" => matches!(prop, "open" | "visible"),
         "Chip" | "FilterChip" | "ActionChip" | "ChoiceChip" | "InputChip" => {
@@ -1010,13 +1025,13 @@ fn populate_handler_locals(
             locals.insert("checked".into(), TypeExpr::Named("bool".into()));
             locals.insert("value".into(), TypeExpr::Named("bool".into()));
         }
-        ("TextInput" | "TextArea", "on_change" | "on_submit") => {
+        ("TextInput" | "TextArea" | "DatePicker" | "TimePicker", "on_change" | "on_submit") => {
             locals.insert("value".into(), TypeExpr::Named("string".into()));
             locals.insert("text".into(), TypeExpr::Named("string".into()));
         }
         (
             "Tabs" | "TabBar" | "SegmentedControl" | "BottomNavBar" | "Select" | "Dropdown"
-            | "RadioGroup" | "PopupMenu",
+            | "RadioGroup" | "PopupMenu" | "TreeView",
             "on_change" | "on_select",
         ) => {
             locals.insert("index".into(), TypeExpr::Named("int".into()));
@@ -1225,6 +1240,7 @@ fn validate_child(child: &ChildItem, ctx: &ScopeCtx<'_>, diags: &mut Vec<Diagnos
                 validate_element(eb, ctx, diags);
             }
         }
+        ChildItem::ChildrenSlot { .. } => {}
     }
 }
 

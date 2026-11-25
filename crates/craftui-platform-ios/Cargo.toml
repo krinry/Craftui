@@ -23,6 +23,7 @@ craftui-layout.workspace = true
 craftui-reactive.workspace = true
 craftui-render.workspace = true
 craftui-widgets.workspace = true
+serde_json.workspace = true
 wgpu = { workspace = true, optional = true }
 tracing.workspace = true
 

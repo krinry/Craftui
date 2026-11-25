@@ -452,6 +452,28 @@ pub enum WidgetKind {
         width: f32,
         on_close: Option<TapHandler>,
     },
+    /// Interactive calendar date picker binding an ISO `"YYYY-MM-DD"` string signal.
+    DatePicker {
+        value: Signal<String>,
+        view_year: i32,
+        view_month: u32,
+        on_change: Option<TextCallback>,
+    },
+    /// Interactive 24h/12h time picker binding an `"HH:MM"` string signal.
+    TimePicker {
+        value: Signal<String>,
+        use_24h: bool,
+        on_change: Option<TextCallback>,
+    },
+    /// Collapsible hierarchical tree view driven by slash-delimited item paths.
+    TreeView {
+        items: ReactiveValue<Vec<String>>,
+        selected: Signal<usize>,
+        collapsed: Rc<RefCell<std::collections::HashSet<String>>>,
+        row_height: f32,
+        scroll_offset: f32,
+        on_select: Option<IndexCallback>,
+    },
     Custom(Rc<RefCell<dyn CustomWidget>>),
 }
 

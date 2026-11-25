@@ -181,6 +181,9 @@ impl WidgetTree {
                     | WidgetKind::SplitPane { .. }
                     | WidgetKind::ToastHost { .. }
                     | WidgetKind::Overlay { .. }
+                    | WidgetKind::DatePicker { .. }
+                    | WidgetKind::TimePicker { .. }
+                    | WidgetKind::TreeView { .. }
                     | WidgetKind::Custom(_)
             )
     }
@@ -963,6 +966,125 @@ impl WidgetTree {
                 WidgetKind::Overlay { on_close, .. } => {
                     action = on_close.clone();
                 }
+                WidgetKind::DatePicker {
+                    value,
+                    view_year,
+                    view_month,
+                    on_change,
+                } => {
+                    let prev_r = Rect::new(rect.x + 8.0, rect.y + 8.0, 28.0, 28.0);
+                    let next_r = Rect::new(rect.max_x() - 36.0, rect.y + 8.0, 28.0, 28.0);
+                    if prev_r.contains(local_pos) {
+                        let (ny, nm) = crate::pickers::shift_month(*view_year, *view_month, -1);
+                        *view_year = ny;
+                        *view_month = nm;
+                        node.dirty |= DirtyFlags::PAINT;
+                    } else if next_r.contains(local_pos) {
+                        let (ny, nm) = crate::pickers::shift_month(*view_year, *view_month, 1);
+                        *view_year = ny;
+                        *view_month = nm;
+                        node.dirty |= DirtyFlags::PAINT;
+                    } else {
+                        let cell_w = ((rect.width - 16.0) / 7.0).max(20.0);
+                        let cell_h = ((rect.height - 74.0) / 6.0).max(22.0);
+                        let first_wd =
+                            crate::pickers::weekday_sunday0(*view_year, *view_month, 1);
+                        let total_days =
+                            crate::pickers::days_in_month(*view_year, *view_month);
+                        for day in 1..=total_days {
+                            let slot = first_wd + (day - 1);
+                            let r = slot / 7;
+                            let c = slot % 7;
+                            let cell = Rect::new(
+                                rect.x + 8.0 + c as f32 * cell_w,
+                                rect.y + 66.0 + r as f32 * cell_h,
+                                cell_w,
+                                cell_h,
+                            );
+                            if cell.contains(local_pos) {
+                                let formatted =
+                                    crate::pickers::format_iso_date(*view_year, *view_month, day);
+                                value.set(formatted.clone());
+                                node.a11y.value = Some(formatted.clone());
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_change.clone() {
+                                    link_cb = Some((cb, formatted));
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                WidgetKind::TimePicker {
+                    value,
+                    use_24h,
+                    on_change,
+                } => {
+                    let (mut h, mut m) = crate::pickers::parse_time_hm(&value.get_untracked());
+                    let h_plus = Rect::new(rect.x + 12.0, rect.y + 10.0, 58.0, 28.0);
+                    let h_minus = Rect::new(rect.x + 12.0, rect.y + 92.0, 58.0, 28.0);
+                    let m_plus = Rect::new(rect.x + 92.0, rect.y + 10.0, 58.0, 28.0);
+                    let m_minus = Rect::new(rect.x + 92.0, rect.y + 92.0, 58.0, 28.0);
+                    let am_pm_r = Rect::new(rect.x + 162.0, rect.y + 42.0, 54.0, 46.0);
+                    let mut changed = true;
+                    if h_plus.contains(local_pos) {
+                        h = (h + 1) % 24;
+                    } else if h_minus.contains(local_pos) {
+                        h = (h + 23) % 24;
+                    } else if m_plus.contains(local_pos) {
+                        m = (m + 1) % 60;
+                    } else if m_minus.contains(local_pos) {
+                        m = (m + 59) % 60;
+                    } else if !*use_24h && am_pm_r.contains(local_pos) {
+                        h = (h + 12) % 24;
+                    } else {
+                        changed = false;
+                    }
+                    if changed {
+                        let formatted = crate::pickers::format_time_hm(h, m);
+                        value.set(formatted.clone());
+                        node.a11y.value = Some(formatted.clone());
+                        node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                        if let Some(cb) = on_change.clone() {
+                            link_cb = Some((cb, formatted));
+                        }
+                    }
+                }
+                WidgetKind::TreeView {
+                    items,
+                    selected,
+                    collapsed,
+                    row_height,
+                    scroll_offset,
+                    on_select,
+                } => {
+                    let rh = (*row_height).max(22.0);
+                    let list = items.get();
+                    let vis_idx =
+                        ((local_pos.y - (rect.y + 4.0) + *scroll_offset) / rh).floor() as isize;
+                    if vis_idx >= 0 {
+                        let mut col = collapsed.borrow_mut();
+                        let vis = crate::pickers::derive_visible_tree_rows(&list, &col);
+                        if let Some(row) = vis.get(vis_idx as usize) {
+                            let indent = row.depth as f32 * 16.0;
+                            let chev_x = rect.x + 12.0 + indent;
+                            if row.has_children && local_pos.x <= chev_x + 16.0 {
+                                if !col.remove(&row.path) {
+                                    col.insert(row.path.clone());
+                                }
+                                relayout_node = true;
+                                node.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
+                            } else {
+                                selected.set(row.raw_index);
+                                node.a11y.numeric_value = Some(row.raw_index as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_select.clone() {
+                                    idx_cb = Some((cb, row.raw_index));
+                                }
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -1262,6 +1384,24 @@ impl WidgetTree {
             let parent = self.nodes.get(cursor).and_then(|n| n.parent);
             if let Some(node) = self.nodes.get_mut(cursor) {
                 match &mut node.kind {
+                    WidgetKind::TreeView {
+                        items,
+                        collapsed,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let rh = (*row_height).max(22.0);
+                        let list = items.get();
+                        let vis_len =
+                            crate::pickers::derive_visible_tree_rows(&list, &collapsed.borrow())
+                                .len();
+                        let total_h = vis_len as f32 * rh + 8.0;
+                        let max_off = (total_h - rect.height).max(0.0);
+                        *scroll_offset = (*scroll_offset - dy).clamp(0.0, max_off);
+                        node.dirty |= DirtyFlags::PAINT;
+                        return true;
+                    }
                     WidgetKind::ScrollView {
                         axis,
                         offset,
@@ -1934,6 +2074,116 @@ impl WidgetTree {
                         _ => {}
                     }
                 }
+                WidgetKind::DatePicker {
+                    value,
+                    view_year,
+                    view_month,
+                    ..
+                } => {
+                    let (mut y, mut m, mut d) =
+                        crate::pickers::parse_iso_date(&value.get_untracked());
+                    let delta: i32 = match ke.code {
+                        KeyCode::ArrowRight => 1,
+                        KeyCode::ArrowLeft => -1,
+                        KeyCode::ArrowDown => 7,
+                        KeyCode::ArrowUp => -7,
+                        _ => 0,
+                    };
+                    if delta != 0 {
+                        let mut nd = d as i32 + delta;
+                        while nd < 1 {
+                            let (py, pm) = crate::pickers::shift_month(y, m, -1);
+                            y = py;
+                            m = pm;
+                            nd += crate::pickers::days_in_month(y, m) as i32;
+                        }
+                        while nd > crate::pickers::days_in_month(y, m) as i32 {
+                            nd -= crate::pickers::days_in_month(y, m) as i32;
+                            let (ny, nm) = crate::pickers::shift_month(y, m, 1);
+                            y = ny;
+                            m = nm;
+                        }
+                        d = nd as u32;
+                        *view_year = y;
+                        *view_month = m;
+                        let formatted = crate::pickers::format_iso_date(y, m, d);
+                        value.set(formatted.clone());
+                        node.a11y.value = Some(formatted.clone());
+                        node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                        text_changed = Some(formatted);
+                    }
+                }
+                WidgetKind::TimePicker { value, .. } => {
+                    let (mut h, mut m) = crate::pickers::parse_time_hm(&value.get_untracked());
+                    let mut changed = true;
+                    match ke.code {
+                        KeyCode::ArrowUp => h = (h + 1) % 24,
+                        KeyCode::ArrowDown => h = (h + 23) % 24,
+                        KeyCode::ArrowRight => m = (m + 1) % 60,
+                        KeyCode::ArrowLeft => m = (m + 59) % 60,
+                        _ => changed = false,
+                    }
+                    if changed {
+                        let formatted = crate::pickers::format_time_hm(h, m);
+                        value.set(formatted.clone());
+                        node.a11y.value = Some(formatted.clone());
+                        node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                        text_changed = Some(formatted);
+                    }
+                }
+                WidgetKind::TreeView {
+                    items,
+                    selected,
+                    collapsed,
+                    on_select,
+                    ..
+                } => {
+                    let list = items.get();
+                    let mut col = collapsed.borrow_mut();
+                    let vis = crate::pickers::derive_visible_tree_rows(&list, &col);
+                    if !vis.is_empty() {
+                        let cur_raw = selected.get_untracked();
+                        let cur_pos = vis
+                            .iter()
+                            .position(|r| r.raw_index == cur_raw)
+                            .unwrap_or(0);
+                        match ke.code {
+                            KeyCode::ArrowDown => {
+                                let next_pos = (cur_pos + 1).min(vis.len() - 1);
+                                let raw_idx = vis[next_pos].raw_index;
+                                selected.set(raw_idx);
+                                node.a11y.numeric_value = Some(raw_idx as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_select.clone() {
+                                    idx_cb = Some((cb, raw_idx));
+                                }
+                            }
+                            KeyCode::ArrowUp => {
+                                let next_pos = cur_pos.saturating_sub(1);
+                                let raw_idx = vis[next_pos].raw_index;
+                                selected.set(raw_idx);
+                                node.a11y.numeric_value = Some(raw_idx as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_select.clone() {
+                                    idx_cb = Some((cb, raw_idx));
+                                }
+                            }
+                            KeyCode::ArrowRight
+                                if vis[cur_pos].has_children && !vis[cur_pos].expanded =>
+                            {
+                                col.remove(&vis[cur_pos].path);
+                                node.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
+                            }
+                            KeyCode::ArrowLeft
+                                if vis[cur_pos].has_children && vis[cur_pos].expanded =>
+                            {
+                                col.insert(vis[cur_pos].path.clone());
+                                node.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -1967,7 +2217,9 @@ impl WidgetTree {
 
         if let Some(txt) = text_changed {
             let cb = self.nodes.get(focused).and_then(|n| match &n.kind {
-                WidgetKind::TextInput { on_change, .. } => on_change.clone(),
+                WidgetKind::TextInput { on_change, .. }
+                | WidgetKind::DatePicker { on_change, .. }
+                | WidgetKind::TimePicker { on_change, .. } => on_change.clone(),
                 _ => None,
             });
             if let Some(func) = cb

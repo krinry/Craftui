@@ -71,6 +71,21 @@ impl IosAppHost {
         self.bridge.clone()
     }
 
+    /// Register a `MethodChannel` plugin handler on this iOS host's [`PluginRegistry`].
+    pub fn register_plugin<P: craftui_core::CraftPlugin + 'static>(&self, plugin: P) {
+        self.tree.services.plugins().register(plugin);
+    }
+
+    /// Invoke a registered `MethodChannel` plugin method from Rust or a Swift/UIKit bridge handler.
+    pub fn invoke_plugin(
+        &self,
+        channel: &str,
+        method: &str,
+        args: serde_json::Value,
+    ) -> craftui_core::Result<serde_json::Value> {
+        self.tree.services.plugins().invoke(channel, method, args)
+    }
+
     pub fn set_permission_wait_timeout(&self, timeout: Duration) {
         self.bridge.set_request_timeout(timeout);
     }

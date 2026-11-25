@@ -145,6 +145,9 @@ pub enum TokenKind {
     #[token("@radial-gradient")]
     AtRadialGradient,
 
+    #[token("@children")]
+    AtChildren,
+
     #[token("@")]
     At,
 

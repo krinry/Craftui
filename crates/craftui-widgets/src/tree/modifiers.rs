@@ -733,10 +733,16 @@ impl WidgetTree {
     }
 
     pub fn set_on_change(&mut self, node: NodeId, cb: impl FnMut(String) + 'static) {
-        if let Some(n) = self.nodes.get_mut(node)
-            && let WidgetKind::TextInput { on_change, .. } = &mut n.kind
-        {
-            *on_change = Some(Rc::new(RefCell::new(cb)));
+        if let Some(n) = self.nodes.get_mut(node) {
+            let rc: crate::TextCallback = Rc::new(RefCell::new(cb));
+            match &mut n.kind {
+                WidgetKind::TextInput { on_change, .. }
+                | WidgetKind::DatePicker { on_change, .. }
+                | WidgetKind::TimePicker { on_change, .. } => {
+                    *on_change = Some(rc);
+                }
+                _ => {}
+            }
         }
     }
 
@@ -778,7 +784,8 @@ impl WidgetTree {
                     *on_change = Some(rc);
                 }
                 WidgetKind::DataTable { on_select, .. }
-                | WidgetKind::PopupMenu { on_select, .. } => {
+                | WidgetKind::PopupMenu { on_select, .. }
+                | WidgetKind::TreeView { on_select, .. } => {
                     *on_select = Some(rc);
                 }
                 _ => {}

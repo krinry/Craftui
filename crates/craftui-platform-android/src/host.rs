@@ -78,6 +78,21 @@ impl AndroidHost {
         self.bridge.clone()
     }
 
+    /// Register a `MethodChannel` plugin handler on this Android host's [`PluginRegistry`].
+    pub fn register_plugin<P: craftui_core::CraftPlugin + 'static>(&self, plugin: P) {
+        self.tree.services.plugins().register(plugin);
+    }
+
+    /// Invoke a registered `MethodChannel` plugin method from Rust or an Android bridge handler.
+    pub fn invoke_plugin(
+        &self,
+        channel: &str,
+        method: &str,
+        args: serde_json::Value,
+    ) -> craftui_core::Result<serde_json::Value> {
+        self.tree.services.plugins().invoke(channel, method, args)
+    }
+
     /// Enable background TCP remote live preview client connecting to host via ADB reverse tunnel.
     pub fn enable_remote_preview(&mut self, port: u16) {
         self.remote_preview = Some(remote_preview::RemotePreviewClient::start(

@@ -2175,6 +2175,284 @@ impl WidgetTree {
                     scene.fill_rect(drawer_r, adapted, CornerRadii::new(0.0, 16.0, 16.0, 0.0));
                 }
             }
+            WidgetKind::DatePicker {
+                value,
+                view_year,
+                view_month,
+                ..
+            } => {
+                let rad = CornerRadii::all(12.0);
+                let bg = box_style
+                    .background
+                    .as_ref()
+                    .map(|b| b.get())
+                    .unwrap_or(Brush::Solid(theme.surface));
+                scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), rad);
+                if box_style.border.is_none() {
+                    scene.stroke_rect(rect, theme.border, 1.0, rad);
+                }
+
+                let (sel_y, sel_m, sel_d) = crate::pickers::parse_iso_date(&value.get());
+                let prev_r = Rect::new(rect.x + 8.0, rect.y + 8.0, 28.0, 28.0);
+                let next_r = Rect::new(rect.max_x() - 36.0, rect.y + 8.0, 28.0, 28.0);
+                scene.fill_rect(prev_r, theme.surface_variant, CornerRadii::all(6.0));
+                scene.fill_rect(next_r, theme.surface_variant, CornerRadii::all(6.0));
+                let nav_st = TextStyle::default()
+                    .with_size(14.0)
+                    .with_weight(600.0)
+                    .with_color(theme.text_primary);
+                scene.draw_text(Point::new(prev_r.x + 9.0, prev_r.y + 6.0), "<", nav_st.clone(), None);
+                scene.draw_text(Point::new(next_r.x + 9.0, next_r.y + 6.0), ">", nav_st, None);
+
+                let hdr_title = format!("{} {view_year:04}", crate::pickers::month_name(view_month));
+                let hdr_st = TextStyle::default()
+                    .with_size(14.0)
+                    .with_weight(600.0)
+                    .with_color(theme.text_primary);
+                let hsz = self.text_engine.measure(&hdr_title, &hdr_st, None);
+                scene.draw_text(
+                    Point::new(rect.x + (rect.width - hsz.width) * 0.5, rect.y + 13.0),
+                    hdr_title,
+                    hdr_st,
+                    None,
+                );
+
+                let cell_w = ((rect.width - 16.0) / 7.0).max(20.0);
+                let cell_h = ((rect.height - 74.0) / 6.0).max(22.0);
+                let wk_st = TextStyle::default()
+                    .with_size(11.0)
+                    .with_weight(600.0)
+                    .with_color(theme.text_secondary);
+                for (col, wd) in ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].iter().enumerate() {
+                    let cx = rect.x + 8.0 + col as f32 * cell_w;
+                    let wsz = self.text_engine.measure(wd, &wk_st, None);
+                    scene.draw_text(
+                        Point::new(cx + (cell_w - wsz.width) * 0.5, rect.y + 44.0),
+                        *wd,
+                        wk_st.clone(),
+                        None,
+                    );
+                }
+
+                let first_wd = crate::pickers::weekday_sunday0(view_year, view_month, 1);
+                let total_days = crate::pickers::days_in_month(view_year, view_month);
+                for day in 1..=total_days {
+                    let slot = first_wd + (day - 1);
+                    let r = slot / 7;
+                    let c = slot % 7;
+                    let cell = Rect::new(
+                        rect.x + 8.0 + c as f32 * cell_w,
+                        rect.y + 66.0 + r as f32 * cell_h,
+                        cell_w,
+                        cell_h,
+                    );
+                    let is_sel = sel_y == view_year && sel_m == view_month && sel_d == day;
+                    if is_sel {
+                        let pill = cell.inflate(-3.0, -3.0);
+                        scene.fill_rect(pill, theme.primary, CornerRadii::all(pill.height * 0.5));
+                    }
+                    let txt = format!("{day}");
+                    let dst = TextStyle::default()
+                        .with_size(12.5)
+                        .with_weight(if is_sel { 600.0 } else { 400.0 })
+                        .with_color(if is_sel {
+                            theme.on_primary
+                        } else {
+                            theme.text_primary
+                        });
+                    let dsz = self.text_engine.measure(&txt, &dst, None);
+                    scene.draw_text(
+                        Point::new(
+                            cell.x + (cell.width - dsz.width) * 0.5,
+                            cell.y + (cell.height - dsz.height) * 0.5,
+                        ),
+                        txt,
+                        dst,
+                        None,
+                    );
+                }
+                if is_focused {
+                    scene.stroke_rect(rect.inflate(1.5, 1.5), theme.primary, 1.5, rad);
+                }
+            }
+            WidgetKind::TimePicker { value, use_24h, .. } => {
+                let rad = CornerRadii::all(12.0);
+                let bg = box_style
+                    .background
+                    .as_ref()
+                    .map(|b| b.get())
+                    .unwrap_or(Brush::Solid(theme.surface));
+                scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), rad);
+                if box_style.border.is_none() {
+                    scene.stroke_rect(rect, theme.border, 1.0, rad);
+                }
+
+                let (h24, min) = crate::pickers::parse_time_hm(&value.get());
+                let (disp_h, am_pm) = if use_24h {
+                    (h24, None)
+                } else {
+                    let pm = h24 >= 12;
+                    let h12 = match h24 % 12 {
+                        0 => 12,
+                        x => x,
+                    };
+                    (h12, Some(if pm { "PM" } else { "AM" }))
+                };
+
+                let col_w = 58.0;
+                let h_x = rect.x + 12.0;
+                let m_x = rect.x + 92.0;
+                let paint_spin = |scene: &mut PaintScene,
+                                  te: &mut TextEngine,
+                                  x: f32,
+                                  val: String| {
+                    let plus_r = Rect::new(x, rect.y + 10.0, col_w, 28.0);
+                    let val_r = Rect::new(x, rect.y + 42.0, col_w, 46.0);
+                    let minus_r = Rect::new(x, rect.y + 92.0, col_w, 28.0);
+                    scene.fill_rect(plus_r, theme.surface_variant, CornerRadii::all(6.0));
+                    scene.fill_rect(val_r, theme.surface_container, CornerRadii::all(8.0));
+                    scene.fill_rect(minus_r, theme.surface_variant, CornerRadii::all(6.0));
+                    let btn_st = TextStyle::default()
+                        .with_size(14.0)
+                        .with_weight(600.0)
+                        .with_color(theme.text_primary);
+                    let v_st = TextStyle::default()
+                        .with_size(22.0)
+                        .with_weight(600.0)
+                        .with_color(theme.text_primary);
+                    let psz = te.measure("+", &btn_st, None);
+                    let msz = te.measure("-", &btn_st, None);
+                    let vsz = te.measure(&val, &v_st, None);
+                    scene.draw_text(
+                        Point::new(plus_r.x + (col_w - psz.width) * 0.5, plus_r.y + 5.0),
+                        "+",
+                        btn_st.clone(),
+                        None,
+                    );
+                    scene.draw_text(
+                        Point::new(
+                            val_r.x + (col_w - vsz.width) * 0.5,
+                            val_r.y + (val_r.height - vsz.height) * 0.5,
+                        ),
+                        val,
+                        v_st,
+                        None,
+                    );
+                    scene.draw_text(
+                        Point::new(minus_r.x + (col_w - msz.width) * 0.5, minus_r.y + 5.0),
+                        "-",
+                        btn_st,
+                        None,
+                    );
+                };
+
+                paint_spin(scene, &mut self.text_engine, h_x, format!("{disp_h:02}"));
+                paint_spin(scene, &mut self.text_engine, m_x, format!("{min:02}"));
+
+                let sep_st = TextStyle::default()
+                    .with_size(22.0)
+                    .with_weight(700.0)
+                    .with_color(theme.text_secondary);
+                scene.draw_text(Point::new(rect.x + 77.0, rect.y + 52.0), ":", sep_st, None);
+
+                if let Some(label) = am_pm {
+                    let am_r = Rect::new(rect.x + 162.0, rect.y + 42.0, 54.0, 46.0);
+                    scene.fill_rect(am_r, theme.primary, CornerRadii::all(8.0));
+                    let ast = TextStyle::default()
+                        .with_size(14.0)
+                        .with_weight(600.0)
+                        .with_color(theme.on_primary);
+                    let asz = self.text_engine.measure(label, &ast, None);
+                    scene.draw_text(
+                        Point::new(
+                            am_r.x + (am_r.width - asz.width) * 0.5,
+                            am_r.y + (am_r.height - asz.height) * 0.5,
+                        ),
+                        label,
+                        ast,
+                        None,
+                    );
+                }
+                if is_focused {
+                    scene.stroke_rect(rect.inflate(1.5, 1.5), theme.primary, 1.5, rad);
+                }
+            }
+            WidgetKind::TreeView {
+                items,
+                selected,
+                collapsed,
+                row_height,
+                scroll_offset,
+                ..
+            } => {
+                let rad = CornerRadii::all(8.0);
+                let bg = box_style
+                    .background
+                    .as_ref()
+                    .map(|b| b.get())
+                    .unwrap_or(Brush::Solid(theme.surface));
+                scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), rad);
+                scene.push(PaintCommand::PushClip { rect, radius: rad });
+
+                let list = items.get();
+                let col = collapsed.borrow();
+                let vis = crate::pickers::derive_visible_tree_rows(&list, &col);
+                let sel_raw = selected.get();
+                let rh = row_height.max(22.0);
+
+                for (vi, row) in vis.iter().enumerate() {
+                    let ry = rect.y + 4.0 + vi as f32 * rh - scroll_offset;
+                    if ry + rh < rect.y || ry > rect.max_y() {
+                        continue;
+                    }
+                    let row_r = Rect::new(rect.x + 4.0, ry, (rect.width - 8.0).max(16.0), rh);
+                    let is_sel = row.raw_index == sel_raw;
+                    if is_sel {
+                        scene.fill_rect(
+                            row_r,
+                            theme.primary.with_alpha(0.18),
+                            CornerRadii::all(6.0),
+                        );
+                    }
+                    let indent = row.depth as f32 * 16.0;
+                    let tx = row_r.x + 8.0 + indent;
+                    if row.has_children {
+                        let caret = if row.expanded { "v" } else { ">" };
+                        let cst = TextStyle::default()
+                            .with_size(12.0)
+                            .with_weight(600.0)
+                            .with_color(theme.text_secondary);
+                        scene.draw_text(
+                            Point::new(tx, ry + (rh - 14.0) * 0.5),
+                            caret,
+                            cst,
+                            None,
+                        );
+                    }
+                    let lst = TextStyle::default()
+                        .with_size(13.5)
+                        .with_weight(if is_sel { 600.0 } else { 400.0 })
+                        .with_color(if is_sel {
+                            theme.primary
+                        } else {
+                            theme.text_primary
+                        });
+                    scene.draw_text(
+                        Point::new(tx + 16.0, ry + (rh - 16.0) * 0.5),
+                        &row.label,
+                        lst,
+                        Some((row_r.max_x() - (tx + 20.0)).max(20.0)),
+                    );
+                }
+
+                scene.push(PaintCommand::PopClip);
+                if box_style.border.is_none() {
+                    scene.stroke_rect(rect, theme.border, 1.0, rad);
+                }
+                if is_focused {
+                    scene.stroke_rect(rect.inflate(1.5, 1.5), theme.primary, 1.5, rad);
+                }
+            }
             WidgetKind::Custom(cw) => {
                 if let Ok(mut guard) = cw.try_borrow_mut() {
                     guard.paint(rect, scene, &mut self.text_engine, theme, is_focused);

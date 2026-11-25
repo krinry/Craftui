@@ -2469,3 +2469,117 @@ fn autofocus_custom_widget_recovers_focus_when_previous_focus_is_hidden() {
     assert_eq!(tree.focused(), Some(stage));
     assert_eq!(received.borrow().as_slice(), &[KeyCode::KeyA]);
 }
+
+#[test]
+fn date_picker_time_picker_and_tree_view_interactions_and_paint() {
+    reset_runtime();
+    let scope = Scope::root();
+    let mut tree = WidgetTree::new(scope);
+
+    let date_sig = scope.signal("2026-11-25".to_string());
+    let time_sig = scope.signal("09:30".to_string());
+    let tree_sel = scope.signal(0usize);
+
+    let last_date = Rc::new(RefCell::new(String::new()));
+    let ld = Rc::clone(&last_date);
+    let dp = tree.date_picker(
+        scope,
+        date_sig,
+        Some(move |v: String| {
+            *ld.borrow_mut() = v;
+        }),
+    );
+
+    let last_time = Rc::new(RefCell::new(String::new()));
+    let lt = Rc::clone(&last_time);
+    let tp = tree.time_picker(
+        scope,
+        time_sig,
+        false,
+        Some(move |v: String| {
+            *lt.borrow_mut() = v;
+        }),
+    );
+
+    let tv = tree.tree_view(
+        scope,
+        vec![
+            "src".to_string(),
+            "src/main.rs".to_string(),
+            "Cargo.toml".to_string(),
+        ],
+        tree_sel,
+        None::<fn(usize)>,
+    );
+
+    let root = tree.column(scope);
+    tree.append_child(root, dp);
+    tree.append_child(root, tp);
+    tree.append_child(root, tv);
+    tree.set_root(root);
+
+    let metrics = WindowMetrics::default();
+    tree.layout(metrics);
+
+    // DatePicker keyboard ArrowRight advances 1 day
+    tree.set_focus(Some(dp), true);
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowRight,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert_eq!(date_sig.get_untracked(), "2026-11-26");
+    assert_eq!(&*last_date.borrow(), "2026-11-26");
+
+    // TimePicker keyboard ArrowUp increments hour, ArrowRight increments minute
+    tree.set_focus(Some(tp), true);
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowUp,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowRight,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert_eq!(time_sig.get_untracked(), "10:31");
+    assert_eq!(&*last_time.borrow(), "10:31");
+
+    // TreeView ArrowDown moves selection, ArrowLeft collapses "src"
+    tree.set_focus(Some(tv), true);
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowDown,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert_eq!(tree_sel.get_untracked(), 1);
+
+    tree.set_focus(Some(tv), true);
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowUp,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowLeft,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    assert!(!scene.commands.is_empty());
+}

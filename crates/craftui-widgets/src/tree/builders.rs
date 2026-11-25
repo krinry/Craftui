@@ -1404,6 +1404,88 @@ impl WidgetTree {
         root
     }
 
+    /// Build an interactive calendar `DatePicker` bound to an ISO `"YYYY-MM-DD"` signal.
+    pub fn date_picker(
+        &mut self,
+        scope: Scope,
+        value: Signal<String>,
+        on_change: Option<impl FnMut(String) + 'static>,
+    ) -> NodeId {
+        let (view_year, view_month, _) = crate::pickers::parse_iso_date(&value.get_untracked());
+        let id = self.spawn_node(
+            "DatePicker",
+            WidgetKind::DatePicker {
+                value,
+                view_year,
+                view_month,
+                on_change: on_change.map(|f| Rc::new(RefCell::new(f)) as crate::TextCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Container;
+            n.a11y.focusable = true;
+            n.a11y.label = Some("DatePicker".into());
+        }
+        id
+    }
+
+    /// Build an interactive `TimePicker` bound to an `"HH:MM"` signal.
+    pub fn time_picker(
+        &mut self,
+        scope: Scope,
+        value: Signal<String>,
+        use_24h: bool,
+        on_change: Option<impl FnMut(String) + 'static>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "TimePicker",
+            WidgetKind::TimePicker {
+                value,
+                use_24h,
+                on_change: on_change.map(|f| Rc::new(RefCell::new(f)) as crate::TextCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Container;
+            n.a11y.focusable = true;
+            n.a11y.label = Some("TimePicker".into());
+        }
+        id
+    }
+
+    /// Build a collapsible `TreeView` from slash-delimited item paths (e.g. `"src/main.rs"`).
+    pub fn tree_view(
+        &mut self,
+        scope: Scope,
+        items: impl Into<ReactiveValue<Vec<String>>>,
+        selected: Signal<usize>,
+        on_select: Option<impl FnMut(usize) + 'static>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "TreeView",
+            WidgetKind::TreeView {
+                items: items.into(),
+                selected,
+                collapsed: Rc::new(RefCell::new(std::collections::HashSet::new())),
+                row_height: 30.0,
+                scroll_offset: 0.0,
+                on_select: on_select.map(|f| Rc::new(RefCell::new(f)) as IndexCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::List;
+            n.a11y.focusable = true;
+            n.a11y.label = Some("TreeView".into());
+        }
+        id
+    }
+
     /// Mount any custom user-defined widget implementing [`CustomWidget`].
     pub fn custom_widget<W: CustomWidget + 'static>(
         &mut self,

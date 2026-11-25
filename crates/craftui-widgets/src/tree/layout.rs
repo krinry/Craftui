@@ -166,6 +166,13 @@ impl WidgetTree {
                             layout_changed = true;
                         }
                     }
+                    WidgetKind::DatePicker { value, .. }
+                    | WidgetKind::TimePicker { value, .. } => {
+                        node.a11y.value = Some(value.get_untracked());
+                    }
+                    WidgetKind::TreeView { selected, .. } => {
+                        node.a11y.numeric_value = Some(selected.get_untracked() as f64);
+                    }
                     WidgetKind::Custom(cw) => {
                         if let Ok(guard) = cw.try_borrow() {
                             node.a11y = guard.a11y();
@@ -472,6 +479,34 @@ impl WidgetTree {
                             800.0
                         };
                         Size::new(*width, h)
+                    }
+                    WidgetKind::DatePicker { .. } => Size::new(280.0, 296.0),
+                    WidgetKind::TimePicker { use_24h, .. } => {
+                        Size::new(if *use_24h { 172.0 } else { 232.0 }, 132.0)
+                    }
+                    WidgetKind::TreeView {
+                        items,
+                        collapsed,
+                        row_height,
+                        ..
+                    } => {
+                        let list = items.get();
+                        let col = collapsed.borrow();
+                        let vis_len =
+                            crate::pickers::derive_visible_tree_rows(&list, &col).len().max(1);
+                        let w = if constraints.max_width.is_finite() {
+                            constraints.max_width.min(320.0)
+                        } else {
+                            240.0
+                        };
+                        let h = (vis_len as f32 * *row_height + 8.0).min(
+                            if constraints.max_height.is_finite() {
+                                constraints.max_height
+                            } else {
+                                320.0
+                            },
+                        );
+                        Size::new(w, h)
                     }
                     WidgetKind::Custom(cw) => {
                         if let Ok(mut guard) = cw.try_borrow_mut() {

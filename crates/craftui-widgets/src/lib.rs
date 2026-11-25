@@ -3,6 +3,7 @@
 pub mod anim;
 pub mod gesture;
 pub mod inspector;
+pub mod pickers;
 pub mod router;
 pub mod toast;
 pub mod tree;

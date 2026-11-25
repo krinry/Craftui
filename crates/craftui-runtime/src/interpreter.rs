@@ -31,6 +31,7 @@ pub(crate) struct DynEnv {
     pub(crate) theme_sig: Signal<ThemeTokens>,
     pub(crate) theme_ov_sig: Signal<ThemeOverride>,
     pub(crate) metrics_sig: Signal<WindowMetrics>,
+    pub(crate) children_slot: Option<Rc<dyn Fn(Scope, &mut WidgetTree, NodeId)>>,
 }
 
 impl DynEnv {
@@ -570,6 +571,69 @@ pub(crate) fn build_element(
             let idx_prop = find_prop(el, &["selected", "value"]);
             let idx_sig = bind_usize_signal(scope, idx_prop, env, 0);
             let n = tree.radio_group(scope, opts_rv, idx_sig, axis);
+            wire_index_change(n, el, env, tree);
+            n
+        }
+        "DatePicker" => {
+            let val_prop = find_prop(el, &["value"]);
+            let (init_s, sig_opt) = bind_string_signal(scope, val_prop, env);
+            let val_sig = sig_opt.unwrap_or_else(|| {
+                let initial = if init_s.trim().is_empty() {
+                    "2026-01-15".to_string()
+                } else {
+                    init_s
+                };
+                scope.signal(initial)
+            });
+            let n = tree.date_picker(scope, val_sig, None::<fn(String)>);
+            if let Some(h) = el.handlers.iter().find(|h| h.event == "on_change") {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_change(n, move |value| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("value".into(), DynValue::String(value.clone()));
+                    h_env.locals.insert("text".into(), DynValue::String(value));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
+        "TimePicker" => {
+            let val_prop = find_prop(el, &["value"]);
+            let (init_s, sig_opt) = bind_string_signal(scope, val_prop, env);
+            let val_sig = sig_opt.unwrap_or_else(|| {
+                let initial = if init_s.trim().is_empty() {
+                    "09:30".to_string()
+                } else {
+                    init_s
+                };
+                scope.signal(initial)
+            });
+            let use_24h = eval_prop("use_24h").map(|v| v.as_bool()).unwrap_or(true);
+            let n = tree.time_picker(scope, val_sig, use_24h, None::<fn(String)>);
+            if let Some(h) = el.handlers.iter().find(|h| h.event == "on_change") {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_change(n, move |value| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("value".into(), DynValue::String(value.clone()));
+                    h_env.locals.insert("text".into(), DynValue::String(value));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
+        "TreeView" => {
+            let items_rv = find_prop(el, &["items", "options"])
+                .map(|p| expr_to_reactive_string_list(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(Vec::new()));
+            let idx_prop = find_prop(el, &["selected", "value"]);
+            let idx_sig = bind_usize_signal(scope, idx_prop, env, 0);
+            let n = tree.tree_view(scope, items_rv, idx_sig, None::<fn(usize)>);
             wire_index_change(n, el, env, tree);
             n
         }
@@ -1863,6 +1927,11 @@ fn build_children(
                     tree.append_child(parent_node, cnode);
                 }
             }
+            ChildItem::ChildrenSlot { .. } => {
+                if let Some(ref slot_fn) = env.children_slot {
+                    slot_fn(scope, tree, parent_node);
+                }
+            }
         }
     }
 }
@@ -1949,16 +2018,60 @@ fn instantiate_subcomponent(
         theme_sig: outer_env.theme_sig,
         theme_ov_sig: outer_env.theme_ov_sig,
         metrics_sig: outer_env.metrics_sig,
+        children_slot: if component_has_children_slot(comp) {
+            let call_children = call_el.children.clone();
+            let slot_env = outer_env.clone();
+            Some(Rc::new(move |slot_scope, slot_tree, slot_parent| {
+                let fake_el = ElementNode {
+                    kind: "Column".into(),
+                    props: Vec::new(),
+                    handlers: Vec::new(),
+                    animations: Vec::new(),
+                    states: Vec::new(),
+                    transitions: Vec::new(),
+                    children: call_children.clone(),
+                    span: craftui_dsl::ast::Span::default(),
+                };
+                build_children(slot_scope, slot_parent, &fake_el, &slot_env, slot_tree);
+            }))
+        } else {
+            None
+        },
     };
 
+    let has_slot = component_has_children_slot(comp);
     let node = if let Some(ref root) = comp.root {
         build_element(scope, root, &sub_env, tree)
     } else {
         tree.column(scope)
     };
-    build_children(scope, node, call_el, outer_env, tree);
+    if !has_slot {
+        build_children(scope, node, call_el, outer_env, tree);
+    }
     apply_common_props_and_events(scope, node, call_el, outer_env, tree, true);
     node
+}
+
+fn element_has_children_slot(el: &ElementNode) -> bool {
+    el.children.iter().any(|c| match c {
+        ChildItem::ChildrenSlot { .. } => true,
+        ChildItem::Element(inner) => element_has_children_slot(inner),
+        ChildItem::For { body, .. } => element_has_children_slot(body),
+        ChildItem::If {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            element_has_children_slot(then_branch)
+                || else_branch
+                    .as_ref()
+                    .is_some_and(|eb| element_has_children_slot(eb))
+        }
+    })
+}
+
+fn component_has_children_slot(comp: &ComponentDecl) -> bool {
+    comp.root.as_ref().is_some_and(element_has_children_slot)
 }
 
 fn bind_f32_signal(

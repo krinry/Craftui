@@ -697,6 +697,10 @@ pub fn lookup_hover(text: &str, pos: Position) -> Option<Hover> {
             "Focus-trapping overlay / sheet with backdrop click & `Escape` dismissal (`open`, `on_close`)."
         }
         "PlatformView" => "Native platform view / texture hole-punch container.",
+        "DatePicker" => "Interactive calendar date picker (`<=> value: string` in `YYYY-MM-DD`, `on_change`).",
+        "TimePicker" => "Interactive 24h/12h time picker (`<=> value: string` in `HH:MM`, `use_24h`, `on_change`).",
+        "TreeView" => "Collapsible hierarchical tree view (`items: [string]` slash-delimited paths, `<=> selected`, `on_select`).",
+        "@children" => "Child-slot placeholder inside a reusable component forwarding caller-supplied child elements.",
         "Theme" => {
             "Reactive `ThemeTokens` design system palette (`background`, `surface`, `primary`, `border`, etc.)."
         }

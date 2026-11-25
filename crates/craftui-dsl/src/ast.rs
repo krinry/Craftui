@@ -206,6 +206,9 @@ pub enum ChildItem {
         else_branch: Option<Box<ElementNode>>,
         span: Span,
     },
+    ChildrenSlot {
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

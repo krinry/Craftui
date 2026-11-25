@@ -511,6 +511,17 @@ impl Parser {
                 TokenKind::KwIf => {
                     children.push(self.parse_if());
                 }
+                TokenKind::AtChildren => {
+                    self.builder.start_node(SyntaxKind::ChildrenSlot.into());
+                    let tok = self.bump().expect("AtChildren token");
+                    if self.peek() == Some(TokenKind::Semi) {
+                        self.bump();
+                    }
+                    self.builder.finish_node();
+                    children.push(ChildItem::ChildrenSlot {
+                        span: Span::new(tok.start, tok.end),
+                    });
+                }
                 TokenKind::Ident => {
                     if self.peek_text() == Some("animate")
                         && self.peek_nth(1) == Some(TokenKind::Ident)
