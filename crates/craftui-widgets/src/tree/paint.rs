@@ -152,7 +152,12 @@ impl WidgetTree {
                 BoxShadow::drop(0.0, 3.0, 8.0, 0.0, Color::rgba(0, 0, 0, 90)),
             );
             scene.fill_rect(pill, theme.primary, CornerRadii::all(8.0));
-            scene.draw_text(Point::new(pill.x + 9.0, pill.y + 5.0), payload, st, Some(200.0));
+            scene.draw_text(
+                Point::new(pill.x + 9.0, pill.y + 5.0),
+                payload,
+                st,
+                Some(200.0),
+            );
         }
 
         if self.inspector.enabled {
@@ -2248,10 +2253,21 @@ impl WidgetTree {
                     .with_size(14.0)
                     .with_weight(600.0)
                     .with_color(theme.text_primary);
-                scene.draw_text(Point::new(prev_r.x + 9.0, prev_r.y + 6.0), "<", nav_st.clone(), None);
-                scene.draw_text(Point::new(next_r.x + 9.0, next_r.y + 6.0), ">", nav_st, None);
+                scene.draw_text(
+                    Point::new(prev_r.x + 9.0, prev_r.y + 6.0),
+                    "<",
+                    nav_st.clone(),
+                    None,
+                );
+                scene.draw_text(
+                    Point::new(next_r.x + 9.0, next_r.y + 6.0),
+                    ">",
+                    nav_st,
+                    None,
+                );
 
-                let hdr_title = format!("{} {view_year:04}", crate::pickers::month_name(view_month));
+                let hdr_title =
+                    format!("{} {view_year:04}", crate::pickers::month_name(view_month));
                 let hdr_st = TextStyle::default()
                     .with_size(14.0)
                     .with_weight(600.0)
@@ -2270,7 +2286,10 @@ impl WidgetTree {
                     .with_size(11.0)
                     .with_weight(600.0)
                     .with_color(theme.text_secondary);
-                for (col, wd) in ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].iter().enumerate() {
+                for (col, wd) in ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+                    .iter()
+                    .enumerate()
+                {
                     let cx = rect.x + 8.0 + col as f32 * cell_w;
                     let wsz = self.text_engine.measure(wd, &wk_st, None);
                     scene.draw_text(
@@ -2349,49 +2368,47 @@ impl WidgetTree {
                 let col_w = 58.0;
                 let h_x = rect.x + 12.0;
                 let m_x = rect.x + 92.0;
-                let paint_spin = |scene: &mut PaintScene,
-                                  te: &mut TextEngine,
-                                  x: f32,
-                                  val: String| {
-                    let plus_r = Rect::new(x, rect.y + 10.0, col_w, 28.0);
-                    let val_r = Rect::new(x, rect.y + 42.0, col_w, 46.0);
-                    let minus_r = Rect::new(x, rect.y + 92.0, col_w, 28.0);
-                    scene.fill_rect(plus_r, theme.surface_variant, CornerRadii::all(6.0));
-                    scene.fill_rect(val_r, theme.surface_container, CornerRadii::all(8.0));
-                    scene.fill_rect(minus_r, theme.surface_variant, CornerRadii::all(6.0));
-                    let btn_st = TextStyle::default()
-                        .with_size(14.0)
-                        .with_weight(600.0)
-                        .with_color(theme.text_primary);
-                    let v_st = TextStyle::default()
-                        .with_size(22.0)
-                        .with_weight(600.0)
-                        .with_color(theme.text_primary);
-                    let psz = te.measure("+", &btn_st, None);
-                    let msz = te.measure("-", &btn_st, None);
-                    let vsz = te.measure(&val, &v_st, None);
-                    scene.draw_text(
-                        Point::new(plus_r.x + (col_w - psz.width) * 0.5, plus_r.y + 5.0),
-                        "+",
-                        btn_st.clone(),
-                        None,
-                    );
-                    scene.draw_text(
-                        Point::new(
-                            val_r.x + (col_w - vsz.width) * 0.5,
-                            val_r.y + (val_r.height - vsz.height) * 0.5,
-                        ),
-                        val,
-                        v_st,
-                        None,
-                    );
-                    scene.draw_text(
-                        Point::new(minus_r.x + (col_w - msz.width) * 0.5, minus_r.y + 5.0),
-                        "-",
-                        btn_st,
-                        None,
-                    );
-                };
+                let paint_spin =
+                    |scene: &mut PaintScene, te: &mut TextEngine, x: f32, val: String| {
+                        let plus_r = Rect::new(x, rect.y + 10.0, col_w, 28.0);
+                        let val_r = Rect::new(x, rect.y + 42.0, col_w, 46.0);
+                        let minus_r = Rect::new(x, rect.y + 92.0, col_w, 28.0);
+                        scene.fill_rect(plus_r, theme.surface_variant, CornerRadii::all(6.0));
+                        scene.fill_rect(val_r, theme.surface_container, CornerRadii::all(8.0));
+                        scene.fill_rect(minus_r, theme.surface_variant, CornerRadii::all(6.0));
+                        let btn_st = TextStyle::default()
+                            .with_size(14.0)
+                            .with_weight(600.0)
+                            .with_color(theme.text_primary);
+                        let v_st = TextStyle::default()
+                            .with_size(22.0)
+                            .with_weight(600.0)
+                            .with_color(theme.text_primary);
+                        let psz = te.measure("+", &btn_st, None);
+                        let msz = te.measure("-", &btn_st, None);
+                        let vsz = te.measure(&val, &v_st, None);
+                        scene.draw_text(
+                            Point::new(plus_r.x + (col_w - psz.width) * 0.5, plus_r.y + 5.0),
+                            "+",
+                            btn_st.clone(),
+                            None,
+                        );
+                        scene.draw_text(
+                            Point::new(
+                                val_r.x + (col_w - vsz.width) * 0.5,
+                                val_r.y + (val_r.height - vsz.height) * 0.5,
+                            ),
+                            val,
+                            v_st,
+                            None,
+                        );
+                        scene.draw_text(
+                            Point::new(minus_r.x + (col_w - msz.width) * 0.5, minus_r.y + 5.0),
+                            "-",
+                            btn_st,
+                            None,
+                        );
+                    };
 
                 paint_spin(scene, &mut self.text_engine, h_x, format!("{disp_h:02}"));
                 paint_spin(scene, &mut self.text_engine, m_x, format!("{min:02}"));
@@ -2469,12 +2486,7 @@ impl WidgetTree {
                             .with_size(12.0)
                             .with_weight(600.0)
                             .with_color(theme.text_secondary);
-                        scene.draw_text(
-                            Point::new(tx, ry + (rh - 14.0) * 0.5),
-                            caret,
-                            cst,
-                            None,
-                        );
+                        scene.draw_text(Point::new(tx, ry + (rh - 14.0) * 0.5), caret, cst, None);
                     }
                     let lst = TextStyle::default()
                         .with_size(13.5)
@@ -2527,7 +2539,12 @@ impl WidgetTree {
                     if ry + rh < rect.y || ry > rect.max_y() {
                         continue;
                     }
-                    let row_r = Rect::new(rect.x + 4.0, ry + 1.0, (rect.width - 8.0).max(20.0), rh - 2.0);
+                    let row_r = Rect::new(
+                        rect.x + 4.0,
+                        ry + 1.0,
+                        (rect.width - 8.0).max(20.0),
+                        rh - 2.0,
+                    );
                     let is_dragging = dragging_index == Some(i);
                     let is_sel = i == sel_idx;
                     if is_dragging {
@@ -2595,7 +2612,11 @@ impl WidgetTree {
                     .as_ref()
                     .map(|b| b.get())
                     .unwrap_or(Brush::Solid(theme.surface_container));
-                scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), CornerRadii::ZERO);
+                scene.fill_rect(
+                    rect,
+                    Self::adapt_brush_to_rect(&bg, rect),
+                    CornerRadii::ZERO,
+                );
                 scene.fill_rect(
                     Rect::new(rect.x, rect.max_y() - 1.0, rect.width, 1.0),
                     theme.border,
@@ -2603,14 +2624,11 @@ impl WidgetTree {
                 );
                 let parsed = crate::pickers::parse_menubar_specs(&menus.get());
                 let header_rects = crate::pickers::menubar_header_rects(rect, &parsed);
-                for (i, ((title, items), hr)) in parsed.iter().zip(header_rects.iter()).enumerate() {
+                for (i, ((title, items), hr)) in parsed.iter().zip(header_rects.iter()).enumerate()
+                {
                     let is_open = open_menu == Some(i);
                     if is_open {
-                        scene.fill_rect(
-                            *hr,
-                            theme.primary.with_alpha(0.18),
-                            CornerRadii::all(6.0),
-                        );
+                        scene.fill_rect(*hr, theme.primary.with_alpha(0.18), CornerRadii::all(6.0));
                     }
                     let st = TextStyle::default()
                         .with_size(13.5)

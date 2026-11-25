@@ -33,7 +33,9 @@ impl WidgetTree {
                     ..
                 } = &node.kind
             {
-                let bar_r = self.node_world_transform(id).transform_rect_bounds(self.node_visual_rect(id));
+                let bar_r = self
+                    .node_world_transform(id)
+                    .transform_rect_bounds(self.node_visual_rect(id));
                 let parsed = crate::pickers::parse_menubar_specs(&menus.get());
                 let hrs = crate::pickers::menubar_header_rects(bar_r, &parsed);
                 if let (Some(hr), Some((_, items))) = (hrs.get(*idx), parsed.get(*idx))
@@ -287,7 +289,14 @@ impl WidgetTree {
                 .nodes
                 .iter()
                 .filter_map(|(id, n)| {
-                    if matches!(n.kind, WidgetKind::MenuBar { open_menu: Some(_), .. }) && hit != Some(id) {
+                    if matches!(
+                        n.kind,
+                        WidgetKind::MenuBar {
+                            open_menu: Some(_),
+                            ..
+                        }
+                    ) && hit != Some(id)
+                    {
                         Some(id)
                     } else {
                         None
@@ -535,8 +544,8 @@ impl WidgetTree {
                     } => {
                         let rh = row_height.max(24.0);
                         let len = items.get_untracked().len();
-                        let idx = ((h_local.y - (h_rect.y + 4.0) + *scroll_offset) / rh).floor()
-                            as isize;
+                        let idx =
+                            ((h_local.y - (h_rect.y + 4.0) + *scroll_offset) / rh).floor() as isize;
                         if idx >= 0 && (idx as usize) < len && h_local.x <= h_rect.x + 40.0 {
                             *dragging_index = Some(idx as usize);
                             *target_index = Some(idx as usize);
@@ -1172,10 +1181,8 @@ impl WidgetTree {
                     } else {
                         let cell_w = ((rect.width - 16.0) / 7.0).max(20.0);
                         let cell_h = ((rect.height - 74.0) / 6.0).max(22.0);
-                        let first_wd =
-                            crate::pickers::weekday_sunday0(*view_year, *view_month, 1);
-                        let total_days =
-                            crate::pickers::days_in_month(*view_year, *view_month);
+                        let first_wd = crate::pickers::weekday_sunday0(*view_year, *view_month, 1);
+                        let total_days = crate::pickers::days_in_month(*view_year, *view_month);
                         for day in 1..=total_days {
                             let slot = first_wd + (day - 1);
                             let r = slot / 7;
@@ -1478,8 +1485,8 @@ impl WidgetTree {
                         let len = items.get_untracked().len();
                         if len > 0 {
                             let rh = (*row_height).max(24.0);
-                            let raw_to =
-                                ((local_pos.y - (r.y + 4.0) + *scroll_offset) / rh).floor() as isize;
+                            let raw_to = ((local_pos.y - (r.y + 4.0) + *scroll_offset) / rh).floor()
+                                as isize;
                             let to = raw_to.clamp(0, len as isize - 1) as usize;
                             if *target_index != Some(to) {
                                 *target_index = Some(to);
@@ -1973,9 +1980,7 @@ impl WidgetTree {
             }
             false
         });
-        if !focus_is_visible
-            && let Some(scope_root) = self.active_focus_root()
-        {
+        if !focus_is_visible && let Some(scope_root) = self.active_focus_root() {
             let mut order = Vec::new();
             self.collect_preorder(scope_root, &mut order);
             if let Some(auto_id) = order.into_iter().find(|&id| {
@@ -2431,10 +2436,7 @@ impl WidgetTree {
                     let vis = crate::pickers::derive_visible_tree_rows(&list, &col);
                     if !vis.is_empty() {
                         let cur_raw = selected.get_untracked();
-                        let cur_pos = vis
-                            .iter()
-                            .position(|r| r.raw_index == cur_raw)
-                            .unwrap_or(0);
+                        let cur_pos = vis.iter().position(|r| r.raw_index == cur_raw).unwrap_or(0);
                         match ke.code {
                             KeyCode::ArrowDown => {
                                 let next_pos = (cur_pos + 1).min(vis.len() - 1);

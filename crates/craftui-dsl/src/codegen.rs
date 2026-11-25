@@ -1372,7 +1372,10 @@ fn emit_element(
             let payload_rv = find_prop(el, &["payload", "value"])
                 .map(|p| expr_to_reactive_string(&p.value, ctx))
                 .unwrap_or_else(|| "ReactiveValue::Static(String::new())".into());
-            let _ = writeln!(out, "{indent}let {var} = {tr}.draggable({cx}, {payload_rv});");
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.draggable({cx}, {payload_rv});"
+            );
         }
         "DropTarget" => {
             let prefix = find_prop(el, &["accept_prefix", "accept"])

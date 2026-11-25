@@ -794,11 +794,7 @@ impl WidgetTree {
         }
     }
 
-    pub fn set_on_reorder(
-        &mut self,
-        node: NodeId,
-        cb: impl FnMut(usize, usize) + 'static,
-    ) {
+    pub fn set_on_reorder(&mut self, node: NodeId, cb: impl FnMut(usize, usize) + 'static) {
         if let Some(n) = self.nodes.get_mut(node)
             && let WidgetKind::ReorderableList { on_reorder, .. } = &mut n.kind
         {

@@ -1543,11 +1543,7 @@ impl WidgetTree {
     }
 
     /// Build a `Draggable` container carrying a string payload for [`WidgetTree::drop_target`].
-    pub fn draggable(
-        &mut self,
-        scope: Scope,
-        payload: impl Into<ReactiveValue<String>>,
-    ) -> NodeId {
+    pub fn draggable(&mut self, scope: Scope, payload: impl Into<ReactiveValue<String>>) -> NodeId {
         let id = self.spawn_node(
             "Draggable",
             WidgetKind::Draggable {

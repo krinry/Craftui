@@ -113,7 +113,10 @@ pub struct TreeVisibleRow {
 }
 
 /// Derive visible tree rows from slash-delimited item paths, respecting `collapsed` parent paths.
-pub fn derive_visible_tree_rows(items: &[String], collapsed: &HashSet<String>) -> Vec<TreeVisibleRow> {
+pub fn derive_visible_tree_rows(
+    items: &[String],
+    collapsed: &HashSet<String>,
+) -> Vec<TreeVisibleRow> {
     let mut out = Vec::with_capacity(items.len());
     for (idx, raw) in items.iter().enumerate() {
         let trimmed = raw.trim_matches('/');
@@ -141,11 +144,7 @@ pub fn derive_visible_tree_rows(items: &[String], collapsed: &HashSet<String>) -
             .enumerate()
             .any(|(j, other)| j != idx && other.trim_matches('/').starts_with(&prefix));
         let depth = trimmed.matches('/').count();
-        let label = trimmed
-            .rsplit('/')
-            .next()
-            .unwrap_or(trimmed)
-            .to_string();
+        let label = trimmed.rsplit('/').next().unwrap_or(trimmed).to_string();
         let expanded = has_children && !collapsed.contains(trimmed);
 
         out.push(TreeVisibleRow {
@@ -183,12 +182,20 @@ pub fn parse_menubar_specs(raw: &[String]) -> Vec<(String, Vec<String>)> {
 }
 
 /// Compute top-level menu header hit rectangles for a `MenuBar` rect.
-pub fn menubar_header_rects(bar_rect: craftui_core::Rect, menus: &[(String, Vec<String>)]) -> Vec<craftui_core::Rect> {
+pub fn menubar_header_rects(
+    bar_rect: craftui_core::Rect,
+    menus: &[(String, Vec<String>)],
+) -> Vec<craftui_core::Rect> {
     let mut x = bar_rect.x + 8.0;
     let mut out = Vec::with_capacity(menus.len());
     for (title, _) in menus {
         let w = (title.chars().count() as f32 * 8.5 + 22.0).max(52.0);
-        out.push(craftui_core::Rect::new(x, bar_rect.y + 3.0, w, (bar_rect.height - 6.0).max(24.0)));
+        out.push(craftui_core::Rect::new(
+            x,
+            bar_rect.y + 3.0,
+            w,
+            (bar_rect.height - 6.0).max(24.0),
+        ));
         x += w + 4.0;
     }
     out

@@ -404,6 +404,47 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  android-emulator-smoke:
+    name: Notes app (Android ARM64 emulator boot smoke)
+    needs: [notes-android]
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: craftui-notes-android-debug-apk
+          path: dist/apk
+      - name: Boot Android API 34 arm64 emulator and launch Notes APK
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: arm64-v8a
+          profile: pixel_6
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            mkdir -p "$RUNNER_TEMP/ci-logs"
+            adb wait-for-device
+            adb install -r dist/apk/app-debug.apk
+            adb logcat -c
+            adb shell am start -W -n dev.craftui.notes/dev.craftui.app.MainActivity | tee "$RUNNER_TEMP/ci-logs/android-am-start.log"
+            sleep 5
+            adb shell pidof dev.craftui.notes | tee "$RUNNER_TEMP/ci-logs/android-pid.log"
+            adb logcat -d > "$RUNNER_TEMP/ci-logs/android-logcat.log"
+            ! grep -q "FATAL EXCEPTION" "$RUNNER_TEMP/ci-logs/android-logcat.log"
+      - name: Upload emulator smoke logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-android-emulator
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
   bench-smoke:
     name: Benchmark smoke check
     runs-on: ubuntu-latest
@@ -440,7 +481,7 @@ jobs:
   publish-logs:
     name: Publish job logs
     if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [license-guard, lockfile, linux, desktop-matrix, wasm, android, notes-web, notes-android, bench-smoke]
+    needs: [license-guard, lockfile, linux, desktop-matrix, wasm, android, notes-web, notes-android, android-emulator-smoke, bench-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: write

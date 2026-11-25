@@ -21,15 +21,13 @@ impl ValidationRule {
             Self::MaxLength(max, msg) => (input.chars().count() > *max).then(|| msg.clone()),
             Self::Email(msg) => {
                 let trimmed = input.trim();
-                let valid = trimmed
-                    .split_once('@')
-                    .is_some_and(|(local, domain)| {
-                        !local.is_empty()
-                            && !domain.is_empty()
-                            && domain.contains('.')
-                            && !domain.starts_with('.')
-                            && !domain.ends_with('.')
-                    });
+                let valid = trimmed.split_once('@').is_some_and(|(local, domain)| {
+                    !local.is_empty()
+                        && !domain.is_empty()
+                        && domain.contains('.')
+                        && !domain.starts_with('.')
+                        && !domain.ends_with('.')
+                });
                 (!valid).then(|| msg.clone())
             }
             Self::Contains(needle, msg) => (!input.contains(needle.as_str())).then(|| msg.clone()),

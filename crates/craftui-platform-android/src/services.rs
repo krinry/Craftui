@@ -210,9 +210,10 @@ impl AndroidBridgeState {
                     "android method channel `{channel}.{method}` timed out"
                 )));
             }
-            let (next_guard, wait_res) = self.plugin_cv.wait_timeout(guard, remaining).map_err(
-                |_| craftui_core::CraftError::Platform("android plugin condvar poisoned".into()),
-            )?;
+            let (next_guard, wait_res) =
+                self.plugin_cv.wait_timeout(guard, remaining).map_err(|_| {
+                    craftui_core::CraftError::Platform("android plugin condvar poisoned".into())
+                })?;
             guard = next_guard;
             if wait_res.timed_out() {
                 if let Some(Some(res)) = guard.remove(&request_id) {

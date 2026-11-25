@@ -477,7 +477,10 @@ fn test_android_method_channel_plugin_dispatch() {
             "plugins.flutter.io/shared_preferences"
         }
 
-        fn handle(&self, call: &craftui_core::MethodCall) -> craftui_core::Result<serde_json::Value> {
+        fn handle(
+            &self,
+            call: &craftui_core::MethodCall,
+        ) -> craftui_core::Result<serde_json::Value> {
             match call.method.as_str() {
                 "getAll" => Ok(serde_json::json!({ "theme": "amoled" })),
                 other => Err(craftui_core::CraftError::Platform(format!(
@@ -531,5 +534,8 @@ fn test_android_method_channel_plugin_dispatch() {
     let rid = req_id.expect("InvokeMethodChannel command must be queued");
     host.push_method_channel_result(rid, true, r#"{"path":"/sdcard/photo.jpg"}"#);
     let native_res = handle.join().unwrap().expect("async method channel result");
-    assert_eq!(native_res, serde_json::json!({ "path": "/sdcard/photo.jpg" }));
+    assert_eq!(
+        native_res,
+        serde_json::json!({ "path": "/sdcard/photo.jpg" })
+    );
 }

@@ -4,7 +4,7 @@ This document provides an honest, engineering-level assessment of where **CraftU
 
 ---
 
-## Current Parity Snapshot (Updated After Step 2)
+## Current Parity Snapshot (Updated After Step 3)
 
 | Area | Parity | Closest Benchmark | Current Reality |
 | :--- | :---: | :--- | :--- |
@@ -12,8 +12,8 @@ This document provides an honest, engineering-level assessment of where **CraftU
 | **Tooling, DX & AI** | **72–76%** | Slint / Flutter | `craftui` CLI (`new`, `init`, `add`, `setup`, `doctor`, `dev`, `preview`, `check`, `render`, `build`, `permissions`, `mcp`), `craftui-lsp` (`tower-lsp`), VS Code extension + snippets, Craftpad browser studio, and a built-in **MCP stdio server**. |
 | **UI & Rendering** | **45–50%** | Slint / Flutter | Pure-WGSL instanced SDF GPU shader (`gpu-sdf`), `wgpu` surface pipeline, `vello_cpu` / `tiny-skia` CPU fallbacks, SVG icons, shadows, and backdrop blur. Lacks complex shader effects, advanced clip/mask layers, and native OS look-and-feel (Cupertino / WinUI). |
 | **Widgets & App Features** | **55–60%** | Flutter | 45 `WidgetKind` primitives (including `DatePicker`, `TimePicker`, `TreeView`, `ReorderableList`, `MenuBar`, `Draggable`, `DropTarget`, `VirtualList`, `DataTable`, `SplitPane`, `TextInput`, `TextArea`, `RichText`, `Canvas`, `Overlay`, `ToastHost`, `CustomWidget`) + `craftui_widgets::form` reactive `FieldValidator`/`FormGroup` + Material 3 `.cui` library + `@children` wrapper composition. Still missing native OS System Tray, Rich Text *Editor*, and Media widgets. |
-| **Multi-Platform Power** | **42–46%** | Flutter / Tauri | **Desktop (~72%):** `winit` + `wgpu` + `rfd` + clipboard + `accesskit` + Multi-Window `WindowLauncher` (`open_window`, `close_window`, `set_title`, context-injected `WindowId`).<br>**Web WASM (~65%):** `wasm-bindgen` + Craftpad + headless Chrome CI + lean `gpu-sdf`/`cpu-tiny-skia` Web builds (**4.1 MB raw / ~1.21 MB gzipped** for `notes`).<br>**Android (~30–35%):** `GameActivity` + JNI + Gradle template generator + async `InvokeMethodChannel` JNI bridge.<br>**iOS (~25–30%):** `IosAppHost` + C-FFI + Metal hook + async `InvokeMethodChannel` C-ABI JSON bridge. |
-| **Ecosystem & Packages** | **15–20%** | pub.dev / crates.io | First-class `crates.io` support (`craftui add <crate>`, `[dependencies]`/`[plugins]` in `craftui.toml`, `ResourceState<T>`) plus async cross-language `MethodChannel` pipelines on Rust, Android JNI, and iOS C-FFI. |
+| **Multi-Platform Power** | **48–52%** | Flutter / Tauri | **Desktop (~72%):** `winit` + `wgpu` + `rfd` + clipboard + `accesskit` + Multi-Window `WindowLauncher`.<br>**Web WASM (~65%):** `wasm-bindgen` + Craftpad + headless Chrome CI + lean `gpu-sdf`/`cpu-tiny-skia` Web builds (**4.1 MB raw / ~1.21 MB gzipped** for `notes`).<br>**Android (~38–42%):** `GameActivity` + JNI + Gradle generator + live Kotlin `dispatchCraftUiMethodChannel` & JNI forwarding + `android-emulator-smoke` CI job in `ci.yml` (template & JNI verified locally; live emulator/device boot runs in CI).<br>**iOS (~30–35%):** `IosAppHost` + C-FFI + Metal hook + `CraftUIMethodChannelRouter` Swift handler (`camera`, `biometrics`, `notifications`, `url_launcher`) + updated `CraftUI.h` header (not yet compiled on macOS/Xcode CI). |
+| **Ecosystem & Packages** | **24–28%** | pub.dev / crates.io | First-class `crates.io` support (`craftui add <crate>`, `[dependencies]`/`[plugins]` in `craftui.toml`, `ResourceState<T>`), async `MethodChannel` pipelines on Rust/Android/iOS, and **4 built-in plugins** (`dev.craftui.camera`, `biometrics`, `notifications`, `url_launcher`) with typed Rust clients and mock/in-memory defaults. Still far smaller than `pub.dev`'s catalog of community plugins. |
 
 ---
 
@@ -34,16 +34,17 @@ This document provides an honest, engineering-level assessment of where **CraftU
    - Fixed a latent `ThemeTokens::on_surface` typo in `codegen.rs` (`TonalButton`/`TonalIconButton`) -> `text_primary`.
    - Verified every `BUILTIN_WIDGETS` item passes in both `codegen.rs` and `interpreter.rs`.
 
-### Step 3 — Live Mobile Plugins & Real-Device CI (Next Up — Target: Mobile ~65%, Ecosystem ~55%)
+### Step 3 — Live Mobile Plugins & Real-Device CI (Completed on Branch)
 1. **Kotlin & Swift `MethodChannel` Dispatchers:**
-   - Implement live `MainActivity.kt` command dispatcher and `CraftUIBridge.swift` JSON handler for `InvokeMethodChannel`.
-2. **4 Official Built-in `MethodChannel` Plugins:**
-   - `dev.craftui.camera` (Camera & Gallery PhotoPicker)
-   - `dev.craftui.biometrics` (Fingerprint / FaceID)
-   - `dev.craftui.notifications` (Local Scheduled Notifications)
-   - `dev.craftui.url_launcher` (External URLs & Deep Links)
-3. **Automated Android Emulator & iOS Simulator CI:**
-   - Boot headless Android emulator in CI to install, launch, and smoke-test the APK (beyond static APK inspection).
+   - Implemented `dispatchCraftUiMethodChannel` in generated `MainActivity.kt` (`tools/craftui-cli/src/platform/android.rs`) and live JNI command forwarding (`forward_method_channel_to_kotlin` in `crates/craftui-platform-android/src/runtime.rs`).
+   - Added `craftui_ios_app_deliver_method_channel_result` to `CraftUI.h` and `CraftUIMethodChannelRouter` in `CraftUIPermissions.swift` / `CraftUIViewController.swift` (`tools/craftui-cli/src/platform/ios.rs`).
+2. **4 Official Built-in `MethodChannel` Plugins (`crates/craftui-core/src/builtin_plugins.rs`):**
+   - `dev.craftui.camera` (`CameraPlugin` / `CameraClient`: `capturePhoto`, `pickImage`)
+   - `dev.craftui.biometrics` (`BiometricsPlugin` / `BiometricsClient`: `isAvailable`, `authenticate` via `BiometricPrompt` on Android and `LAContext` on iOS)
+   - `dev.craftui.notifications` (`NotificationsPlugin` / `NotificationsClient`: `schedule`, `cancel`, `cancelAll` via `NotificationManagerCompat` and `UNUserNotificationCenter`)
+   - `dev.craftui.url_launcher` (`UrlLauncherPlugin` / `UrlLauncherClient`: `canLaunch`, `launch` via `Intent.ACTION_VIEW` and `UIApplication.shared.open`)
+3. **Automated Android Emulator CI (`android-emulator-smoke` in `.github/workflows/ci.yml`):**
+   - Added a `macos-14` `android-emulator-smoke` job running `reactivecircus/android-emulator-runner@v2` (`api-level: 34`, `arch: arm64-v8a`) to install, launch, verify `pidof dev.craftui.notes`, and scan `adb logcat` for fatal exceptions on the built Notes APK. Note: iOS Xcode simulator CI (`macos-latest` Swift compilation) remains pending for Step 4+.
 
 ### Step 4 — Polish, i18n/RTL, Media & 1.0 Release (Target: 90–100%)
 1. **i18n / Localization & Full RTL (`Direction::Rtl`):**

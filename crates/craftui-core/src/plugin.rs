@@ -156,7 +156,11 @@ mod tests {
             .expect("echo plugin should succeed");
         assert_eq!(res, json!({ "pong": { "msg": "hello" } }));
 
-        assert!(registry.invoke("dev.craftui.missing", "ping", json!({})).is_err());
+        assert!(
+            registry
+                .invoke("dev.craftui.missing", "ping", json!({}))
+                .is_err()
+        );
         assert!(registry.unregister("dev.craftui.echo"));
         assert!(!registry.has_channel("dev.craftui.echo"));
     }

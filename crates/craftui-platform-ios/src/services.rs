@@ -79,12 +79,20 @@ fn json_escape(s: &str) -> String {
 /// Platform command emitted toward Swift `CraftUIViewController` / `CraftUIPermissions.swift`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IosPlatformCommand {
-    RequestPermission { request_id: u64, key: String },
+    RequestPermission {
+        request_id: u64,
+        key: String,
+    },
     OpenAppSettings,
     TriggerHaptic(HapticStyle),
     Share(SharePayload),
-    SyncSecureKey { key: String, value: String },
-    DeleteSecureKey { key: String },
+    SyncSecureKey {
+        key: String,
+        value: String,
+    },
+    DeleteSecureKey {
+        key: String,
+    },
     InvokeMethodChannel {
         request_id: u64,
         channel: String,
@@ -250,9 +258,10 @@ impl IosBridgeState {
             .map(|g| *g)
             .unwrap_or(Duration::from_millis(2_000));
         let deadline = Instant::now() + timeout;
-        let mut guard = self.pending_plugins.lock().map_err(|_| {
-            craftui_core::CraftError::Platform("ios plugin waiter poisoned".into())
-        })?;
+        let mut guard = self
+            .pending_plugins
+            .lock()
+            .map_err(|_| craftui_core::CraftError::Platform("ios plugin waiter poisoned".into()))?;
         loop {
             if let Some(Some(res)) = guard.get(&request_id).cloned() {
                 guard.remove(&request_id);
@@ -265,9 +274,10 @@ impl IosBridgeState {
                     "ios method channel `{channel}.{method}` timed out"
                 )));
             }
-            let (next_guard, wait_res) = self.plugin_cv.wait_timeout(guard, remaining).map_err(
-                |_| craftui_core::CraftError::Platform("ios plugin condvar poisoned".into()),
-            )?;
+            let (next_guard, wait_res) =
+                self.plugin_cv.wait_timeout(guard, remaining).map_err(|_| {
+                    craftui_core::CraftError::Platform("ios plugin condvar poisoned".into())
+                })?;
             guard = next_guard;
             if wait_res.timed_out() {
                 if let Some(Some(res)) = guard.remove(&request_id) {

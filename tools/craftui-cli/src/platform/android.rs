@@ -272,6 +272,8 @@ dependencies {{
     let main_activity = format!(
         r#"package dev.craftui.app
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -287,12 +289,16 @@ import android.os.VibratorManager
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.androidgamesdk.GameActivity
+import org.json.JSONObject
 
 class MainActivity : GameActivity() {{
     companion object {{
@@ -320,10 +326,21 @@ class MainActivity : GameActivity() {{
         fun hideTauriWebViewNative() {{
             instance?.hideWebView()
         }}
+
+        @JvmStatic
+        fun dispatchMethodChannelFromNative(
+            requestId: Long,
+            channel: String,
+            method: String,
+            argsJson: String
+        ) {{
+            instance?.dispatchCraftUiMethodChannel(requestId, channel, method, argsJson)
+        }}
     }}
 
     private var pendingPermRequestId: Long = 0L
     private var pendingFileRequestId: Long = 0L
+    private var pendingCameraRequestId: Long = 0L
     private var lastReportedInsetsKey: String = ""
 
     private val cameraPermissionLauncher = registerForActivityResult(
@@ -331,6 +348,14 @@ class MainActivity : GameActivity() {{
     ) {{ isGranted ->
         if (isGranted) {{
             openCameraIntent()
+        }} else if (pendingCameraRequestId != 0L) {{
+            val reqId = pendingCameraRequestId
+            pendingCameraRequestId = 0L
+            onNativeMethodChannelResult(
+                reqId,
+                false,
+                JSONObject().put("error", "camera permission denied").toString()
+            )
         }}
     }}
 
@@ -339,17 +364,55 @@ class MainActivity : GameActivity() {{
     ) {{ isGranted ->
         if (isGranted) {{
             openGalleryIntent()
+        }} else if (pendingCameraRequestId != 0L) {{
+            val reqId = pendingCameraRequestId
+            pendingCameraRequestId = 0L
+            onNativeMethodChannelResult(
+                reqId,
+                false,
+                JSONObject().put("error", "gallery permission denied").toString()
+            )
         }}
     }}
 
     private val takePictureLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicturePreview()
-    ) {{ _ ->
+    ) {{ bitmap ->
+        val reqId = pendingCameraRequestId
+        if (reqId != 0L) {{
+            pendingCameraRequestId = 0L
+            val out = JSONObject().put("source", "camera")
+            if (bitmap != null) {{
+                val file = java.io.File(cacheDir, "craftui_capture_${{System.currentTimeMillis()}}.png")
+                java.io.FileOutputStream(file).use {{ fos ->
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 95, fos)
+                }}
+                out.put("uri", Uri.fromFile(file).toString())
+                out.put("cancelled", false)
+            }} else {{
+                out.put("uri", JSONObject.NULL)
+                out.put("cancelled", true)
+            }}
+            onNativeMethodChannelResult(reqId, true, out.toString())
+        }}
     }}
 
     private val pickImageLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
-    ) {{ _ ->
+    ) {{ uri ->
+        val reqId = pendingCameraRequestId
+        if (reqId != 0L) {{
+            pendingCameraRequestId = 0L
+            val out = JSONObject().put("source", "gallery")
+            if (uri != null) {{
+                out.put("uri", uri.toString())
+                out.put("cancelled", false)
+            }} else {{
+                out.put("uri", JSONObject.NULL)
+                out.put("cancelled", true)
+            }}
+            onNativeMethodChannelResult(reqId, true, out.toString())
+        }}
     }}
 
     fun launchCameraWithPermission() {{
@@ -563,6 +626,238 @@ class MainActivity : GameActivity() {{
             nativeOnMethodChannelResult(requestId, ok, payloadJson)
         }} catch (_: UnsatisfiedLinkError) {{
             // Native library not yet initialized or bridge unavailable
+        }}
+    }}
+
+    fun dispatchCraftUiMethodChannel(
+        requestId: Long,
+        channel: String,
+        method: String,
+        argsJson: String
+    ) {{
+        runOnUiThread {{
+            val args = try {{
+                if (argsJson.isBlank()) JSONObject() else JSONObject(argsJson)
+            }} catch (_: Exception) {{
+                JSONObject()
+            }}
+            when (channel) {{
+                "dev.craftui.camera" -> handleCameraChannel(requestId, method)
+                "dev.craftui.biometrics" -> handleBiometricsChannel(requestId, method, args)
+                "dev.craftui.notifications" -> handleNotificationsChannel(requestId, method, args)
+                "dev.craftui.url_launcher" -> handleUrlLauncherChannel(requestId, method, args)
+                else -> onNativeMethodChannelResult(
+                    requestId,
+                    false,
+                    JSONObject().put("error", "unknown method channel: $channel").toString()
+                )
+            }}
+        }}
+    }}
+
+    private fun handleCameraChannel(requestId: Long, method: String) {{
+        when (method) {{
+            "capturePhoto" -> {{
+                pendingCameraRequestId = requestId
+                launchCameraWithPermission()
+            }}
+            "pickImage" -> {{
+                pendingCameraRequestId = requestId
+                launchGalleryWithPermission()
+            }}
+            else -> onNativeMethodChannelResult(
+                requestId,
+                false,
+                JSONObject().put("error", "unknown camera method: $method").toString()
+            )
+        }}
+    }}
+
+    private fun handleBiometricsChannel(requestId: Long, method: String, args: JSONObject) {{
+        val authenticators = BiometricManager.Authenticators.BIOMETRIC_WEAK or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        when (method) {{
+            "isAvailable" -> {{
+                val status = BiometricManager.from(this).canAuthenticate(authenticators)
+                val available = status == BiometricManager.BIOMETRIC_SUCCESS
+                val btype = if (available) "biometric" else "none"
+                onNativeMethodChannelResult(
+                    requestId,
+                    true,
+                    JSONObject()
+                        .put("available", available)
+                        .put("biometryType", btype)
+                        .toString()
+                )
+            }}
+            "authenticate" -> {{
+                val reason = args.optString("reason", "Authenticate to continue")
+                val executor = ContextCompat.getMainExecutor(this)
+                val prompt = BiometricPrompt(
+                    this,
+                    executor,
+                    object : BiometricPrompt.AuthenticationCallback() {{
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {{
+                            onNativeMethodChannelResult(
+                                requestId,
+                                true,
+                                JSONObject()
+                                    .put("authenticated", true)
+                                    .put("error", JSONObject.NULL)
+                                    .toString()
+                            )
+                        }}
+
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {{
+                            onNativeMethodChannelResult(
+                                requestId,
+                                true,
+                                JSONObject()
+                                    .put("authenticated", false)
+                                    .put("error", errString.toString())
+                                    .toString()
+                            )
+                        }}
+
+                        override fun onAuthenticationFailed() {{
+                            // Prompt stays active until user cancels or succeeds
+                        }}
+                    }}
+                )
+                val info = BiometricPrompt.PromptInfo.Builder()
+                    .setTitle(reason)
+                    .setAllowedAuthenticators(authenticators)
+                    .build()
+                try {{
+                    prompt.authenticate(info)
+                }} catch (e: Exception) {{
+                    onNativeMethodChannelResult(
+                        requestId,
+                        true,
+                        JSONObject()
+                            .put("authenticated", false)
+                            .put("error", e.message ?: "biometric prompt error")
+                            .toString()
+                    )
+                }}
+            }}
+            else -> onNativeMethodChannelResult(
+                requestId,
+                false,
+                JSONObject().put("error", "unknown biometrics method: $method").toString()
+            )
+        }}
+    }}
+
+    private fun handleNotificationsChannel(requestId: Long, method: String, args: JSONObject) {{
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        if (nm == null) {{
+            onNativeMethodChannelResult(
+                requestId,
+                false,
+                JSONObject().put("error", "NotificationManager unavailable").toString()
+            )
+            return
+        }}
+        val channelId = "craftui_default"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(channelId) == null) {{
+            val ch = NotificationChannel(
+                channelId,
+                "CraftUI Notifications",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            nm.createNotificationChannel(ch)
+        }}
+        when (method) {{
+            "schedule" -> {{
+                val id = args.optString("id", System.currentTimeMillis().toString())
+                val title = args.optString("title", "CraftUI")
+                val body = args.optString("body", "")
+                val delaySec = args.optLong("delaySeconds", 0L).coerceAtLeast(0L)
+                val postNotif = {{
+                    val notif = NotificationCompat.Builder(this, channelId)
+                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle(title)
+                        .setContentText(body)
+                        .setAutoCancel(true)
+                        .build()
+                    nm.notify(id.hashCode(), notif)
+                }}
+                if (delaySec == 0L) {{
+                    postNotif()
+                }} else {{
+                    window.decorView.postDelayed(postNotif, delaySec * 1000L)
+                }}
+                onNativeMethodChannelResult(
+                    requestId,
+                    true,
+                    JSONObject().put("scheduled", true).put("id", id).toString()
+                )
+            }}
+            "cancel" -> {{
+                val id = args.optString("id", "")
+                nm.cancel(id.hashCode())
+                onNativeMethodChannelResult(
+                    requestId,
+                    true,
+                    JSONObject().put("cancelled", true).put("id", id).toString()
+                )
+            }}
+            "cancelAll" -> {{
+                nm.cancelAll()
+                onNativeMethodChannelResult(
+                    requestId,
+                    true,
+                    JSONObject().put("cancelledAll", true).toString()
+                )
+            }}
+            else -> onNativeMethodChannelResult(
+                requestId,
+                false,
+                JSONObject().put("error", "unknown notifications method: $method").toString()
+            )
+        }}
+    }}
+
+    private fun handleUrlLauncherChannel(requestId: Long, method: String, args: JSONObject) {{
+        val url = args.optString("url", "")
+        val lower = url.trim().lowercase()
+        val allowedScheme = lower.startsWith("https://") ||
+            lower.startsWith("http://") ||
+            lower.startsWith("mailto:") ||
+            lower.startsWith("tel:")
+        when (method) {{
+            "canLaunch" -> {{
+                val ok = allowedScheme &&
+                    Intent(Intent.ACTION_VIEW, Uri.parse(url)).resolveActivity(packageManager) != null
+                onNativeMethodChannelResult(
+                    requestId,
+                    true,
+                    JSONObject().put("canLaunch", ok).put("url", url).toString()
+                )
+            }}
+            "launch" -> {{
+                var launched = false
+                if (allowedScheme) {{
+                    try {{
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        startActivity(intent)
+                        launched = true
+                    }} catch (_: Exception) {{
+                        launched = false
+                    }}
+                }}
+                onNativeMethodChannelResult(
+                    requestId,
+                    true,
+                    JSONObject().put("launched", launched).put("url", url).toString()
+                )
+            }}
+            else -> onNativeMethodChannelResult(
+                requestId,
+                false,
+                JSONObject().put("error", "unknown url_launcher method: $method").toString()
+            )
         }}
     }}
 

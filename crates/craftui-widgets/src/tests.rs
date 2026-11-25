@@ -2332,7 +2332,9 @@ fn custom_widget_focus_wants_tab_and_key_up_plus_dom_code_roundtrip() {
 
         fn handle_event(&mut self, _rect: craftui_core::Rect, event: &UiEvent) -> bool {
             if let UiEvent::Key(ke) = event {
-                self.events.borrow_mut().push((ke.code.dom_code(), ke.pressed));
+                self.events
+                    .borrow_mut()
+                    .push((ke.code.dom_code(), ke.pressed));
                 return true;
             }
             false
@@ -2378,7 +2380,10 @@ fn custom_widget_focus_wants_tab_and_key_up_plus_dom_code_roundtrip() {
         events.borrow().as_slice(),
         &[(Some("Tab"), true), (Some("KeyF"), false)]
     );
-    assert_eq!(KeyCode::from_dom_code("Semicolon"), Some(KeyCode::Semicolon));
+    assert_eq!(
+        KeyCode::from_dom_code("Semicolon"),
+        Some(KeyCode::Semicolon)
+    );
     assert_eq!(KeyCode::Semicolon.dom_code(), Some("Semicolon"));
 }
 

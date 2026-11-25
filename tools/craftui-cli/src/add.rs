@@ -58,10 +58,7 @@ pub(crate) fn record_dependency_in_manifest(
     version: &str,
 ) -> Result<()> {
     let raw = std::fs::read_to_string(manifest_path).map_err(|e| {
-        CraftError::Platform(format!(
-            "failed reading {}: {e}",
-            manifest_path.display()
-        ))
+        CraftError::Platform(format!("failed reading {}: {e}", manifest_path.display()))
     })?;
 
     let entry = format!("{crate_name} = \"{version}\"");
@@ -73,7 +70,9 @@ pub(crate) fn record_dependency_in_manifest(
     for (idx, line) in lines.iter_mut().enumerate() {
         let t = line.trim();
         if t.starts_with('[') && t.ends_with(']') {
-            in_deps = t[1..t.len() - 1].trim().eq_ignore_ascii_case("dependencies");
+            in_deps = t[1..t.len() - 1]
+                .trim()
+                .eq_ignore_ascii_case("dependencies");
             if in_deps {
                 deps_header_idx = Some(idx);
             }
@@ -104,10 +103,7 @@ pub(crate) fn record_dependency_in_manifest(
     let mut out = lines.join("\n");
     out.push('\n');
     std::fs::write(manifest_path, out).map_err(|e| {
-        CraftError::Platform(format!(
-            "failed writing {}: {e}",
-            manifest_path.display()
-        ))
+        CraftError::Platform(format!("failed writing {}: {e}", manifest_path.display()))
     })
 }
 

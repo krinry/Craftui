@@ -306,7 +306,10 @@ fn test_ios_method_channel_plugin_dispatch() {
             "plugins.flutter.io/url_launcher"
         }
 
-        fn handle(&self, call: &craftui_core::MethodCall) -> craftui_core::Result<serde_json::Value> {
+        fn handle(
+            &self,
+            call: &craftui_core::MethodCall,
+        ) -> craftui_core::Result<serde_json::Value> {
             match call.method.as_str() {
                 "canLaunch" => Ok(serde_json::json!({
                     "canLaunch": call.args.get("url").and_then(|v| v.as_str()).is_some()
@@ -368,7 +371,10 @@ fn test_ios_method_channel_plugin_dispatch() {
             payload.as_ptr(),
             payload.len(),
         );
-        let native_res = handle.join().unwrap().expect("async iOS method channel result");
+        let native_res = handle
+            .join()
+            .unwrap()
+            .expect("async iOS method channel result");
         assert_eq!(native_res, serde_json::json!({ "verified": true }));
         craftui_ios_app_destroy(app);
     }

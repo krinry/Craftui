@@ -60,6 +60,7 @@ uint8_t craftui_ios_app_tick(IosAppHost *app, float dt_sec);
 uint8_t craftui_ios_app_permission_status_from_key(const IosAppHost *app, const uint8_t *key_ptr, size_t key_len);
 void craftui_ios_app_set_permission_status(IosAppHost *app, const uint8_t *key_ptr, size_t key_len, uint8_t status_code);
 void craftui_ios_app_deliver_permission_result(IosAppHost *app, uint64_t request_id, const uint8_t *key_ptr, size_t key_len, uint8_t status_code, bool rationale);
+void craftui_ios_app_deliver_method_channel_result(IosAppHost *app, uint64_t request_id, bool ok, const uint8_t *payload_ptr, size_t payload_len);
 int32_t craftui_ios_app_poll_command_json(IosAppHost *app, uint8_t *out_buf, size_t out_cap);
 void craftui_ios_app_push_lifecycle(IosAppHost *app, uint8_t event_code);
 void craftui_ios_app_set_network_status(IosAppHost *app, uint8_t network_code);
@@ -337,6 +338,209 @@ final class CraftUIPermissionBroker: NSObject, CLLocationManagerDelegate, CBCent
         SecItemDelete(query as CFDictionary)
     }
 }
+
+final class CraftUIMethodChannelRouter: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    private var pendingCameraRequestId: UInt64 = 0
+    private var pendingCameraSource: String = "camera"
+    private var pendingApp: OpaquePointer?
+
+    func deliverResult(requestId: UInt64, ok: Bool, payload: [String: Any], app: OpaquePointer) {
+        let jsonString: String
+        if let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
+           let str = String(data: data, encoding: .utf8) {
+            jsonString = str
+        } else {
+            jsonString = "{}"
+        }
+        var bytes = Array(jsonString.utf8)
+        bytes.withUnsafeMutableBufferPointer { buf in
+            craftui_ios_app_deliver_method_channel_result(app, requestId, ok, buf.baseAddress, buf.count)
+        }
+    }
+
+    func dispatch(
+        requestId: UInt64,
+        channel: String,
+        method: String,
+        args: [String: Any],
+        presenter: UIViewController,
+        app: OpaquePointer
+    ) {
+        switch channel {
+        case "dev.craftui.camera":
+            handleCamera(requestId: requestId, method: method, presenter: presenter, app: app)
+        case "dev.craftui.biometrics":
+            handleBiometrics(requestId: requestId, method: method, args: args, app: app)
+        case "dev.craftui.notifications":
+            handleNotifications(requestId: requestId, method: method, args: args, app: app)
+        case "dev.craftui.url_launcher":
+            handleUrlLauncher(requestId: requestId, method: method, args: args, app: app)
+        default:
+            deliverResult(
+                requestId: requestId,
+                ok: false,
+                payload: ["error": "unknown method channel: \(channel)"],
+                app: app
+            )
+        }
+    }
+
+    private func handleCamera(requestId: UInt64, method: String, presenter: UIViewController, app: OpaquePointer) {
+        let sourceType: UIImagePickerController.SourceType
+        let sourceName: String
+        switch method {
+        case "capturePhoto":
+            sourceType = .camera
+            sourceName = "camera"
+        case "pickImage":
+            sourceType = .photoLibrary
+            sourceName = "gallery"
+        default:
+            deliverResult(requestId: requestId, ok: false, payload: ["error": "unknown camera method: \(method)"], app: app)
+            return
+        }
+        guard UIImagePickerController.isSourceTypeAvailable(sourceType) else {
+            deliverResult(
+                requestId: requestId,
+                ok: false,
+                payload: ["error": "\(sourceName) unavailable on this device"],
+                app: app
+            )
+            return
+        }
+        pendingCameraRequestId = requestId
+        pendingCameraSource = sourceName
+        pendingApp = app
+        let picker = UIImagePickerController()
+        picker.sourceType = sourceType
+        picker.delegate = self
+        presenter.present(picker, animated: true)
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        picker.dismiss(animated: true)
+        guard pendingCameraRequestId != 0, let app = pendingApp else { return }
+        let reqId = pendingCameraRequestId
+        let src = pendingCameraSource
+        pendingCameraRequestId = 0
+        pendingApp = nil
+        var uriString: Any = NSNull()
+        if let imageUrl = info[.imageURL] as? URL {
+            uriString = imageUrl.absoluteString
+        } else if let image = info[.originalImage] as? UIImage,
+                  let data = image.jpegData(compressionQuality: 0.9) {
+            let tmpUrl = FileManager.default.temporaryDirectory.appendingPathComponent("craftui_\(Int(Date().timeIntervalSince1970 * 1000)).jpg")
+            try? data.write(to: tmpUrl)
+            uriString = tmpUrl.absoluteString
+        }
+        deliverResult(
+            requestId: reqId,
+            ok: true,
+            payload: ["uri": uriString, "cancelled": false, "source": src],
+            app: app
+        )
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
+        guard pendingCameraRequestId != 0, let app = pendingApp else { return }
+        let reqId = pendingCameraRequestId
+        let src = pendingCameraSource
+        pendingCameraRequestId = 0
+        pendingApp = nil
+        deliverResult(
+            requestId: reqId,
+            ok: true,
+            payload: ["uri": NSNull(), "cancelled": true, "source": src],
+            app: app
+        )
+    }
+
+    private func handleBiometrics(requestId: UInt64, method: String, args: [String: Any], app: OpaquePointer) {
+        let context = LAContext()
+        switch method {
+        case "isAvailable":
+            var err: NSError?
+            let available = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err)
+            let btype: String = switch context.biometryType {
+            case .faceID: "faceId"
+            case .touchID: "touchId"
+            default: available ? "biometric" : "none"
+            }
+            deliverResult(requestId: requestId, ok: true, payload: ["available": available, "biometryType": btype], app: app)
+        case "authenticate":
+            let reason = (args["reason"] as? String) ?? "Authenticate to continue"
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, error in
+                DispatchQueue.main.async {
+                    var payload: [String: Any] = ["authenticated": success]
+                    payload["error"] = error?.localizedDescription ?? NSNull()
+                    self.deliverResult(requestId: requestId, ok: true, payload: payload, app: app)
+                }
+            }
+        default:
+            deliverResult(requestId: requestId, ok: false, payload: ["error": "unknown biometrics method: \(method)"], app: app)
+        }
+    }
+
+    private func handleNotifications(requestId: UInt64, method: String, args: [String: Any], app: OpaquePointer) {
+        let center = UNUserNotificationCenter.current()
+        switch method {
+        case "schedule":
+            let id = (args["id"] as? String) ?? "\(Int(Date().timeIntervalSince1970 * 1000))"
+            let title = (args["title"] as? String) ?? "CraftUI"
+            let body = (args["body"] as? String) ?? ""
+            let delay = max(1.0, (args["delaySeconds"] as? NSNumber)?.doubleValue ?? 1.0)
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+            let req = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+            center.add(req) { error in
+                DispatchQueue.main.async {
+                    if let error {
+                        self.deliverResult(requestId: requestId, ok: false, payload: ["error": error.localizedDescription], app: app)
+                    } else {
+                        self.deliverResult(requestId: requestId, ok: true, payload: ["scheduled": true, "id": id], app: app)
+                    }
+                }
+            }
+        case "cancel":
+            let id = (args["id"] as? String) ?? ""
+            center.removePendingNotificationRequests(withIdentifiers: [id])
+            center.removeDeliveredNotifications(withIdentifiers: [id])
+            deliverResult(requestId: requestId, ok: true, payload: ["cancelled": true, "id": id], app: app)
+        case "cancelAll":
+            center.removeAllPendingNotificationRequests()
+            center.removeAllDeliveredNotifications()
+            deliverResult(requestId: requestId, ok: true, payload: ["cancelledAll": true], app: app)
+        default:
+            deliverResult(requestId: requestId, ok: false, payload: ["error": "unknown notifications method: \(method)"], app: app)
+        }
+    }
+
+    private func handleUrlLauncher(requestId: UInt64, method: String, args: [String: Any], app: OpaquePointer) {
+        let urlStr = (args["url"] as? String) ?? ""
+        let lower = urlStr.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let allowed = lower.hasPrefix("https://") || lower.hasPrefix("http://") || lower.hasPrefix("mailto:") || lower.hasPrefix("tel:")
+        guard let url = URL(string: urlStr), allowed else {
+            let key = method == "canLaunch" ? "canLaunch" : "launched"
+            deliverResult(requestId: requestId, ok: true, payload: [key: false, "url": urlStr], app: app)
+            return
+        }
+        switch method {
+        case "canLaunch":
+            let ok = UIApplication.shared.canOpenURL(url)
+            deliverResult(requestId: requestId, ok: true, payload: ["canLaunch": ok, "url": urlStr], app: app)
+        case "launch":
+            UIApplication.shared.open(url, options: [:]) { success in
+                self.deliverResult(requestId: requestId, ok: true, payload: ["launched": success, "url": urlStr], app: app)
+            }
+        default:
+            deliverResult(requestId: requestId, ok: false, payload: ["error": "unknown url_launcher method: \(method)"], app: app)
+        }
+    }
+}
 "#;
 
     let swift = r#"import Network
@@ -351,6 +555,7 @@ final class CraftUIMetalView: UIView {
 final class CraftUIViewController: UIViewController, UIKeyInput {
     private let metalView = CraftUIMetalView()
     private let permissionBroker = CraftUIPermissionBroker()
+    private let methodChannelRouter = CraftUIMethodChannelRouter()
     private let pathMonitor = NWPathMonitor()
     private var app: OpaquePointer?
     private var displayLink: CADisplayLink?
@@ -555,6 +760,21 @@ final class CraftUIViewController: UIViewController, UIKeyInput {
             if let k = json["key"] as? String {
                 permissionBroker.deleteKeychainSecret(key: k)
             }
+        case "method_channel":
+            let reqId = (json["request_id"] as? NSNumber)?.uint64Value ?? 0
+            let channel = (json["channel"] as? String) ?? ""
+            let method = (json["method"] as? String) ?? ""
+            let argsJson = (json["args_json"] as? String) ?? "{}"
+            let parsedArgs = (argsJson.data(using: .utf8)
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
+            methodChannelRouter.dispatch(
+                requestId: reqId,
+                channel: channel,
+                method: method,
+                args: parsedArgs,
+                presenter: self,
+                app: app
+            )
         default:
             break
         }

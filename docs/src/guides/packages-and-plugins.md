@@ -81,3 +81,14 @@ fn register(registry: &PluginRegistry) {
 ```
 
 You can attach a `PluginRegistry` to `PlatformServices::with_plugins(...)` so every platform host shares the same channel interface.
+
+## 3. Built-in First-Party Plugins (`craftui-core`)
+
+`PluginRegistry::with_builtin_plugins()` (or `registry.register_builtin_plugins()`) registers in-memory/mock-capable defaults for headless and desktop runs, matching the live native handlers in Android `MainActivity.kt` and iOS `CraftUIPermissions.swift`:
+
+| Channel | Typed Client (`craftui_core`) | Methods | Native Backends |
+| :--- | :--- | :--- | :--- |
+| `dev.craftui.camera` | `CameraClient` | `capturePhoto`, `pickImage` | Android `TakePicturePreview`/`GetContent`, iOS `UIImagePickerController` |
+| `dev.craftui.biometrics` | `BiometricsClient` | `isAvailable`, `authenticate` | Android `BiometricPrompt` / `BiometricManager`, iOS `LAContext` |
+| `dev.craftui.notifications` | `NotificationsClient` | `schedule`, `cancel`, `cancelAll` | Android `NotificationManager` + `NotificationChannel`, iOS `UNUserNotificationCenter` |
+| `dev.craftui.url_launcher` | `UrlLauncherClient` | `canLaunch`, `launch` | Android `Intent.ACTION_VIEW`, iOS `UIApplication.shared.open` |

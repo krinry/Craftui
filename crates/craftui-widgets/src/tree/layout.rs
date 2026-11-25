@@ -166,8 +166,7 @@ impl WidgetTree {
                             layout_changed = true;
                         }
                     }
-                    WidgetKind::DatePicker { value, .. }
-                    | WidgetKind::TimePicker { value, .. } => {
+                    WidgetKind::DatePicker { value, .. } | WidgetKind::TimePicker { value, .. } => {
                         node.a11y.value = Some(value.get_untracked());
                     }
                     WidgetKind::TreeView { selected, .. }
@@ -493,8 +492,9 @@ impl WidgetTree {
                     } => {
                         let list = items.get();
                         let col = collapsed.borrow();
-                        let vis_len =
-                            crate::pickers::derive_visible_tree_rows(&list, &col).len().max(1);
+                        let vis_len = crate::pickers::derive_visible_tree_rows(&list, &col)
+                            .len()
+                            .max(1);
                         let w = if constraints.max_width.is_finite() {
                             constraints.max_width.min(320.0)
                         } else {

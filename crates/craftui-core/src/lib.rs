@@ -1,5 +1,6 @@
 //! Core geometry, color, style, event, theme, platform services, and dispatcher primitives for CraftUI.
 
+pub mod builtin_plugins;
 pub mod color;
 pub mod dispatch;
 pub mod error;
@@ -13,6 +14,12 @@ pub mod remote;
 pub mod style;
 pub mod theme;
 
+pub use builtin_plugins::{
+    BiometricsAuthResult, BiometricsAvailability, BiometricsClient, BiometricsPlugin,
+    CHANNEL_BIOMETRICS, CHANNEL_CAMERA, CHANNEL_NOTIFICATIONS, CHANNEL_URL_LAUNCHER, CameraClient,
+    CameraPlugin, CameraResult, NotificationScheduleResult, NotificationSpec, NotificationsClient,
+    NotificationsPlugin, UrlCanLaunchResult, UrlLaunchResult, UrlLauncherClient, UrlLauncherPlugin,
+};
 pub use color::Color;
 pub use dispatch::{TimerHandle, UiDispatcher, monotonic_ms, set_monotonic_ms_provider};
 pub use error::{CraftError, Result};
