@@ -68,9 +68,9 @@ pub(crate) fn record_dependency_in_manifest(
     let mut replaced = false;
 
     for (idx, line) in lines.iter_mut().enumerate() {
-        let t = line.trim();
-        if t.starts_with('[') && t.ends_with(']') {
-            in_deps = t[1..t.len() - 1]
+        let stripped = line.split('#').next().unwrap_or("").trim();
+        if stripped.starts_with('[') && stripped.ends_with(']') {
+            in_deps = stripped[1..stripped.len() - 1]
                 .trim()
                 .eq_ignore_ascii_case("dependencies");
             if in_deps {
@@ -79,8 +79,8 @@ pub(crate) fn record_dependency_in_manifest(
             continue;
         }
         if in_deps
-            && let Some((k, _)) = t.split_once('=')
-            && k.trim().trim_matches('"') == crate_name
+            && let Some((k, _)) = stripped.split_once('=')
+            && k.trim().trim_matches(|c| c == '"' || c == '\'') == crate_name
         {
             *line = entry.clone();
             replaced = true;

@@ -818,6 +818,9 @@ pub(crate) fn build_element(
             let idx_prop = find_prop(el, &["selected", "value"]);
             let idx_sig = bind_usize_signal(scope, idx_prop, env, 0);
             let n = tree.tree_view(scope, items_rv, idx_sig, None::<fn(usize)>);
+            if let Some(rh) = eval_prop("row_height").map(|v| v.as_f32()) {
+                tree.set_row_height(n, rh);
+            }
             wire_index_change(n, el, env, tree);
             n
         }
@@ -827,6 +830,9 @@ pub(crate) fn build_element(
             let idx_prop = find_prop(el, &["selected", "value"]);
             let idx_sig = bind_usize_signal(scope, idx_prop, env, 0);
             let n = tree.reorderable_list(scope, items_sig, idx_sig, None::<fn(usize, usize)>);
+            if let Some(rh) = eval_prop("row_height").map(|v| v.as_f32()) {
+                tree.set_row_height(n, rh);
+            }
             if let Some(h) = el.handlers.iter().find(|h| h.event == "on_reorder") {
                 let stmts = h.body.clone();
                 let env_c = env.clone();
@@ -1203,22 +1209,8 @@ pub(crate) fn build_element(
                 find_prop(el, &["leading"]).map(|p| expr_to_reactive_string(&p.value, env));
             let trail_rv =
                 find_prop(el, &["trailing"]).map(|p| expr_to_reactive_string(&p.value, env));
-            let tap_handler =
-                make_handler_opt(el, &["on_tap", "on_click", "onTap", "onClick"], env, None);
-            tree.list_tile(
-                scope,
-                title_rv,
-                sub_rv,
-                lead_rv,
-                trail_rv,
-                tap_handler.map(|h| {
-                    move || {
-                        if let Ok(mut cb) = h.try_borrow_mut() {
-                            cb();
-                        }
-                    }
-                }),
-            )
+            // `apply_common_props_and_events` installs `node.on_tap`; pass `None` here so tap handlers run once.
+            tree.list_tile(scope, title_rv, sub_rv, lead_rv, trail_rv, None::<fn()>)
         }
         "Chip" | "FilterChip" | "ActionChip" | "ChoiceChip" | "InputChip" => {
             let label_rv = find_prop(el, &["label", "text"])
@@ -1228,21 +1220,7 @@ pub(crate) fn build_element(
                 bind_bool_signal(scope, find_prop(el, &["selected", "value"]), env, false);
             let icon_rv = find_prop(el, &["icon", "leading_icon"])
                 .map(|p| expr_to_reactive_string(&p.value, env));
-            let tap_handler =
-                make_handler_opt(el, &["on_tap", "on_click", "onTap", "onClick"], env, None);
-            tree.chip(
-                scope,
-                label_rv,
-                sel_sig,
-                icon_rv,
-                tap_handler.map(|h| {
-                    move || {
-                        if let Ok(mut cb) = h.try_borrow_mut() {
-                            cb();
-                        }
-                    }
-                }),
-            )
+            tree.chip(scope, label_rv, sel_sig, icon_rv, None::<fn()>)
         }
         "AppBar" => {
             let title_rv = find_prop(el, &["title"])
@@ -2451,8 +2429,13 @@ fn instantiate_subcomponent(
             let call_children = call_el.children.clone();
             let slot_env = outer_env.clone();
             Some(Rc::new(move |slot_scope, slot_tree, slot_parent| {
+                let parent_kind = slot_tree
+                    .nodes
+                    .get(slot_parent)
+                    .map(|n| n.debug_name.to_string())
+                    .unwrap_or_else(|| "Column".into());
                 let fake_el = ElementNode {
-                    kind: "Column".into(),
+                    kind: parent_kind,
                     props: Vec::new(),
                     handlers: Vec::new(),
                     animations: Vec::new(),
@@ -3217,14 +3200,14 @@ pub(crate) fn eval_expr_tracked(expr: &Expr, env: &DynEnv, track: bool) -> DynVa
             }
         }
         Expr::Ident(name) => {
-            if let Some(sig) = env.signal_locals.get(name).or_else(|| env.props.get(name)) {
+            if let Some(val) = env.locals.get(name) {
+                val.clone()
+            } else if let Some(sig) = env.signal_locals.get(name).or_else(|| env.props.get(name)) {
                 if track {
                     sig.get()
                 } else {
                     sig.get_untracked()
                 }
-            } else if let Some(val) = env.locals.get(name) {
-                val.clone()
             } else if name == "None" || name == "null" {
                 DynValue::Null
             } else {

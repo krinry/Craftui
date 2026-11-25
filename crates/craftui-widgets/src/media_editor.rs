@@ -75,14 +75,14 @@ impl MediaController {
     }
 }
 
-/// Byte-range formatting run layered over [`RichEditorController::editor`].
+/// Byte-range formatting override layered over [`RichEditorController::editor`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StyledSpanRange {
     pub start: usize,
     pub end: usize,
-    pub bold: bool,
-    pub italic: bool,
-    pub underline: bool,
+    pub bold: Option<bool>,
+    pub italic: Option<bool>,
+    pub underline: Option<bool>,
     pub color: Option<Color>,
 }
 
@@ -109,24 +109,23 @@ impl RichEditorController {
 
     pub fn toggle_bold(&mut self) {
         self.active_bold = !self.active_bold;
-        self.apply_flag_to_selection(|s, val| s.bold = val, self.active_bold);
+        let next = self.active_bold;
+        self.apply_flag_to_selection(|s| s.bold = Some(next));
     }
 
     pub fn toggle_italic(&mut self) {
         self.active_italic = !self.active_italic;
-        self.apply_flag_to_selection(|s, val| s.italic = val, self.active_italic);
+        let next = self.active_italic;
+        self.apply_flag_to_selection(|s| s.italic = Some(next));
     }
 
     pub fn toggle_underline(&mut self) {
         self.active_underline = !self.active_underline;
-        self.apply_flag_to_selection(|s, val| s.underline = val, self.active_underline);
+        let next = self.active_underline;
+        self.apply_flag_to_selection(|s| s.underline = Some(next));
     }
 
-    fn apply_flag_to_selection(
-        &mut self,
-        setter: impl Fn(&mut StyledSpanRange, bool),
-        value: bool,
-    ) {
+    fn apply_flag_to_selection(&mut self, set_flag: impl FnOnce(&mut StyledSpanRange)) {
         let Some((s, e)) = self.editor.selection_range() else {
             return;
         };
@@ -136,16 +135,13 @@ impl RichEditorController {
         let mut range = StyledSpanRange {
             start: s,
             end: e,
-            bold: self.active_bold,
-            italic: self.active_italic,
-            underline: self.active_underline,
-            color: None,
+            ..StyledSpanRange::default()
         };
-        setter(&mut range, value);
+        set_flag(&mut range);
         self.span_styles.push(range);
     }
 
-    /// Insert `txt` at the current caret/selection and stamp active formatting if enabled.
+    /// Insert `txt` at the current caret/selection and stamp active formatting when enabled.
     pub fn insert_str(&mut self, txt: &str) {
         if txt.is_empty() {
             return;
@@ -154,40 +150,82 @@ impl RichEditorController {
         let insert_pos = prev_sel.map(|(s, _)| s).unwrap_or(self.editor.cursor);
         let removed_len = prev_sel.map(|(s, e)| e.saturating_sub(s)).unwrap_or(0);
         self.editor.insert_str(txt);
-        let delta = txt.len() as isize - removed_len as isize;
-        self.shift_spans_after(insert_pos, delta);
+        self.apply_edit_range(insert_pos, removed_len, txt.len());
         if self.active_bold || self.active_italic || self.active_underline {
             self.span_styles.push(StyledSpanRange {
                 start: insert_pos,
                 end: insert_pos + txt.len(),
-                bold: self.active_bold,
-                italic: self.active_italic,
-                underline: self.active_underline,
+                bold: self.active_bold.then_some(true),
+                italic: self.active_italic.then_some(true),
+                underline: self.active_underline.then_some(true),
                 color: None,
             });
         }
     }
 
-    /// Update spans cleanly when text bytes are removed or replaced inside `editor`.
-    pub fn sync_span_bounds(&mut self) {
-        let max_len = self.editor.text.len();
-        self.span_styles.retain_mut(|r| {
-            r.start = r.start.min(max_len);
-            r.end = r.end.min(max_len);
-            r.start < r.end
-        });
+    /// Delete backward (selected range or char before caret) and keep span intervals aligned.
+    pub fn backspace(&mut self) {
+        let (edit_start, removed_len) = if let Some((s, e)) = self.editor.selection_range() {
+            (s, e.saturating_sub(s))
+        } else if self.editor.cursor > 0 {
+            let cur = self.editor.cursor;
+            let prev_start = self.editor.text[..cur]
+                .char_indices()
+                .next_back()
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            (prev_start, cur - prev_start)
+        } else {
+            return;
+        };
+        self.editor.backspace();
+        self.apply_edit_range(edit_start, removed_len, 0);
     }
 
-    fn shift_spans_after(&mut self, pos: usize, delta: isize) {
-        for r in &mut self.span_styles {
-            if r.start >= pos {
-                r.start = (r.start as isize + delta).max(pos as isize) as usize;
+    /// Delete forward (selected range or char after caret) and keep span intervals aligned.
+    pub fn delete_forward(&mut self) {
+        let (edit_start, removed_len) = if let Some((s, e)) = self.editor.selection_range() {
+            (s, e.saturating_sub(s))
+        } else if self.editor.cursor < self.editor.text.len() {
+            let cur = self.editor.cursor;
+            let next_len = self.editor.text[cur..]
+                .chars()
+                .next()
+                .map(char::len_utf8)
+                .unwrap_or(0);
+            (cur, next_len)
+        } else {
+            return;
+        };
+        self.editor.delete_forward();
+        self.apply_edit_range(edit_start, removed_len, 0);
+    }
+
+    /// Rebase existing [`StyledSpanRange`] byte offsets cleanly across an edit of `[start, start + removed_len) -> inserted_len`.
+    pub fn apply_edit_range(&mut self, start: usize, removed_len: usize, inserted_len: usize) {
+        let del_end = start + removed_len;
+        let max_len = self.editor.text.len();
+        let shift_boundary = |idx: usize, is_end: bool| -> usize {
+            if removed_len == 0 {
+                if (!is_end && idx >= start) || (is_end && idx > start) {
+                    idx.saturating_add(inserted_len)
+                } else {
+                    idx
+                }
+            } else if idx <= start {
+                idx
+            } else if idx < del_end || (is_end && idx == del_end) {
+                start
+            } else {
+                idx - removed_len + inserted_len
             }
-            if r.end >= pos {
-                r.end = (r.end as isize + delta).max(pos as isize) as usize;
-            }
-        }
-        self.sync_span_bounds();
+        };
+
+        self.span_styles.retain_mut(|r| {
+            r.start = shift_boundary(r.start, false).min(max_len);
+            r.end = shift_boundary(r.end, true).min(max_len);
+            r.start < r.end
+        });
     }
 
     /// Flatten the plain text + overlaid [`StyledSpanRange`] entries into a [`RichText`] paragraph.
@@ -222,14 +260,14 @@ impl RichEditorController {
             let mut st = base_style.clone();
             for r in &self.span_styles {
                 if r.start <= a && r.end >= b {
-                    if r.bold {
-                        st = st.with_weight(700.0);
+                    if let Some(bold) = r.bold {
+                        st = st.with_weight(if bold { 700.0 } else { base_style.font_weight });
                     }
-                    if r.italic {
-                        st = st.with_italic(true);
+                    if let Some(italic) = r.italic {
+                        st = st.with_italic(italic);
                     }
-                    if r.underline {
-                        st = st.with_underline(true);
+                    if let Some(underline) = r.underline {
+                        st = st.with_underline(underline);
                     }
                     if let Some(c) = r.color {
                         st = st.with_color(c);
@@ -243,8 +281,8 @@ impl RichEditorController {
     }
 }
 
-/// Geometry breakdown for `MediaPlayer` controls (play button, scrub bar, mute button).
-pub(crate) fn media_control_rects(rect: Rect, kind: MediaKind) -> (Rect, Rect, Rect, Rect) {
+/// Geometry breakdown for `MediaPlayer` controls (`(surface, play_btn, scrub, mute_btn, show_time)`).
+pub(crate) fn media_control_rects(rect: Rect, kind: MediaKind) -> (Rect, Rect, Rect, Rect, bool) {
     let bar_h = 36.0;
     let bar = match kind {
         MediaKind::Video => Rect::new(
@@ -261,16 +299,18 @@ pub(crate) fn media_control_rects(rect: Rect, kind: MediaKind) -> (Rect, Rect, R
     };
     let play_btn = Rect::new(bar.x + 8.0, bar.y + (bar.height - 26.0) * 0.5, 28.0, 26.0);
     let mute_btn = Rect::new(
-        (bar.max_x() - 36.0).max(play_btn.max_x() + 8.0),
+        (bar.max_x() - 36.0).max(play_btn.max_x() + 6.0),
         bar.y + (bar.height - 26.0) * 0.5,
         28.0,
         26.0,
     );
-    let time_reserve = 78.0;
-    let scrub_x = play_btn.max_x() + 10.0;
-    let scrub_w = (mute_btn.x - time_reserve - scrub_x).max(24.0);
+    let show_time = bar.width >= 220.0;
+    let time_reserve = if show_time { 78.0 } else { 8.0 };
+    let scrub_x = play_btn.max_x() + 8.0;
+    let scrub_max = (mute_btn.x - time_reserve).max(scrub_x);
+    let scrub_w = (scrub_max - scrub_x).max(0.0);
     let scrub = Rect::new(scrub_x, bar.y + (bar.height - 8.0) * 0.5, scrub_w, 8.0);
-    (surface, play_btn, scrub, mute_btn)
+    (surface, play_btn, scrub, mute_btn, show_time)
 }
 
 /// Geometry breakdown for `RichTextEditor` toolbar pills (`B`, `I`, `U`) and inner text area.
@@ -319,9 +359,23 @@ mod tests {
         rich.toggle_bold();
         rich.insert_str("CraftUI");
         assert_eq!(rich.editor.text, "Hello CraftUI");
+        rich.toggle_bold(); // Disable bold before typing unformatted suffix
+        rich.insert_str("!");
         let rt = rich.to_rich_text(&TextStyle::default());
-        assert_eq!(rt.plain_text(), "Hello CraftUI");
-        assert_eq!(rt.spans.len(), 2);
+        assert_eq!(rt.plain_text(), "Hello CraftUI!");
+        assert_eq!(rt.spans.len(), 3);
         assert_eq!(rt.spans[1].style.font_weight, 700.0);
+        assert_eq!(
+            rt.spans[2].style.font_weight,
+            TextStyle::default().font_weight
+        );
+
+        // Toggle bold OFF across selected range `[6, 13)`
+        rich.editor.set_cursor_at(6, false);
+        rich.editor.set_cursor_at(13, true);
+        rich.active_bold = true;
+        rich.toggle_bold();
+        let rt2 = rich.to_rich_text(&TextStyle::default());
+        assert!(rt2.spans.iter().all(|s| s.style.font_weight < 700.0));
     }
 }

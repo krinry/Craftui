@@ -824,6 +824,22 @@ impl WidgetTree {
         }
     }
 
+    pub fn set_row_height(&mut self, node: NodeId, height: f32) {
+        if let Some(n) = self.nodes.get_mut(node) {
+            match &mut n.kind {
+                WidgetKind::TreeView { row_height, .. } => {
+                    *row_height = height.max(22.0);
+                    n.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
+                }
+                WidgetKind::ReorderableList { row_height, .. } => {
+                    *row_height = height.max(24.0);
+                    n.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
+                }
+                _ => {}
+            }
+        }
+    }
+
     pub fn set_on_submit(&mut self, node: NodeId, cb: impl FnMut(String) + 'static) {
         if let Some(n) = self.nodes.get_mut(node)
             && let WidgetKind::TextInput { on_submit, .. } = &mut n.kind

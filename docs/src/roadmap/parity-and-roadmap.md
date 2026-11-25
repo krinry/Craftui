@@ -32,7 +32,7 @@ This document provides an honest, engineering-level assessment of where **CraftU
 2. **Aligned AOT `codegen.rs` and Hot-Reload `interpreter.rs`:**
    - Added missing Material 3 widgets & aliases (`Card`, `ElevatedCard`, `FilledCard`, `OutlinedCard`, `ListTile`, `Chip`/`FilterChip`/`ActionChip`/`ChoiceChip`/`InputChip`, `AppBar`, `Drawer`, `FilledButton`..`OutlinedIconButton`, `HorizontalDivider`/`VerticalDivider`, `LinearProgressIndicator`, `CircularProgressIndicator`, semantic HTML tags) to `interpreter.rs`.
    - Fixed a latent `ThemeTokens::on_surface` typo in `codegen.rs` (`TonalButton`/`TonalIconButton`) -> `text_primary`.
-   - Verified every `BUILTIN_WIDGETS` item passes in both `codegen.rs` and `interpreter.rs`.
+   - Verified every `BUILTIN_WIDGETS` item validates and instantiates a node in both `codegen.rs` and `interpreter.rs` (smoke parity coverage; convenience aliases such as `CheckBoxTile` map to layout containers).
 
 ### Step 3 — Live Mobile Plugins & Real-Device CI (Completed on Branch)
 1. **Kotlin & Swift `MethodChannel` Dispatchers:**

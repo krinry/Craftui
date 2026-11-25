@@ -308,6 +308,7 @@ pub struct WidgetTree {
     pub root_scope: Scope,
     pub theme_signal: Signal<ThemeTokens>,
     pub theme_override_signal: Signal<ThemeOverride>,
+    design_preset: craftui_core::DesignSystem,
     pub metrics_signal: Signal<WindowMetrics>,
     pub services: PlatformServices,
     pub direction: Direction,
@@ -315,7 +316,7 @@ pub struct WidgetTree {
     pub focus_visible: bool,
     pub hovered: Option<NodeId>,
     last_pointer_pos: Option<Point>,
-    pub(crate) active_drag: Option<(NodeId, String, Point)>,
+    pub(crate) active_drag: Option<(NodeId, String, Point, bool, craftui_core::PointerId)>,
     pub metrics: WindowMetrics,
     pub clipboard_text: String,
     virtual_hosts: SecondaryMap<NodeId, VirtualListHost>,
@@ -356,6 +357,7 @@ impl WidgetTree {
             root_scope,
             theme_signal,
             theme_override_signal,
+            design_preset: craftui_core::DesignSystem::Material3,
             metrics_signal,
             services,
             direction: Direction::Ltr,
@@ -405,7 +407,8 @@ impl WidgetTree {
     /// Apply a custom brand palette override immediately onto the active theme.
     pub fn set_theme_override(&mut self, override_spec: ThemeOverride) {
         self.theme_override_signal.set(override_spec.clone());
-        let base = ThemeTokens::from_mode(self.theme_signal.get_untracked().mode);
+        let base =
+            ThemeTokens::from_preset(self.design_preset, self.theme_signal.get_untracked().mode);
         self.theme_signal.set(base.applied(&override_spec));
     }
 
@@ -418,7 +421,7 @@ impl WidgetTree {
     pub fn set_theme_mode(&mut self, mode: ThemeMode) {
         let from = self.theme_signal.get();
         let ov = self.theme_override_signal.get_untracked();
-        let to = ThemeTokens::from_mode(mode).applied(&ov);
+        let to = ThemeTokens::from_preset(self.design_preset, mode).applied(&ov);
         let mut spring = Spring::new(0.0, 260.0, 28.0);
         spring.set_target(1.0);
         self.theme_spring = Some((from, to, spring));
@@ -426,6 +429,7 @@ impl WidgetTree {
 
     /// Apply a native adaptive [`DesignSystem`](craftui_core::DesignSystem) preset (`Material3`, `Cupertino`, `WinUi`).
     pub fn set_design_preset(&mut self, preset: craftui_core::DesignSystem, mode: ThemeMode) {
+        self.design_preset = preset;
         let from = self.theme_signal.get();
         let ov = self.theme_override_signal.get_untracked();
         let to = ThemeTokens::from_preset(preset, mode).applied(&ov);

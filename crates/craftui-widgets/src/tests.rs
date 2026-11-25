@@ -2875,7 +2875,7 @@ fn rtl_locale_adaptive_presets_media_player_and_rich_editor_work() {
 
     // 3) MediaPlayer play button click + PlatformViewHole paint command
     let player_rect = tree.layout_engine.rect(player);
-    let (_, play_r, scrub_r, _) =
+    let (_, play_r, scrub_r, _, _) =
         crate::media_editor::media_control_rects(player_rect, crate::MediaKind::Video);
     for (phase, ts) in [(PointerPhase::Down, 10), (PointerPhase::Up, 20)] {
         tree.handle_event(&UiEvent::Pointer(PointerEvent {

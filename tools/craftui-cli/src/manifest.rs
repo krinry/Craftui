@@ -466,6 +466,20 @@ impl AppManifest {
                 }
             }
         }
+        if !self.dependencies.is_empty() {
+            let _ = writeln!(out);
+            let _ = writeln!(out, "[dependencies]");
+            for (k, v) in &self.dependencies {
+                let _ = writeln!(out, "{} = {}", k, toml_quote(v));
+            }
+        }
+        if !self.plugins.is_empty() {
+            let _ = writeln!(out);
+            let _ = writeln!(out, "[plugins]");
+            for (k, v) in &self.plugins {
+                let _ = writeln!(out, "{} = {}", k, toml_quote(v));
+            }
+        }
         out
     }
 }

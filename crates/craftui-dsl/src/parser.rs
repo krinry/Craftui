@@ -1288,8 +1288,9 @@ impl Parser {
             }
             _ => {
                 let off = self.current_offset();
+                let len = self.bump().map(|t| t.text.len()).unwrap_or(1).max(1);
                 self.diagnostics.push(Diagnostic {
-                    span: Span::new(off, off + 1),
+                    span: Span::new(off, off + len),
                     severity: Severity::Error,
                     message: "expected expression".into(),
                 });

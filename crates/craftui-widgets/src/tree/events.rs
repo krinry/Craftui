@@ -316,46 +316,71 @@ impl WidgetTree {
             }
 
             // Start cross-widget Draggable session if pointer hits inside a Draggable ancestor
-            let mut drag_cursor = hit;
-            while let Some(cid) = drag_cursor {
-                if let Some(n) = self.nodes.get_mut(cid)
-                    && !n.is_disabled()
-                    && let WidgetKind::Draggable { payload, dragging } = &mut n.kind
-                {
-                    *dragging = true;
-                    let val = payload.get();
-                    n.dirty |= DirtyFlags::PAINT;
-                    self.active_drag = Some((cid, val, pe.position));
-                    changed = true;
-                    break;
+            if self.active_drag.is_none() {
+                let mut drag_cursor = hit;
+                while let Some(cid) = drag_cursor {
+                    if let Some(n) = self.nodes.get_mut(cid)
+                        && !n.is_disabled()
+                        && let WidgetKind::Draggable { payload, dragging } = &mut n.kind
+                    {
+                        *dragging = true;
+                        let val = payload.get();
+                        n.dirty |= DirtyFlags::PAINT;
+                        self.active_drag = Some((cid, val, pe.position, false, pe.id));
+                        changed = true;
+                        break;
+                    }
+                    drag_cursor = self.nodes.get(cid).and_then(|n| n.parent);
                 }
-                drag_cursor = self.nodes.get(cid).and_then(|n| n.parent);
             }
         }
 
-        // Track active cross-widget Draggable hover over DropTarget
+        // Track active cross-widget Draggable hover over DropTarget for the initiating pointer
         if matches!(pe.phase, PointerPhase::Move)
-            && let Some((_, ref payload, ref mut drag_pos)) = self.active_drag
+            && let Some((drag_id, payload, orig_pos, moved, ptr_id)) = self.active_drag.clone()
+            && ptr_id == pe.id
         {
-            *drag_pos = pe.position;
-            let mut matched_drop: Option<NodeId> = None;
-            let mut dcur = hit;
-            while let Some(cid) = dcur {
-                if let Some(n) = self.nodes.get(cid)
-                    && let WidgetKind::DropTarget { accept_prefix, .. } = &n.kind
-                    && payload.starts_with(accept_prefix.as_str())
-                {
-                    matched_drop = Some(cid);
-                    break;
-                }
-                dcur = self.nodes.get(cid).and_then(|n| n.parent);
-            }
-            for (nid, node) in &mut self.nodes {
-                if let WidgetKind::DropTarget { hovered_drag, .. } = &mut node.kind {
-                    let want = matched_drop == Some(nid);
-                    if *hovered_drag != want {
-                        *hovered_drag = want;
+            if !self.nodes.contains_key(drag_id) {
+                self.active_drag = None;
+                for (_, node) in &mut self.nodes {
+                    if let WidgetKind::DropTarget { hovered_drag, .. } = &mut node.kind
+                        && *hovered_drag
+                    {
+                        *hovered_drag = false;
                         node.dirty |= DirtyFlags::PAINT;
+                    }
+                }
+                return true;
+            }
+            let now_moved = moved || pe.position.distance_to(orig_pos) > 2.0;
+            self.active_drag = Some((
+                drag_id,
+                payload.clone(),
+                if now_moved { pe.position } else { orig_pos },
+                now_moved,
+                ptr_id,
+            ));
+            if now_moved {
+                let mut matched_drop: Option<NodeId> = None;
+                let mut dcur = hit;
+                while let Some(cid) = dcur {
+                    if let Some(n) = self.nodes.get(cid)
+                        && !n.is_disabled()
+                        && let WidgetKind::DropTarget { accept_prefix, .. } = &n.kind
+                        && payload.starts_with(accept_prefix.as_str())
+                    {
+                        matched_drop = Some(cid);
+                        break;
+                    }
+                    dcur = self.nodes.get(cid).and_then(|n| n.parent);
+                }
+                for (nid, node) in &mut self.nodes {
+                    if let WidgetKind::DropTarget { hovered_drag, .. } = &mut node.kind {
+                        let want = matched_drop == Some(nid);
+                        if *hovered_drag != want {
+                            *hovered_drag = want;
+                            node.dirty |= DirtyFlags::PAINT;
+                        }
                     }
                 }
             }
@@ -572,6 +597,7 @@ impl WidgetTree {
             self.sync_control_anim_target(h);
         }
         if matches!(pe.phase, PointerPhase::Up | PointerPhase::Cancel) {
+            let is_cancel = matches!(pe.phase, PointerPhase::Cancel);
             let mut released = Vec::new();
             let mut reorder_cbs: Vec<(crate::ReorderCallback, usize, usize)> = Vec::new();
             for (nid, node) in &mut self.nodes {
@@ -601,19 +627,24 @@ impl WidgetTree {
                     } if dragging_index.is_some() => {
                         let from = dragging_index.take();
                         let to = target_index.take();
-                        if let (Some(f), Some(t)) = (from, to)
+                        if !is_cancel
+                            && let (Some(f), Some(t)) = (from, to)
                             && f != t
                         {
+                            let mut moved = false;
                             items.update(|list| {
                                 if f < list.len() && t < list.len() {
                                     let el = list.remove(f);
                                     list.insert(t, el);
+                                    moved = true;
                                 }
                             });
-                            selected.set(t);
-                            node.a11y.numeric_value = Some(t as f64);
-                            if let Some(cb) = on_reorder.clone() {
-                                reorder_cbs.push((cb, f, t));
+                            if moved {
+                                selected.set(t);
+                                node.a11y.numeric_value = Some(t as f64);
+                                if let Some(cb) = on_reorder.clone() {
+                                    reorder_cbs.push((cb, f, t));
+                                }
                             }
                         }
                         node.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y;
@@ -628,7 +659,10 @@ impl WidgetTree {
                 }
             }
 
-            if let Some((drag_id, payload, _)) = self.active_drag.take() {
+            if let Some((_, _, _, _, ptr_id)) = self.active_drag
+                && (is_cancel || ptr_id == pe.id)
+            {
+                let (drag_id, payload, _, moved, _) = self.active_drag.take().unwrap();
                 if let Some(dn) = self.nodes.get_mut(drag_id)
                     && let WidgetKind::Draggable { dragging, .. } = &mut dn.kind
                 {
@@ -636,22 +670,25 @@ impl WidgetTree {
                     dn.dirty |= DirtyFlags::PAINT;
                 }
                 let mut drop_cb: Option<(crate::TextCallback, String)> = None;
-                let mut dcur = hit;
-                while let Some(cid) = dcur {
-                    if let Some(n) = self.nodes.get(cid)
-                        && let WidgetKind::DropTarget {
-                            accept_prefix,
-                            on_drop,
-                            ..
-                        } = &n.kind
-                        && payload.starts_with(accept_prefix.as_str())
-                    {
-                        if let Some(cb) = on_drop.clone() {
-                            drop_cb = Some((cb, payload.clone()));
+                if !is_cancel && moved && self.nodes.contains_key(drag_id) {
+                    let mut dcur = hit;
+                    while let Some(cid) = dcur {
+                        if let Some(n) = self.nodes.get(cid)
+                            && !n.is_disabled()
+                            && let WidgetKind::DropTarget {
+                                accept_prefix,
+                                on_drop,
+                                ..
+                            } = &n.kind
+                            && payload.starts_with(accept_prefix.as_str())
+                        {
+                            if let Some(cb) = on_drop.clone() {
+                                drop_cb = Some((cb, payload.clone()));
+                            }
+                            break;
                         }
-                        break;
+                        dcur = self.nodes.get(cid).and_then(|n| n.parent);
                     }
-                    dcur = self.nodes.get(cid).and_then(|n| n.parent);
                 }
                 for (_, node) in &mut self.nodes {
                     if let WidgetKind::DropTarget { hovered_drag, .. } = &mut node.kind
@@ -868,7 +905,14 @@ impl WidgetTree {
                     content,
                     on_link: Some(callback),
                 } => {
-                    let rich = content.get();
+                    let mut rich = content.get();
+                    if self.direction == Direction::Rtl {
+                        rich.align = match rich.align {
+                            craftui_text::TextAlign::Start => craftui_text::TextAlign::End,
+                            craftui_text::TextAlign::End => craftui_text::TextAlign::Start,
+                            other => other,
+                        };
+                    }
                     let layout = self
                         .text_engine
                         .build_rich_layout(&rich, Some(rect.width.max(1.0)));
@@ -901,9 +945,19 @@ impl WidgetTree {
                     let wrap = if *multiline { Some(inner_w) } else { None };
                     let inner_x = local_pos.x - (rect.x + 12.0);
                     let inner_y = local_pos.y - (rect.y + pad_top);
-                    let layout =
-                        self.text_engine
-                            .build_layout_cached(&editor.display_text(), style, wrap);
+                    let mut hit_style = style.clone();
+                    if self.direction == Direction::Rtl {
+                        hit_style.align = match hit_style.align {
+                            craftui_text::TextAlign::Start => craftui_text::TextAlign::End,
+                            craftui_text::TextAlign::End => craftui_text::TextAlign::Start,
+                            other => other,
+                        };
+                    }
+                    let layout = self.text_engine.build_layout_cached(
+                        &editor.display_text(),
+                        &hit_style,
+                        wrap,
+                    );
                     let byte_idx = self.text_engine.hit_test_point(&layout, inner_x, inner_y);
                     editor.set_cursor_at(byte_idx, false);
                     reset_caret = true;
@@ -1341,10 +1395,11 @@ impl WidgetTree {
                 WidgetKind::MediaPlayer {
                     kind,
                     controller,
+                    show_controls,
                     on_toggle_play,
                     ..
-                } => {
-                    let (_, play_r, scrub_r, mute_r) =
+                } if *show_controls => {
+                    let (_, play_r, scrub_r, mute_r, _) =
                         crate::media_editor::media_control_rects(rect, *kind);
                     if play_r.contains(local_pos) {
                         let mut playing_now = false;
@@ -1378,14 +1433,23 @@ impl WidgetTree {
                         });
                     } else {
                         let (_, text_r) = crate::media_editor::rich_editor_layout(rect);
-                        let inner_x = local_pos.x - text_r.x;
-                        let inner_y = local_pos.y - text_r.y;
+                        let mut eff_st = style.clone();
+                        if self.direction == Direction::Rtl {
+                            eff_st.align = match eff_st.align {
+                                craftui_text::TextAlign::Start => craftui_text::TextAlign::End,
+                                craftui_text::TextAlign::End => craftui_text::TextAlign::Start,
+                                other => other,
+                            };
+                        }
                         let snap = controller.get_untracked();
-                        let layout = self.text_engine.build_layout_cached(
-                            &snap.editor.text,
-                            style,
-                            Some(text_r.width),
-                        );
+                        let rich = snap.to_rich_text(&eff_st);
+                        let layout = self
+                            .text_engine
+                            .build_rich_layout(&rich, Some(text_r.width));
+                        let cr = self.text_engine.cursor_rect(&layout, snap.editor.cursor);
+                        let scroll_y = (cr.max_y() - text_r.height).max(0.0);
+                        let inner_x = local_pos.x - text_r.x;
+                        let inner_y = local_pos.y - (text_r.y - scroll_y);
                         let byte_idx = self.text_engine.hit_test_point(&layout, inner_x, inner_y);
                         controller.update(|c| c.editor.set_cursor_at(byte_idx, false));
                     }
@@ -1726,9 +1790,13 @@ impl WidgetTree {
                                 .len();
                         let total_h = vis_len as f32 * rh + 8.0;
                         let max_off = (total_h - rect.height).max(0.0);
-                        *scroll_offset = (*scroll_offset - dy).clamp(0.0, max_off);
-                        node.dirty |= DirtyFlags::PAINT;
-                        return true;
+                        let prev_off = *scroll_offset;
+                        let next_off = (*scroll_offset - dy).clamp(0.0, max_off);
+                        if max_off > 0.0 && (next_off - prev_off).abs() > f32::EPSILON {
+                            *scroll_offset = next_off;
+                            node.dirty |= DirtyFlags::PAINT;
+                            return true;
+                        }
                     }
                     WidgetKind::ReorderableList {
                         items,
@@ -1739,9 +1807,13 @@ impl WidgetTree {
                         let rh = (*row_height).max(24.0);
                         let total_h = items.get_untracked().len() as f32 * rh + 8.0;
                         let max_off = (total_h - rect.height).max(0.0);
-                        *scroll_offset = (*scroll_offset - dy).clamp(0.0, max_off);
-                        node.dirty |= DirtyFlags::PAINT;
-                        return true;
+                        let prev_off = *scroll_offset;
+                        let next_off = (*scroll_offset - dy).clamp(0.0, max_off);
+                        if max_off > 0.0 && (next_off - prev_off).abs() > f32::EPSILON {
+                            *scroll_offset = next_off;
+                            node.dirty |= DirtyFlags::PAINT;
+                            return true;
+                        }
                     }
                     WidgetKind::ScrollView {
                         axis,
@@ -2187,14 +2259,8 @@ impl WidgetTree {
                     controller.update(|ctrl| {
                         let prev = ctrl.editor.text.clone();
                         match &ke.code {
-                            KeyCode::Backspace => {
-                                ctrl.editor.backspace();
-                                ctrl.sync_span_bounds();
-                            }
-                            KeyCode::Delete => {
-                                ctrl.editor.delete_forward();
-                                ctrl.sync_span_bounds();
-                            }
+                            KeyCode::Backspace => ctrl.backspace(),
+                            KeyCode::Delete => ctrl.delete_forward(),
                             KeyCode::ArrowLeft => ctrl.editor.move_left(ke.modifiers.shift),
                             KeyCode::ArrowRight => ctrl.editor.move_right(ke.modifiers.shift),
                             KeyCode::ArrowUp => ctrl.editor.move_up(ke.modifiers.shift),
@@ -2519,18 +2585,27 @@ impl WidgetTree {
                     if delta != 0 {
                         let mut nd = d as i32 + delta;
                         while nd < 1 {
+                            if y <= 1900 && m <= 1 {
+                                nd = 1;
+                                break;
+                            }
                             let (py, pm) = crate::pickers::shift_month(y, m, -1);
                             y = py;
                             m = pm;
                             nd += crate::pickers::days_in_month(y, m) as i32;
                         }
                         while nd > crate::pickers::days_in_month(y, m) as i32 {
-                            nd -= crate::pickers::days_in_month(y, m) as i32;
+                            let dim = crate::pickers::days_in_month(y, m) as i32;
+                            if y >= 2200 && m >= 12 {
+                                nd = dim;
+                                break;
+                            }
+                            nd -= dim;
                             let (ny, nm) = crate::pickers::shift_month(y, m, 1);
                             y = ny;
                             m = nm;
                         }
-                        d = nd as u32;
+                        d = (nd as u32).clamp(1, crate::pickers::days_in_month(y, m));
                         *view_year = y;
                         *view_month = m;
                         let formatted = crate::pickers::format_iso_date(y, m, d);
@@ -2562,18 +2637,22 @@ impl WidgetTree {
                     items,
                     selected,
                     collapsed,
+                    row_height,
+                    scroll_offset,
                     on_select,
-                    ..
                 } => {
+                    let rh = (*row_height).max(22.0);
                     let list = items.get();
                     let mut col = collapsed.borrow_mut();
                     let vis = crate::pickers::derive_visible_tree_rows(&list, &col);
                     if !vis.is_empty() {
                         let cur_raw = selected.get_untracked();
                         let cur_pos = vis.iter().position(|r| r.raw_index == cur_raw).unwrap_or(0);
+                        let mut reveal_pos: Option<usize> = None;
                         match ke.code {
                             KeyCode::ArrowDown => {
                                 let next_pos = (cur_pos + 1).min(vis.len() - 1);
+                                reveal_pos = Some(next_pos);
                                 let raw_idx = vis[next_pos].raw_index;
                                 selected.set(raw_idx);
                                 node.a11y.numeric_value = Some(raw_idx as f64);
@@ -2584,6 +2663,7 @@ impl WidgetTree {
                             }
                             KeyCode::ArrowUp => {
                                 let next_pos = cur_pos.saturating_sub(1);
+                                reveal_pos = Some(next_pos);
                                 let raw_idx = vis[next_pos].raw_index;
                                 selected.set(raw_idx);
                                 node.a11y.numeric_value = Some(raw_idx as f64);
@@ -2606,21 +2686,35 @@ impl WidgetTree {
                             }
                             _ => {}
                         }
+                        if let Some(pos) = reveal_pos {
+                            let view_h = (focused_rect.height - 8.0).max(rh);
+                            let row_top = pos as f32 * rh;
+                            if row_top < *scroll_offset {
+                                *scroll_offset = row_top;
+                            } else if row_top + rh > *scroll_offset + view_h {
+                                *scroll_offset = (row_top + rh - view_h).max(0.0);
+                            }
+                        }
                     }
                 }
                 WidgetKind::ReorderableList {
                     items,
                     selected,
+                    row_height,
+                    scroll_offset,
                     on_reorder,
                     on_select,
                     ..
                 } => {
+                    let rh = (*row_height).max(24.0);
                     let len = items.get_untracked().len();
                     if len > 0 {
                         let cur = selected.get_untracked().min(len - 1);
+                        let mut reveal_pos: Option<usize> = None;
                         match ke.code {
                             KeyCode::ArrowDown if ke.modifiers.alt && cur + 1 < len => {
                                 let next = cur + 1;
+                                reveal_pos = Some(next);
                                 items.update(|list| list.swap(cur, next));
                                 selected.set(next);
                                 node.a11y.numeric_value = Some(next as f64);
@@ -2631,6 +2725,7 @@ impl WidgetTree {
                             }
                             KeyCode::ArrowUp if ke.modifiers.alt && cur > 0 => {
                                 let next = cur - 1;
+                                reveal_pos = Some(next);
                                 items.update(|list| list.swap(cur, next));
                                 selected.set(next);
                                 node.a11y.numeric_value = Some(next as f64);
@@ -2641,6 +2736,7 @@ impl WidgetTree {
                             }
                             KeyCode::ArrowDown => {
                                 let next = (cur + 1).min(len - 1);
+                                reveal_pos = Some(next);
                                 selected.set(next);
                                 node.a11y.numeric_value = Some(next as f64);
                                 node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
@@ -2650,6 +2746,7 @@ impl WidgetTree {
                             }
                             KeyCode::ArrowUp => {
                                 let next = cur.saturating_sub(1);
+                                reveal_pos = Some(next);
                                 selected.set(next);
                                 node.a11y.numeric_value = Some(next as f64);
                                 node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
@@ -2658,6 +2755,15 @@ impl WidgetTree {
                                 }
                             }
                             _ => {}
+                        }
+                        if let Some(pos) = reveal_pos {
+                            let view_h = (focused_rect.height - 8.0).max(rh);
+                            let row_top = pos as f32 * rh;
+                            if row_top < *scroll_offset {
+                                *scroll_offset = row_top;
+                            } else if row_top + rh > *scroll_offset + view_h {
+                                *scroll_offset = (row_top + rh - view_h).max(0.0);
+                            }
                         }
                     }
                 }
@@ -2734,6 +2840,9 @@ impl WidgetTree {
         let Some(node) = self.nodes.get_mut(focused) else {
             return false;
         };
+        if node.is_disabled() {
+            return false;
+        }
         let mut changed_cb: Option<(crate::widgets::TextCallback, String)> = None;
         match &mut node.kind {
             WidgetKind::TextInput {
@@ -2768,10 +2877,18 @@ impl WidgetTree {
                 controller,
                 on_change,
                 ..
-            } => {
-                if let craftui_core::ImeEvent::Commit(s) = ime {
+            } => match ime {
+                craftui_core::ImeEvent::Preedit(s, cur) => {
+                    controller.update(|c| {
+                        c.editor.preedit = if s.is_empty() { None } else { Some(s.clone()) };
+                        c.editor.preedit_cursor = *cur;
+                    });
+                }
+                craftui_core::ImeEvent::Commit(s) => {
                     let mut updated = String::new();
                     controller.update(|c| {
+                        c.editor.preedit = None;
+                        c.editor.preedit_cursor = None;
                         c.insert_str(s);
                         updated = c.editor.text.clone();
                     });
@@ -2780,7 +2897,14 @@ impl WidgetTree {
                         changed_cb = Some((cb, updated));
                     }
                 }
-            }
+                craftui_core::ImeEvent::Disabled => {
+                    controller.update(|c| {
+                        c.editor.preedit = None;
+                        c.editor.preedit_cursor = None;
+                    });
+                }
+                craftui_core::ImeEvent::Enabled => {}
+            },
             _ => return false,
         }
         node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;

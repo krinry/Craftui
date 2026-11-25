@@ -24,6 +24,7 @@ impl ValidationRule {
                 let valid = trimmed.split_once('@').is_some_and(|(local, domain)| {
                     !local.is_empty()
                         && !domain.is_empty()
+                        && !domain.contains('@')
                         && domain.contains('.')
                         && !domain.starts_with('.')
                         && !domain.ends_with('.')
@@ -108,13 +109,15 @@ impl FormGroup {
 
     /// Validate every field in the group (without short-circuiting so all field errors appear).
     pub fn validate_all(&self) -> bool {
-        let mut all_ok = true;
-        for f in &self.fields {
-            if !f.validate() {
-                all_ok = false;
+        craftui_reactive::batch(|| {
+            let mut all_ok = true;
+            for f in &self.fields {
+                if !f.validate() {
+                    all_ok = false;
+                }
             }
-        }
-        all_ok
+            all_ok
+        })
     }
 
     pub fn is_valid(&self) -> bool {
@@ -122,9 +125,11 @@ impl FormGroup {
     }
 
     pub fn reset_all(&self) {
-        for f in &self.fields {
-            f.reset();
-        }
+        craftui_reactive::batch(|| {
+            for f in &self.fields {
+                f.reset();
+            }
+        });
     }
 }
 

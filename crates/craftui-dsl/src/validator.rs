@@ -964,6 +964,18 @@ fn validate_element(el: &ElementNode, ctx: &ScopeCtx<'_>, diags: &mut Vec<Diagno
                         prop.name, el.kind
                     ),
                 });
+            } else if is_builtin
+                && el.kind == "ReorderableList"
+                && matches!(prop.name.as_str(), "items" | "options")
+                && let Some(TypeExpr::List(inner)) = infer_expr_type(&prop.value, ctx)
+                && !matches!(inner.as_ref(), TypeExpr::Named(n) if n == "string")
+            {
+                diags.push(Diagnostic {
+                    span: prop.span,
+                    severity: Severity::Error,
+                    message: "two-way binding '<=>' on ReorderableList.items requires [string]"
+                        .into(),
+                });
             } else if let Some(sub) = ctx.comp_map.get(el.kind.as_str())
                 && let Some(sp) = sub.properties.iter().find(|sp| sp.name == prop.name)
                 && sp.dir == PropertyDir::In

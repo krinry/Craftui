@@ -151,8 +151,11 @@ impl WidgetTree {
             }
         }
 
-        // Paint active drag payload pill near cursor
-        if let Some((_, ref payload, pos)) = self.active_drag {
+        // Paint active drag payload pill near cursor only after drag movement and if source still exists
+        if let Some((drag_id, ref payload, pos, moved, _)) = self.active_drag
+            && moved
+            && self.nodes.contains_key(drag_id)
+        {
             let st = TextStyle::default()
                 .with_size(12.5)
                 .with_weight(600.0)
@@ -2480,9 +2483,11 @@ impl WidgetTree {
                 let vis = crate::pickers::derive_visible_tree_rows(&list, &col);
                 let sel_raw = selected.get();
                 let rh = row_height.max(22.0);
+                let total_h = vis.len() as f32 * rh + 8.0;
+                let eff_scroll = scroll_offset.clamp(0.0, (total_h - rect.height).max(0.0));
 
                 for (vi, row) in vis.iter().enumerate() {
-                    let ry = rect.y + 4.0 + vi as f32 * rh - scroll_offset;
+                    let ry = rect.y + 4.0 + vi as f32 * rh - eff_scroll;
                     if ry + rh < rect.y || ry > rect.max_y() {
                         continue;
                     }
@@ -2550,9 +2555,11 @@ impl WidgetTree {
                 let list = items.get();
                 let sel_idx = selected.get();
                 let rh = row_height.max(24.0);
+                let total_h = list.len() as f32 * rh + 8.0;
+                let eff_scroll = scroll_offset.clamp(0.0, (total_h - rect.height).max(0.0));
 
                 for (i, label) in list.iter().enumerate() {
-                    let ry = rect.y + 4.0 + i as f32 * rh - scroll_offset;
+                    let ry = rect.y + 4.0 + i as f32 * rh - eff_scroll;
                     if ry + rh < rect.y || ry > rect.max_y() {
                         continue;
                     }
@@ -2603,8 +2610,10 @@ impl WidgetTree {
                     );
                 }
 
-                if let (Some(_from), Some(to)) = (dragging_index, target_index) {
-                    let drop_y = (rect.y + 4.0 + to as f32 * rh - scroll_offset)
+                if let (Some(_from), Some(to)) = (dragging_index, target_index)
+                    && rect.height >= 8.0
+                {
+                    let drop_y = (rect.y + 4.0 + to as f32 * rh - eff_scroll)
                         .clamp(rect.y + 2.0, rect.max_y() - 3.0);
                     scene.fill_rect(
                         Rect::new(rect.x + 6.0, drop_y, (rect.width - 12.0).max(12.0), 2.5),
@@ -2673,17 +2682,11 @@ impl WidgetTree {
                 }
             }
             WidgetKind::Draggable { dragging, .. } => {
-                if let Some(bg) = box_style.background.as_ref().map(|b| b.get()) {
-                    scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), box_style.radius);
-                }
                 if dragging {
                     scene.stroke_rect(rect, theme.primary, 1.5, box_style.radius);
                 }
             }
             WidgetKind::DropTarget { hovered_drag, .. } => {
-                if let Some(bg) = box_style.background.as_ref().map(|b| b.get()) {
-                    scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), box_style.radius);
-                }
                 if hovered_drag {
                     scene.fill_rect(rect, theme.primary.with_alpha(0.08), box_style.radius);
                     scene.stroke_rect(rect, theme.primary, 2.0, box_style.radius);
@@ -2699,7 +2702,7 @@ impl WidgetTree {
                 let rad = CornerRadii::all(theme.radius_md.min(10.0));
                 let ctrl = controller.get_untracked();
                 scene.fill_rect(rect, theme.surface_container, rad);
-                let (surface_r, play_r, scrub_r, mute_r) =
+                let (surface_r, play_r, scrub_r, mute_r, show_time) =
                     crate::media_editor::media_control_rects(rect, kind);
                 if matches!(kind, crate::MediaKind::Video) && surface_r.height > 4.0 {
                     if let Some(pv_id) = ctrl.platform_view_id {
@@ -2746,28 +2749,32 @@ impl WidgetTree {
                             .with_color(play_fg),
                         None,
                     );
-                    scene.fill_rect(scrub_r, theme.border, CornerRadii::all(4.0));
-                    let fill_w = scrub_r.width * ctrl.progress_fraction();
-                    if fill_w > 0.5 {
-                        scene.fill_rect(
-                            Rect::new(scrub_r.x, scrub_r.y, fill_w, scrub_r.height),
-                            theme.primary,
-                            CornerRadii::all(4.0),
+                    if scrub_r.width >= 6.0 {
+                        scene.fill_rect(scrub_r, theme.border, CornerRadii::all(4.0));
+                        let fill_w = scrub_r.width * ctrl.progress_fraction();
+                        if fill_w > 0.5 {
+                            scene.fill_rect(
+                                Rect::new(scrub_r.x, scrub_r.y, fill_w, scrub_r.height),
+                                theme.primary,
+                                CornerRadii::all(4.0),
+                            );
+                        }
+                    }
+                    if show_time {
+                        let tc = format!(
+                            "{}/{}",
+                            crate::MediaController::format_timecode(ctrl.position_secs),
+                            crate::MediaController::format_timecode(ctrl.duration_secs)
+                        );
+                        scene.draw_text(
+                            Point::new(scrub_r.max_x() + 6.0, play_r.y + 6.0),
+                            tc,
+                            TextStyle::default()
+                                .with_size(11.0)
+                                .with_color(theme.text_secondary),
+                            None,
                         );
                     }
-                    let tc = format!(
-                        "{}/{}",
-                        crate::MediaController::format_timecode(ctrl.position_secs),
-                        crate::MediaController::format_timecode(ctrl.duration_secs)
-                    );
-                    scene.draw_text(
-                        Point::new(scrub_r.max_x() + 6.0, play_r.y + 6.0),
-                        tc,
-                        TextStyle::default()
-                            .with_size(11.0)
-                            .with_color(theme.text_secondary),
-                        None,
-                    );
                     scene.fill_rect(mute_r, theme.surface_variant, CornerRadii::all(6.0));
                     scene.draw_text(
                         Point::new(mute_r.x + 6.0, mute_r.y + 5.0),
@@ -2847,7 +2854,7 @@ impl WidgetTree {
                 if draw_st.color == Color::TRANSPARENT {
                     draw_st.color = theme.text_primary;
                 }
-                if snap.editor.text.is_empty() {
+                if snap.editor.display_text().is_empty() {
                     let mut ph_st = draw_st.clone();
                     ph_st.color = theme.text_secondary;
                     scene.draw_text(text_r.origin(), &placeholder, ph_st, Some(text_r.width));
@@ -2858,18 +2865,43 @@ impl WidgetTree {
                             CornerRadii::ZERO,
                         );
                     }
+                } else if snap.editor.preedit.is_some() {
+                    let disp = snap.editor.display_text().into_owned();
+                    let layout =
+                        self.text_engine
+                            .build_layout_cached(&disp, &draw_st, Some(text_r.width));
+                    let cr = self.text_engine.cursor_rect(&layout, snap.editor.cursor);
+                    let scroll_y = (cr.max_y() - text_r.height).max(0.0);
+                    let origin = Point::new(text_r.x, text_r.y - scroll_y);
+                    scene.draw_text(origin, &disp, draw_st.clone(), Some(text_r.width));
+                    if is_active && self.caret_visible {
+                        scene.fill_rect(
+                            Rect::new(origin.x + cr.x, origin.y + cr.y, 2.0, cr.height),
+                            theme.primary,
+                            CornerRadii::ZERO,
+                        );
+                    }
                 } else {
                     let rich = snap.to_rich_text(&draw_st);
-                    scene.draw_rich_text(text_r.origin(), rich, Some(text_r.width));
+                    let layout = self
+                        .text_engine
+                        .build_rich_layout(&rich, Some(text_r.width));
+                    let cr = self.text_engine.cursor_rect(&layout, snap.editor.cursor);
+                    let scroll_y = (cr.max_y() - text_r.height).max(0.0);
+                    let origin = Point::new(text_r.x, text_r.y - scroll_y);
+                    if let Some((s, e)) = snap.editor.selection_range() {
+                        for sr in self.text_engine.selection_rects(&layout, s, e) {
+                            scene.fill_rect(
+                                sr.translate(origin.x, origin.y),
+                                theme.primary.with_alpha(0.32),
+                                CornerRadii::ZERO,
+                            );
+                        }
+                    }
+                    scene.draw_rich_text(origin, rich, Some(text_r.width));
                     if is_active && self.caret_visible {
-                        let layout = self.text_engine.build_layout_cached(
-                            &snap.editor.text,
-                            &draw_st,
-                            Some(text_r.width),
-                        );
-                        let cr = self.text_engine.cursor_rect(&layout, snap.editor.cursor);
                         scene.fill_rect(
-                            Rect::new(text_r.x + cr.x, text_r.y + cr.y, 2.0, cr.height),
+                            Rect::new(origin.x + cr.x, origin.y + cr.y, 2.0, cr.height),
                             theme.primary,
                             CornerRadii::ZERO,
                         );

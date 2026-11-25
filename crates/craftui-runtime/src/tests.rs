@@ -1090,6 +1090,49 @@ fn interpreter_matches_every_builtin_widget_and_material_variant() {
         tree.layout(WindowMetrics::default());
         let col = tree.nodes.get(root).unwrap();
         assert_eq!(col.children.len(), 1, "missing child for `{widget}`");
+        let child_kind = &tree.nodes.get(col.children[0]).unwrap().kind;
+        match *widget {
+            "VideoPlayer" | "AudioPlayer" | "MediaPlayer" => assert!(
+                matches!(child_kind, craftui_widgets::WidgetKind::MediaPlayer { .. }),
+                "expected MediaPlayer for `{widget}`"
+            ),
+            "RichTextEditor" => assert!(
+                matches!(
+                    child_kind,
+                    craftui_widgets::WidgetKind::RichTextEditor { .. }
+                ),
+                "expected RichTextEditor"
+            ),
+            "MenuBar" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::MenuBar { .. }
+            )),
+            "Draggable" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::Draggable { .. }
+            )),
+            "DropTarget" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::DropTarget { .. }
+            )),
+            "DatePicker" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::DatePicker { .. }
+            )),
+            "TimePicker" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::TimePicker { .. }
+            )),
+            "TreeView" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::TreeView { .. }
+            )),
+            "ReorderableList" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::ReorderableList { .. }
+            )),
+            _ => {}
+        }
     }
 
     // Verify specific Material & alias widget kinds match AOT codegen

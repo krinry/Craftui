@@ -386,6 +386,15 @@ final class CraftUIMethodChannelRouter: NSObject, UIImagePickerControllerDelegat
     }
 
     private func handleCamera(requestId: UInt64, method: String, presenter: UIViewController, app: OpaquePointer) {
+        if pendingCameraRequestId != 0 {
+            deliverResult(
+                requestId: requestId,
+                ok: false,
+                payload: ["error": "another camera or gallery request is already pending"],
+                app: app
+            )
+            return
+        }
         let sourceType: UIImagePickerController.SourceType
         let sourceName: String
         switch method {
@@ -414,6 +423,11 @@ final class CraftUIMethodChannelRouter: NSObject, UIImagePickerControllerDelegat
         let picker = UIImagePickerController()
         picker.sourceType = sourceType
         picker.delegate = self
+        if sourceType == .photoLibrary, let pop = picker.popoverPresentationController {
+            pop.sourceView = presenter.view
+            pop.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+            pop.permittedArrowDirections = []
+        }
         presenter.present(picker, animated: true)
     }
 
@@ -430,8 +444,18 @@ final class CraftUIMethodChannelRouter: NSObject, UIImagePickerControllerDelegat
         } else if let image = info[.originalImage] as? UIImage,
                   let data = image.jpegData(compressionQuality: 0.9) {
             let tmpUrl = FileManager.default.temporaryDirectory.appendingPathComponent("craftui_\(Int(Date().timeIntervalSince1970 * 1000)).jpg")
-            try? data.write(to: tmpUrl)
-            uriString = tmpUrl.absoluteString
+            do {
+                try data.write(to: tmpUrl)
+                uriString = tmpUrl.absoluteString
+            } catch {
+                deliverResult(
+                    requestId: reqId,
+                    ok: false,
+                    payload: ["error": error.localizedDescription],
+                    app: app
+                )
+                return
+            }
         }
         deliverResult(
             requestId: reqId,
@@ -764,9 +788,14 @@ final class CraftUIViewController: UIViewController, UIKeyInput {
             let reqId = (json["request_id"] as? NSNumber)?.uint64Value ?? 0
             let channel = (json["channel"] as? String) ?? ""
             let method = (json["method"] as? String) ?? ""
-            let argsJson = (json["args_json"] as? String) ?? "{}"
-            let parsedArgs = (argsJson.data(using: .utf8)
-                .flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
+            let parsedArgs: [String: Any]
+            if let argsDict = json["args"] as? [String: Any] {
+                parsedArgs = argsDict
+            } else {
+                let argsJson = (json["args_json"] as? String) ?? "{}"
+                parsedArgs = (argsJson.data(using: .utf8)
+                    .flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
+            }
             methodChannelRouter.dispatch(
                 requestId: reqId,
                 channel: channel,

@@ -106,8 +106,18 @@ mod tests {{
 }}
 "#
         );
+        let kotlin_pkg: String = pkg_name
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c.to_ascii_lowercase()
+                } else {
+                    '_'
+                }
+            })
+            .collect();
         let plugin_kotlin = format!(
-            r#"package dev.craftui.plugins.{pkg_name}
+            r#"package dev.craftui.plugins.{kotlin_pkg}
 
 import org.json.JSONObject
 

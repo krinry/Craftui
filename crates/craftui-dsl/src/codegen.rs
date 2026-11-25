@@ -25,7 +25,7 @@ pub fn generate_rust(file: &CuiFile) -> String {
     let _ = writeln!(out, "#[allow(unused_imports)]");
     let _ = writeln!(
         out,
-        "use ::craftui::widgets::{{AnimatableProp, BoxStyle, CardVariant, Easing, ReactiveValue, ToastItem, ToastSeverity, TransitionCurve, WidgetTree}};"
+        "use ::craftui::widgets::{{AnimatableProp, BoxStyle, CardVariant, Easing, MediaController, MediaKind, ReactiveValue, RichEditorController, ToastItem, ToastSeverity, TransitionCurve, WidgetTree}};"
     );
     let _ = writeln!(out);
 
@@ -1295,6 +1295,10 @@ fn emit_element(
                 out,
                 "{indent}let {var} = {tr}.tree_view({cx}, {items_rv}, {idx_sig}, None::<fn(usize)>);"
             );
+            if let Some(rh) = find_prop(el, &["row_height"]) {
+                let rh_expr = expr_to_typed_rust(&rh.value, "f32", ctx);
+                let _ = writeln!(out, "{indent}{tr}.set_row_height({var}, {rh_expr});");
+            }
             emit_index_change_handler(out, &var, el, indent, ctx);
         }
         "ReorderableList" => {
@@ -1305,6 +1309,10 @@ fn emit_element(
                 out,
                 "{indent}let {var} = {tr}.reorderable_list({cx}, {items_sig}, {idx_sig}, None::<fn(usize, usize)>);"
             );
+            if let Some(rh) = find_prop(el, &["row_height"]) {
+                let rh_expr = expr_to_typed_rust(&rh.value, "f32", ctx);
+                let _ = writeln!(out, "{indent}{tr}.set_row_height({var}, {rh_expr});");
+            }
             if let Some(h) = find_handler(el, &["on_reorder"]) {
                 let mut h_locals = ctx.locals.clone();
                 let mut alias_stmts = String::new();
@@ -1469,20 +1477,40 @@ fn emit_element(
             }
         }
         "RichTextEditor" => {
-            let init_txt = find_prop(el, &["text", "value"])
+            let text_prop = find_prop(el, &["text", "value"]);
+            let init_txt = text_prop
                 .map(|p| expr_to_typed_rust(&p.value, "String", ctx))
                 .unwrap_or_else(|| "String::new()".into());
             let ph = find_prop(el, &["placeholder"])
                 .map(|p| expr_to_typed_rust(&p.value, "String", ctx))
                 .unwrap_or_else(|| "\"Write rich text...\".to_string()".into());
             let ctrl_var = format!("__rich_ctrl_{var}");
+            let st_var = format!("__rich_st_{var}");
+            let _ = writeln!(out, "{indent}let mut {st_var} = TextStyle::default();");
+            if let Some(fs) = find_prop(el, &["font_size"]) {
+                let fs_expr = expr_to_typed_rust(&fs.value, "f32", ctx);
+                let _ = writeln!(out, "{indent}{st_var}.font_size = {fs_expr};");
+            }
+            if let Some(col) = find_prop(el, &["color"]) {
+                let col_expr = expr_to_typed_rust(&col.value, "Color", ctx);
+                let _ = writeln!(out, "{indent}{st_var}.color = {col_expr};");
+            }
             let _ = writeln!(
                 out,
                 "{indent}let {ctrl_var} = {cx}.signal(RichEditorController::with_text({init_txt}));"
             );
+            if let Some(tp) = text_prop
+                && expr_has_reactive_props(&tp.value, ctx)
+            {
+                let rv = expr_to_reactive_string(&tp.value, ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ let __rv = {rv}; let __c = {ctrl_var}; {cx}.effect(move || {{ let __nv = __rv.get(); __c.update(|c| {{ if c.editor.text != __nv {{ c.editor.sync_external(&__nv); c.sync_span_bounds(); }} }}); }}); }}"
+                );
+            }
             let _ = writeln!(
                 out,
-                "{indent}let {var} = {tr}.rich_text_editor({cx}, {ctrl_var}, {ph}, TextStyle::default(), None::<fn(String)>);"
+                "{indent}let {var} = {tr}.rich_text_editor({cx}, {ctrl_var}, {ph}, {st_var}, None::<fn(String)>);"
             );
             if let Some(h) = find_handler(el, &["on_change"]) {
                 let mut h_locals = ctx.locals.clone();

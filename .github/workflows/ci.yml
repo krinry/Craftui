@@ -408,7 +408,7 @@ jobs:
     name: Notes app (Android ARM64 emulator boot smoke)
     needs: [notes-android]
     if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -433,7 +433,9 @@ jobs:
             adb logcat -c
             adb shell am start -W -n dev.craftui.notes/dev.craftui.app.MainActivity | tee "$RUNNER_TEMP/ci-logs/android-am-start.log"
             sleep 5
-            adb shell pidof dev.craftui.notes | tee "$RUNNER_TEMP/ci-logs/android-pid.log"
+            pid="$(adb shell pidof dev.craftui.notes | tr -d '\r\n')"
+            test -n "$pid"
+            printf '%s\n' "$pid" | tee "$RUNNER_TEMP/ci-logs/android-pid.log"
             adb logcat -d > "$RUNNER_TEMP/ci-logs/android-logcat.log"
             ! grep -q "FATAL EXCEPTION" "$RUNNER_TEMP/ci-logs/android-logcat.log"
       - name: Upload emulator smoke logs

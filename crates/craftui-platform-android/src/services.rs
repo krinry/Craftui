@@ -62,11 +62,21 @@ struct PendingFileDialogRequest {
     resolved: Option<Vec<PathBuf>>,
 }
 
+static GLOBAL_ANDROID_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone)]
+struct WakeCallback(Arc<dyn Fn() + Send + Sync>);
+
+impl std::fmt::Debug for WakeCallback {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("WakeCallback(..)")
+    }
+}
+
 /// Shared thread-safe Android OS bridge coordinating ActivityResult permissions, SAF pickers,
 /// haptics, share intents, keystore secrets, and device telemetry.
 #[derive(Debug)]
 pub struct AndroidBridgeState {
-    next_request_id: AtomicU64,
     terminated: AtomicBool,
     statuses: Mutex<HashMap<Permission, PermissionStatus>>,
     rationales: Mutex<HashMap<Permission, bool>>,
@@ -77,6 +87,8 @@ pub struct AndroidBridgeState {
     file_cv: Condvar,
     pending_plugins: Mutex<HashMap<u64, Option<std::result::Result<serde_json::Value, String>>>>,
     plugin_cv: Condvar,
+    runtime_thread: Mutex<Option<std::thread::ThreadId>>,
+    waker: Mutex<Option<WakeCallback>>,
     request_timeout: Mutex<Duration>,
     secure_entries: Mutex<HashMap<String, String>>,
     pub(crate) device_info: Mutex<DeviceInfo>,
@@ -94,7 +106,6 @@ impl Default for AndroidBridgeState {
 impl AndroidBridgeState {
     pub fn new() -> Self {
         Self {
-            next_request_id: AtomicU64::new(1),
             terminated: AtomicBool::new(false),
             statuses: Mutex::new(HashMap::new()),
             rationales: Mutex::new(HashMap::new()),
@@ -105,6 +116,8 @@ impl AndroidBridgeState {
             file_cv: Condvar::new(),
             pending_plugins: Mutex::new(HashMap::new()),
             plugin_cv: Condvar::new(),
+            runtime_thread: Mutex::new(None),
+            waker: Mutex::new(None),
             request_timeout: Mutex::new(Duration::from_millis(if cfg!(target_os = "android") {
                 30_000
             } else {
@@ -151,10 +164,51 @@ impl AndroidBridgeState {
             .unwrap_or(Duration::from_millis(250))
     }
 
+    pub fn set_runtime_thread(&self) {
+        if let Ok(mut guard) = self.runtime_thread.lock() {
+            *guard = Some(std::thread::current().id());
+        }
+    }
+
+    pub fn set_waker(&self, waker: impl Fn() + Send + Sync + 'static) {
+        if let Ok(mut guard) = self.waker.lock() {
+            *guard = Some(WakeCallback(Arc::new(waker)));
+        }
+    }
+
+    fn is_on_runtime_thread(&self) -> bool {
+        self.runtime_thread
+            .lock()
+            .ok()
+            .and_then(|g| *g)
+            .is_some_and(|tid| tid == std::thread::current().id())
+    }
+
+    fn wake_event_loop(&self) {
+        let cb = self.waker.lock().ok().and_then(|g| g.clone());
+        if let Some(WakeCallback(f)) = cb {
+            f();
+        }
+    }
+
+    fn alloc_request_id(&self) -> u64 {
+        GLOBAL_ANDROID_REQUEST_ID.fetch_add(1, Ordering::Relaxed)
+    }
+
     fn push_command(&self, cmd: AndroidPlatformCommand) {
         if let Ok(mut guard) = self.commands.lock() {
             guard.push_back(cmd);
         }
+        self.wake_event_loop();
+    }
+
+    pub fn is_method_channel_pending(&self, request_id: u64) -> bool {
+        !self.is_terminated()
+            && self
+                .pending_plugins
+                .lock()
+                .ok()
+                .is_some_and(|g| g.get(&request_id).is_some_and(Option::is_none))
     }
 
     pub fn drain_commands(&self) -> Vec<AndroidPlatformCommand> {
@@ -176,7 +230,12 @@ impl AndroidBridgeState {
                 "android bridge terminated".into(),
             ));
         }
-        let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
+        if self.is_on_runtime_thread() {
+            return Err(craftui_core::CraftError::Platform(
+                "invoke_method_channel cannot block on the Android runtime thread; invoke from a background task".into(),
+            ));
+        }
+        let request_id = self.alloc_request_id();
         let args_json = args.to_string();
         if let Ok(mut pending) = self.pending_plugins.lock() {
             pending.insert(request_id, None);
@@ -491,7 +550,7 @@ impl PermissionBackend for AndroidPermissionBackend {
                 .collect();
         }
 
-        let request_id = self.state.next_request_id.fetch_add(1, Ordering::SeqCst);
+        let request_id = self.state.alloc_request_id();
         if let Ok(mut pending) = self.state.pending_perms.lock() {
             pending.insert(
                 request_id,
@@ -747,7 +806,7 @@ impl AndroidFileDialogBridge {
 
 impl FileDialogBackend for AndroidFileDialogBridge {
     fn open_files(&self, request: &FileDialogRequest) -> Vec<PathBuf> {
-        let request_id = self.state.next_request_id.fetch_add(1, Ordering::SeqCst);
+        let request_id = self.state.alloc_request_id();
         if let Ok(mut pending) = self.state.pending_files.lock() {
             pending.insert(request_id, PendingFileDialogRequest::default());
         }
@@ -760,7 +819,7 @@ impl FileDialogBackend for AndroidFileDialogBridge {
     }
 
     fn save_file(&self, request: &FileDialogRequest) -> Option<PathBuf> {
-        let request_id = self.state.next_request_id.fetch_add(1, Ordering::SeqCst);
+        let request_id = self.state.alloc_request_id();
         if let Ok(mut pending) = self.state.pending_files.lock() {
             pending.insert(request_id, PendingFileDialogRequest::default());
         }

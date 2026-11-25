@@ -341,6 +341,7 @@ class MainActivity : GameActivity() {{
     private var pendingPermRequestId: Long = 0L
     private var pendingFileRequestId: Long = 0L
     private var pendingCameraRequestId: Long = 0L
+    private val pendingNotifRunnables = mutableMapOf<String, Runnable>()
     private var lastReportedInsetsKey: String = ""
 
     private val cameraPermissionLauncher = registerForActivityResult(
@@ -383,17 +384,26 @@ class MainActivity : GameActivity() {{
             pendingCameraRequestId = 0L
             val out = JSONObject().put("source", "camera")
             if (bitmap != null) {{
-                val file = java.io.File(cacheDir, "craftui_capture_${{System.currentTimeMillis()}}.png")
-                java.io.FileOutputStream(file).use {{ fos ->
-                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 95, fos)
+                try {{
+                    val file = java.io.File(cacheDir, "craftui_capture_${{System.currentTimeMillis()}}.png")
+                    java.io.FileOutputStream(file).use {{ fos ->
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 95, fos)
+                    }}
+                    out.put("uri", Uri.fromFile(file).toString())
+                    out.put("cancelled", false)
+                    onNativeMethodChannelResult(reqId, true, out.toString())
+                }} catch (e: Exception) {{
+                    onNativeMethodChannelResult(
+                        reqId,
+                        false,
+                        JSONObject().put("error", e.message ?: "failed saving captured image").toString()
+                    )
                 }}
-                out.put("uri", Uri.fromFile(file).toString())
-                out.put("cancelled", false)
             }} else {{
                 out.put("uri", JSONObject.NULL)
                 out.put("cancelled", true)
+                onNativeMethodChannelResult(reqId, true, out.toString())
             }}
-            onNativeMethodChannelResult(reqId, true, out.toString())
         }}
     }}
 
@@ -656,6 +666,14 @@ class MainActivity : GameActivity() {{
     }}
 
     private fun handleCameraChannel(requestId: Long, method: String) {{
+        if (pendingCameraRequestId != 0L) {{
+            onNativeMethodChannelResult(
+                requestId,
+                false,
+                JSONObject().put("error", "another camera or gallery request is already in progress").toString()
+            )
+            return
+        }}
         when (method) {{
             "capturePhoto" -> {{
                 pendingCameraRequestId = requestId
@@ -774,7 +792,11 @@ class MainActivity : GameActivity() {{
                 val title = args.optString("title", "CraftUI")
                 val body = args.optString("body", "")
                 val delaySec = args.optLong("delaySeconds", 0L).coerceAtLeast(0L)
-                val postNotif = {{
+                pendingNotifRunnables.remove(id)?.let {{ prev ->
+                    window.decorView.removeCallbacks(prev)
+                }}
+                val postNotif = Runnable {{
+                    pendingNotifRunnables.remove(id)
                     val notif = NotificationCompat.Builder(this, channelId)
                         .setSmallIcon(android.R.drawable.ic_dialog_info)
                         .setContentTitle(title)
@@ -784,8 +806,9 @@ class MainActivity : GameActivity() {{
                     nm.notify(id.hashCode(), notif)
                 }}
                 if (delaySec == 0L) {{
-                    postNotif()
+                    postNotif.run()
                 }} else {{
+                    pendingNotifRunnables[id] = postNotif
                     window.decorView.postDelayed(postNotif, delaySec * 1000L)
                 }}
                 onNativeMethodChannelResult(
@@ -796,6 +819,9 @@ class MainActivity : GameActivity() {{
             }}
             "cancel" -> {{
                 val id = args.optString("id", "")
+                pendingNotifRunnables.remove(id)?.let {{ r ->
+                    window.decorView.removeCallbacks(r)
+                }}
                 nm.cancel(id.hashCode())
                 onNativeMethodChannelResult(
                     requestId,
@@ -804,6 +830,10 @@ class MainActivity : GameActivity() {{
                 )
             }}
             "cancelAll" -> {{
+                pendingNotifRunnables.values.forEach {{ r ->
+                    window.decorView.removeCallbacks(r)
+                }}
+                pendingNotifRunnables.clear()
                 nm.cancelAll()
                 onNativeMethodChannelResult(
                     requestId,

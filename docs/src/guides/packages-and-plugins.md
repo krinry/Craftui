@@ -28,18 +28,17 @@ use craftui::reactive::{ResourceState, Scope, Signal};
 
 fn fetch_profile(cx: Scope, state: Signal<ResourceState<String>>) {
     state.set(ResourceState::Loading);
-    // Spawn on a background thread / tokio runtime, then dispatch back to the UI thread:
-    let dispatcher = craftui::reactive::ui_dispatcher();
-    std::thread::spawn(move || {
-        let result = Ok::<String, String>("Loaded from crates.io".into());
-        let next = match result {
-            Ok(data) => ResourceState::Ready(data),
-            Err(err) => ResourceState::Error(err),
-        };
-        if let Some(d) = dispatcher {
-            d.post(move || state.set(next));
-        }
-    });
+    // Run blocking/crate work off the UI thread; update `Signal` only inside `on_complete`:
+    cx.spawn_task(
+        || Ok::<String, String>("Loaded from crates.io".into()),
+        move |result| {
+            let next = match result {
+                Ok(data) => ResourceState::Ready(data),
+                Err(err) => ResourceState::Error(err),
+            };
+            state.set(next);
+        },
+    );
 }
 ```
 

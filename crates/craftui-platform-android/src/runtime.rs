@@ -174,6 +174,11 @@ where
         .unwrap_or(2.0);
 
     let mut host = AndroidHost::new(dispatcher.clone(), 1080, 1920, density);
+    host.bridge.set_runtime_thread();
+    let bridge_waker = app.create_waker();
+    host.bridge.set_waker(move || {
+        bridge_waker.wake();
+    });
     #[cfg(feature = "hot-reload")]
     host.enable_remote_preview(craftui_core::DEFAULT_REMOTE_PREVIEW_PORT);
     let root = build_ui(host.scope, &mut host.tree, &mut host.textures, &dispatcher);
@@ -384,7 +389,7 @@ where
                     channel,
                     method,
                     args_json,
-                } => {
+                } if host.bridge.is_method_channel_pending(request_id) => {
                     forward_method_channel_to_kotlin(
                         &app, request_id, &channel, &method, &args_json,
                     );

@@ -117,6 +117,20 @@ pub fn derive_visible_tree_rows(
     items: &[String],
     collapsed: &HashSet<String>,
 ) -> Vec<TreeVisibleRow> {
+    // Precompute parent paths in O(N * depth) so `has_children` checks are O(1) per row.
+    let mut parent_paths: HashSet<&str> = HashSet::new();
+    for raw in items {
+        let trimmed = raw.trim_matches('/');
+        let mut pos = 0;
+        while let Some(slash) = trimmed[pos..].find('/') {
+            let end = pos + slash;
+            if end > 0 {
+                parent_paths.insert(&trimmed[..end]);
+            }
+            pos = end + 1;
+        }
+    }
+
     let mut out = Vec::with_capacity(items.len());
     for (idx, raw) in items.iter().enumerate() {
         let trimmed = raw.trim_matches('/');
@@ -138,11 +152,7 @@ pub fn derive_visible_tree_rows(
             continue;
         }
 
-        let prefix = format!("{trimmed}/");
-        let has_children = items
-            .iter()
-            .enumerate()
-            .any(|(j, other)| j != idx && other.trim_matches('/').starts_with(&prefix));
+        let has_children = parent_paths.contains(trimmed);
         let depth = trimmed.matches('/').count();
         let label = trimmed.rsplit('/').next().unwrap_or(trimmed).to_string();
         let expanded = has_children && !collapsed.contains(trimmed);
@@ -207,7 +217,7 @@ pub fn menubar_dropdown_rect(
     item_count: usize,
 ) -> craftui_core::Rect {
     let w = 180.0f32.max(header_rect.width + 24.0);
-    let h = (item_count.max(1) as f32 * 30.0 + 8.0).min(280.0);
+    let h = item_count.max(1) as f32 * 30.0 + 8.0;
     craftui_core::Rect::new(header_rect.x, header_rect.max_y() + 2.0, w, h)
 }
 
