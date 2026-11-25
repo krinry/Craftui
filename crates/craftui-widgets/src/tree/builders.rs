@@ -1582,6 +1582,78 @@ impl WidgetTree {
         id
     }
 
+    /// Build an Audio or Video `MediaPlayer` backed by a reactive [`MediaController`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn media_player(
+        &mut self,
+        scope: Scope,
+        kind: crate::MediaKind,
+        source: impl Into<ReactiveValue<String>>,
+        controller: Signal<crate::MediaController>,
+        autoplay: bool,
+        show_controls: bool,
+        on_toggle_play: Option<impl FnMut(bool) + 'static>,
+    ) -> NodeId {
+        if autoplay {
+            controller.update(|c| c.playing = true);
+        }
+        let id = self.spawn_node(
+            match kind {
+                crate::MediaKind::Video => "VideoPlayer",
+                crate::MediaKind::Audio => "AudioPlayer",
+            },
+            WidgetKind::MediaPlayer {
+                kind,
+                source: source.into(),
+                controller,
+                autoplay,
+                show_controls,
+                on_toggle_play: on_toggle_play.map(|f| Rc::new(RefCell::new(f)) as BoolCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Container;
+            n.a11y.focusable = true;
+            n.a11y.label = Some(match kind {
+                crate::MediaKind::Video => "VideoPlayer".into(),
+                crate::MediaKind::Audio => "AudioPlayer".into(),
+            });
+        }
+        id
+    }
+
+    /// Build an interactive `RichTextEditor` with `B`/`I`/`U` formatting toolbar and styled spans.
+    pub fn rich_text_editor(
+        &mut self,
+        scope: Scope,
+        controller: Signal<crate::RichEditorController>,
+        placeholder: impl Into<String>,
+        style: TextStyle,
+        on_change: Option<impl FnMut(String) + 'static>,
+    ) -> NodeId {
+        let ph = placeholder.into();
+        let id = self.spawn_node(
+            "RichTextEditor",
+            WidgetKind::RichTextEditor {
+                controller,
+                placeholder: ph,
+                style,
+                on_change: on_change.map(|f| Rc::new(RefCell::new(f)) as crate::TextCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::TextInput;
+            n.a11y.focusable = true;
+            n.a11y.value = Some(controller.get_untracked().editor.text);
+            n.a11y.label = Some("RichTextEditor".into());
+        }
+        id
+    }
+
     /// Mount any custom user-defined widget implementing [`CustomWidget`].
     pub fn custom_widget<W: CustomWidget + 'static>(
         &mut self,

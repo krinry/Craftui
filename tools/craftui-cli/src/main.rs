@@ -54,6 +54,7 @@ pub enum ProjectTemplate {
     Counter,
     Dashboard,
     Mobile,
+    Plugin,
 }
 
 #[derive(Subcommand, Debug)]
@@ -81,6 +82,9 @@ enum Commands {
         path: Option<PathBuf>,
         #[arg(long, value_enum, default_value_t = ProjectTemplate::Counter)]
         template: ProjectTemplate,
+        /// Shortcut for `--template plugin` to scaffold a distributable MethodChannel plugin crate
+        #[arg(long)]
+        plugin: bool,
     },
     /// Initialize craftui.toml in an existing project without overwriting existing source files
     Init {
@@ -225,18 +229,29 @@ fn run() -> Result<()> {
             name,
             path,
             template,
+            plugin,
         } => {
+            let effective_template = if plugin {
+                ProjectTemplate::Plugin
+            } else {
+                template
+            };
             let target_dir = path.unwrap_or_else(|| PathBuf::from(&name));
-            scaffold_project_with_template(&name, &target_dir, template)?;
+            scaffold_project_with_template(&name, &target_dir, effective_template)?;
             println!(
                 "Created CraftUI ({}) project '{}' at {}",
-                template_label(template),
+                template_label(effective_template),
                 name,
                 target_dir.display()
             );
             println!(
-                "Next steps:\n  cd {}\n  craftui permissions check craftui.toml\n  craftui check ui/main.cui\n  craftui run --platform desktop",
-                target_dir.display()
+                "Next steps:\n  cd {}\n  craftui permissions check craftui.toml\n  craftui check ui/main.cui\n  {}",
+                target_dir.display(),
+                if effective_template == ProjectTemplate::Plugin {
+                    "cargo test"
+                } else {
+                    "craftui run --platform desktop"
+                }
             );
             Ok(())
         }

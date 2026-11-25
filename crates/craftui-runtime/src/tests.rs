@@ -1051,6 +1051,15 @@ fn hot_reload_supports_children_slot_and_pickers_tree_view() {
                     accept_prefix: "note:";
                     Text { text: "Inbox"; }
                 }
+                VideoPlayer {
+                    source: "demo.mp4";
+                }
+                AudioPlayer {
+                    source: "audio.mp3";
+                }
+                RichTextEditor {
+                    text: "Notes";
+                }
             }
         }
     "#;
@@ -1062,7 +1071,7 @@ fn hot_reload_supports_children_slot_and_pickers_tree_view() {
     let root_node = tree.nodes.get(root).unwrap();
     assert_eq!(root_node.children.len(), 2);
     let row_slot = tree.nodes.get(root_node.children[1]).unwrap();
-    assert_eq!(row_slot.children.len(), 7);
+    assert_eq!(row_slot.children.len(), 10);
 }
 
 #[test]

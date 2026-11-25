@@ -466,11 +466,12 @@ impl WidgetTree {
             | WidgetKind::Accordion { .. }
             | WidgetKind::DataTable { .. }
             | WidgetKind::Select { .. }
-            | WidgetKind::RadioGroup { .. } => CursorIcon::Pointer,
+            | WidgetKind::RadioGroup { .. }
+            | WidgetKind::MediaPlayer { .. } => CursorIcon::Pointer,
             WidgetKind::RichText {
                 on_link: Some(_), ..
             } => CursorIcon::Pointer,
-            WidgetKind::TextInput { .. } => CursorIcon::Text,
+            WidgetKind::TextInput { .. } | WidgetKind::RichTextEditor { .. } => CursorIcon::Text,
             WidgetKind::Slider { .. } => CursorIcon::Grab,
             WidgetKind::SplitPane { axis, .. } => match axis {
                 Axis::Horizontal => CursorIcon::ResizeHorizontal,
@@ -738,7 +739,8 @@ impl WidgetTree {
             match &mut n.kind {
                 WidgetKind::TextInput { on_change, .. }
                 | WidgetKind::DatePicker { on_change, .. }
-                | WidgetKind::TimePicker { on_change, .. } => {
+                | WidgetKind::TimePicker { on_change, .. }
+                | WidgetKind::RichTextEditor { on_change, .. } => {
                     *on_change = Some(rc);
                 }
                 _ => {}
@@ -752,7 +754,11 @@ impl WidgetTree {
             match &mut n.kind {
                 WidgetKind::Checkbox { on_change, .. }
                 | WidgetKind::Switch { on_change, .. }
-                | WidgetKind::Accordion { on_change, .. } => {
+                | WidgetKind::Accordion { on_change, .. }
+                | WidgetKind::MediaPlayer {
+                    on_toggle_play: on_change,
+                    ..
+                } => {
                     *on_change = Some(rc);
                 }
                 _ => {}

@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "WebAssembly (wasm-bindgen) Canvas/WebGPU/Canvas2D runner and DOM event bridge for CraftUI"
 
 [features]
 default = ["gpu-sdf", "cpu-tiny-skia"]

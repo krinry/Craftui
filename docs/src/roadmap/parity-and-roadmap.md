@@ -4,16 +4,16 @@ This document provides an honest, engineering-level assessment of where **CraftU
 
 ---
 
-## Current Parity Snapshot (Updated After Step 3)
+## Current Parity Snapshot (Updated After Step 4)
 
 | Area | Parity | Closest Benchmark | Current Reality |
 | :--- | :---: | :--- | :--- |
-| **Core Architecture & Reactivity** | **76–80%** | Slint / Dioxus | Fine-grained `Signal`, `Computed`, `Effect`, `ResourceState<T>`, and generational `Scope` arena; `taffy` Flexbox + CSS Grid layout; `parley` + `fontique` text shaping + fallback font APIs; `accesskit` accessibility; `.cui` lexer/parser/validator/codegen + unified hot-reload interpreter (every `BUILTIN_WIDGETS` & Material 3 variant aligned) + `@children` slot composition. |
-| **Tooling, DX & AI** | **72–76%** | Slint / Flutter | `craftui` CLI (`new`, `init`, `add`, `setup`, `doctor`, `dev`, `preview`, `check`, `render`, `build`, `permissions`, `mcp`), `craftui-lsp` (`tower-lsp`), VS Code extension + snippets, Craftpad browser studio, and a built-in **MCP stdio server**. |
-| **UI & Rendering** | **45–50%** | Slint / Flutter | Pure-WGSL instanced SDF GPU shader (`gpu-sdf`), `wgpu` surface pipeline, `vello_cpu` / `tiny-skia` CPU fallbacks, SVG icons, shadows, and backdrop blur. Lacks complex shader effects, advanced clip/mask layers, and native OS look-and-feel (Cupertino / WinUI). |
-| **Widgets & App Features** | **55–60%** | Flutter | 45 `WidgetKind` primitives (including `DatePicker`, `TimePicker`, `TreeView`, `ReorderableList`, `MenuBar`, `Draggable`, `DropTarget`, `VirtualList`, `DataTable`, `SplitPane`, `TextInput`, `TextArea`, `RichText`, `Canvas`, `Overlay`, `ToastHost`, `CustomWidget`) + `craftui_widgets::form` reactive `FieldValidator`/`FormGroup` + Material 3 `.cui` library + `@children` wrapper composition. Still missing native OS System Tray, Rich Text *Editor*, and Media widgets. |
-| **Multi-Platform Power** | **48–52%** | Flutter / Tauri | **Desktop (~72%):** `winit` + `wgpu` + `rfd` + clipboard + `accesskit` + Multi-Window `WindowLauncher`.<br>**Web WASM (~65%):** `wasm-bindgen` + Craftpad + headless Chrome CI + lean `gpu-sdf`/`cpu-tiny-skia` Web builds (**4.1 MB raw / ~1.21 MB gzipped** for `notes`).<br>**Android (~38–42%):** `GameActivity` + JNI + Gradle generator + live Kotlin `dispatchCraftUiMethodChannel` & JNI forwarding + `android-emulator-smoke` CI job in `ci.yml` (template & JNI verified locally; live emulator/device boot runs in CI).<br>**iOS (~30–35%):** `IosAppHost` + C-FFI + Metal hook + `CraftUIMethodChannelRouter` Swift handler (`camera`, `biometrics`, `notifications`, `url_launcher`) + updated `CraftUI.h` header (not yet compiled on macOS/Xcode CI). |
-| **Ecosystem & Packages** | **24–28%** | pub.dev / crates.io | First-class `crates.io` support (`craftui add <crate>`, `[dependencies]`/`[plugins]` in `craftui.toml`, `ResourceState<T>`), async `MethodChannel` pipelines on Rust/Android/iOS, and **4 built-in plugins** (`dev.craftui.camera`, `biometrics`, `notifications`, `url_launcher`) with typed Rust clients and mock/in-memory defaults. Still far smaller than `pub.dev`'s catalog of community plugins. |
+| **Core Architecture & Reactivity** | **82–86%** | Slint / Dioxus | Fine-grained `Signal`, `Computed`, `Effect`, `ResourceState<T>`, and generational `Scope` arena; `taffy` Flexbox + CSS Grid layout + runtime `set_locale`/`set_direction` RTL flipping; `LocalizationCatalog` JSON catalog + `{param}` interpolation + BCP-47 RTL detection; `parley` + `fontique` text shaping; `accesskit` accessibility; `.cui` AOT codegen + unified hot-reload interpreter + `@children` slot composition. |
+| **Tooling, DX & AI** | **76–80%** | Slint / Flutter | `craftui` CLI (`new --template counter/dashboard/mobile/plugin` + `--plugin`, `init`, `add`, `setup`, `doctor`, `dev`, `preview`, `check`, `render`, `build`, `permissions`, `mcp`), `craftui-lsp` (`tower-lsp`), VS Code extension + snippets, Craftpad studio, and built-in **MCP stdio server**. Full workspace metadata (`description`, `license`, `repository`, `version`) configured for `crates.io`. |
+| **UI & Rendering** | **52–58%** | Slint / Flutter | Pure-WGSL instanced SDF GPU shader (`gpu-sdf`), `wgpu` surface pipeline, `vello_cpu` / `tiny-skia` CPU fallbacks, SVG icons, shadows, backdrop blur, `DesignSystem::Material3` / `Cupertino` / `WinUi` palettes, RTL text alignment mirroring, and `PlatformView` video overlay holes. Still lacks custom user WGSL shader effects, advanced clip/mask filters, and OS-native widget chrome drawing. |
+| **Widgets & App Features** | **64–70%** | Flutter | **47 `WidgetKind` primitives** including `MediaPlayer` (`VideoPlayer`/`AudioPlayer` with `PlatformViewId` + transport controls), `RichTextEditor` (`B`/`I`/`U` toolbar + styled runs + IME), `DatePicker`, `TimePicker`, `TreeView`, `ReorderableList`, `MenuBar`, `Draggable`, `DropTarget`, `VirtualList`, `DataTable`, `SplitPane`, `TextInput`, `TextArea`, `RichText`, `Canvas`, `Overlay`, `ToastHost`, `CustomWidget` + `craftui_widgets::form` reactive `FieldValidator`/`FormGroup`. Still missing native OS System Tray and hardware video codecs (relies on host `PlatformView`). |
+| **Multi-Platform Power** | **50–54%** | Flutter / Tauri | **Desktop (~74%):** `winit` + `wgpu` + `rfd` + clipboard + `accesskit` + Multi-Window `WindowLauncher` + RTL + `WinUi`/`Cupertino` presets.<br>**Web WASM (~66%):** `wasm-bindgen` + Craftpad + headless Chrome CI + lean `gpu-sdf`/`cpu-tiny-skia` builds (**4.1 MB raw / ~1.21 MB gzipped** for `notes`).<br>**Android (~38–42%):** `GameActivity` + JNI + Gradle generator + live Kotlin `dispatchCraftUiMethodChannel` & JNI forwarding + `android-emulator-smoke` CI job in `ci.yml` (template & JNI verified locally; live emulator run is CI-only).<br>**iOS (~30–35%):** `IosAppHost` + C-FFI + Metal hook + `CraftUIMethodChannelRouter` Swift handler (`camera`, `biometrics`, `notifications`, `url_launcher`) + updated `CraftUI.h` header (not yet compiled/tested on macOS/Xcode). |
+| **Ecosystem & Packages** | **28–32%** | pub.dev / crates.io | `crates.io` dependency support (`craftui add`), `craftui new --plugin` scaffolding, async `MethodChannel` pipelines on Rust/Android/iOS, **4 built-in plugins** (`camera`, `biometrics`, `notifications`, `url_launcher`), and workspace crates metadata ready (`cargo publish` still pending live token/release). Community plugin volume remains far smaller than `pub.dev` or `npm`. |
 
 ---
 
@@ -46,11 +46,18 @@ This document provides an honest, engineering-level assessment of where **CraftU
 3. **Automated Android Emulator CI (`android-emulator-smoke` in `.github/workflows/ci.yml`):**
    - Added a `macos-14` `android-emulator-smoke` job running `reactivecircus/android-emulator-runner@v2` (`api-level: 34`, `arch: arm64-v8a`) to install, launch, verify `pidof dev.craftui.notes`, and scan `adb logcat` for fatal exceptions on the built Notes APK. Note: iOS Xcode simulator CI (`macos-latest` Swift compilation) remains pending for Step 4+.
 
-### Step 4 — Polish, i18n/RTL, Media & 1.0 Release (Target: 90–100%)
-1. **i18n / Localization & Full RTL (`Direction::Rtl`):**
-   - String translation catalog loader (JSON/Fluent), locale signal switching, and automatic RTL layout/text mirroring in `taffy` + `parley`.
-2. **Media & Rich Editing:**
-   - Audio/Video playback surface backed by `PlatformView` textures and interactive `RichTextEditor` (styled spans + cursor editing).
-3. **Native Adaptive Presets & `crates.io` Publishing:**
-   - Cupertino (iOS/macOS) and WinUI (Windows) token/component presets alongside Material 3.
-   - Publish `craftui-*` crates to `crates.io` and add `craftui new --plugin` scaffolding template.
+### Step 4 — i18n/RTL, Media & Rich Editor, Adaptive Presets & Plugin CLI (Completed on Branch)
+1. **i18n / Localization & Full RTL (`crates/craftui-core/src/i18n.rs`, `craftui-widgets`):**
+   - Added `LocalizationCatalog` (JSON locale loading, regional subtag -> fallback locale chain, `{param}` interpolation) and `is_rtl_locale` / `locale_direction` helpers.
+   - Added `WidgetTree::set_direction` / `set_locale` + automatic `taffy` flex reversal and `effective_text_align` Start/End mirroring for `Text`, `RichText`, `TextInput`, and `RichTextEditor`.
+2. **Media & Rich Editing (`crates/craftui-widgets/src/media_editor.rs` + DSL/Runtime):**
+   - Added `WidgetKind::MediaPlayer` (`VideoPlayer`, `AudioPlayer`, `MediaPlayer`) with `MediaController` transport state (`play/pause`, `seek_fraction`, `mute`, `PlatformViewId` video surface hole emission) across widgets, validator, AOT codegen, and hot-reload interpreter.
+   - Added `WidgetKind::RichTextEditor` with `RichEditorController` (`B`/`I`/`U` formatting toolbar, `StyledSpanRange` management, cursor/keyboard/Ctrl+B/I/U & IME input).
+3. **Adaptive Design Presets & Plugin Scaffolding (`crates/craftui-core/src/theme.rs`, `tools/craftui-cli`):**
+   - Added `DesignSystem::{Material3, Cupertino, WinUi}`, `ThemeTokens::cupertino_light/dark`, `winui_light/dark`, `from_preset`, and `WidgetTree::set_design_preset`.
+   - Added `craftui new <name> --plugin` / `--template plugin` scaffolding (`CraftPlugin` Rust crate + Kotlin/Swift stubs + `craftui.toml`) and completed `description` metadata across workspace `Cargo.toml` files (`crates.io` live publishing still requires maintainer credentials/release).
+
+### Remaining Path from ~60–65% to 90–100% (Beyond Step 4)
+1. Live execution verification on physical/CI Android emulator + macOS/Xcode iOS simulator runners (`ci.yml`).
+2. `crates.io` release publication across the 15 workspace crates + community plugin registry index.
+3. Custom WGSL shader effects, native OS System Tray (`tray-icon` integration), hardware AVFoundation/ExoPlayer video codecs, and rich block embeds.

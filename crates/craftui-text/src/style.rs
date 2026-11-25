@@ -87,6 +87,16 @@ impl TextStyle {
         self.font_family = Some(family.into());
         self
     }
+
+    pub fn with_italic(mut self, italic: bool) -> Self {
+        self.italic = italic;
+        self
+    }
+
+    pub fn with_underline(mut self, underline: bool) -> Self {
+        self.underline = underline;
+        self
+    }
 }
 
 /// A styled segment of text within a [`RichText`] container.
@@ -139,6 +149,18 @@ pub struct RichText {
 impl RichText {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn from_spans(spans: impl IntoIterator<Item = TextSpan>) -> Self {
+        Self {
+            spans: spans.into_iter().collect(),
+            ..Self::default()
+        }
+    }
+
+    pub fn with_align(mut self, align: TextAlign) -> Self {
+        self.align = align;
+        self
     }
 
     pub fn push(&mut self, span: TextSpan) -> &mut Self {

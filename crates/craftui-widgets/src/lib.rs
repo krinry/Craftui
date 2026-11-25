@@ -4,6 +4,7 @@ pub mod anim;
 pub mod form;
 pub mod gesture;
 pub mod inspector;
+pub mod media_editor;
 pub mod pickers;
 pub mod router;
 pub mod toast;
@@ -16,6 +17,7 @@ pub use anim::{
 pub use form::{FieldValidator, FormGroup, ValidationRule};
 pub use gesture::{GestureArena, RecognizedGesture, ScrollPhysics, VelocityTracker};
 pub use inspector::InspectorState;
+pub use media_editor::{MediaController, MediaKind, RichEditorController, StyledSpanRange};
 pub use router::{Router, RouterTransition};
 pub use toast::{ToastItem, ToastManager, ToastSeverity};
 pub use tree::{TreeUiSnapshot, VirtualItemFactory, WidgetNode, WidgetTree};

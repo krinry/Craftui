@@ -424,6 +424,44 @@ impl WidgetTree {
         self.theme_spring = Some((from, to, spring));
     }
 
+    /// Apply a native adaptive [`DesignSystem`](craftui_core::DesignSystem) preset (`Material3`, `Cupertino`, `WinUi`).
+    pub fn set_design_preset(&mut self, preset: craftui_core::DesignSystem, mode: ThemeMode) {
+        let from = self.theme_signal.get();
+        let ov = self.theme_override_signal.get_untracked();
+        let to = ThemeTokens::from_preset(preset, mode).applied(&ov);
+        let mut spring = Spring::new(0.0, 260.0, 28.0);
+        spring.set_target(1.0);
+        self.theme_spring = Some((from, to, spring));
+    }
+
+    /// Current layout writing direction (`Ltr` or `Rtl`).
+    pub fn direction(&self) -> Direction {
+        self.direction
+    }
+
+    /// Switch layout and text alignment direction (`Direction::Ltr` / `Direction::Rtl`), triggering re-layout.
+    pub fn set_direction(&mut self, direction: Direction) {
+        if self.direction == direction {
+            return;
+        }
+        self.direction = direction;
+        if let Some(root) = self.root {
+            self.layout_engine.mark_dirty(root);
+        }
+        let ids: Vec<NodeId> = self.nodes.keys().collect();
+        for id in ids {
+            self.layout_engine.mark_dirty(id);
+            if let Some(n) = self.nodes.get_mut(id) {
+                n.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y;
+            }
+        }
+    }
+
+    /// Apply locale-appropriate layout direction (`ar`/`he`/`fa`/`ur` -> `Rtl`, else `Ltr`).
+    pub fn set_locale(&mut self, locale: &str) {
+        self.set_direction(craftui_core::locale_direction(locale));
+    }
+
     pub fn set_root(&mut self, root: NodeId) {
         self.root = Some(root);
     }
@@ -1177,6 +1215,21 @@ impl WidgetTree {
                     });
                 }
             }
+            WidgetKind::MediaPlayer {
+                source, controller, ..
+            } => {
+                let source = source.clone();
+                if source.is_dynamic() {
+                    scope.effect(move || {
+                        let _ = source.get();
+                        mark_node_dirty(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+                    });
+                }
+                controller.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+            }
+            WidgetKind::RichTextEditor { controller, .. } => {
+                controller.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y | DirtyFlags::TEXT);
+            }
             _ => {}
         }
 
@@ -1304,7 +1357,13 @@ impl WidgetTree {
     pub fn focused_is_text_input(&self) -> bool {
         self.focused
             .and_then(|id| self.nodes.get(id))
-            .is_some_and(|n| !n.is_disabled() && matches!(n.kind, WidgetKind::TextInput { .. }))
+            .is_some_and(|n| {
+                !n.is_disabled()
+                    && matches!(
+                        n.kind,
+                        WidgetKind::TextInput { .. } | WidgetKind::RichTextEditor { .. }
+                    )
+            })
     }
 
     pub fn reset_caret_blink(&mut self, now_ms: u64) {

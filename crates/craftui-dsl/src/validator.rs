@@ -86,6 +86,10 @@ pub const BUILTIN_WIDGETS: &[&str] = &[
     "MenuBar",
     "Draggable",
     "DropTarget",
+    "VideoPlayer",
+    "AudioPlayer",
+    "MediaPlayer",
+    "RichTextEditor",
     "div",
     "span",
     "p",
@@ -574,6 +578,19 @@ pub fn props_for_widget(kind: &str) -> Vec<&'static str> {
             out.extend_from_slice(CONTAINER_PROPS);
             out.extend_from_slice(&["accept_prefix", "accept"]);
         }
+        "VideoPlayer" | "AudioPlayer" | "MediaPlayer" => {
+            out.extend_from_slice(&[
+                "source",
+                "src",
+                "autoplay",
+                "show_controls",
+                "controls",
+                "duration",
+            ]);
+        }
+        "RichTextEditor" => {
+            out.extend_from_slice(&["text", "value", "placeholder", "font_size", "color"]);
+        }
         "div" | "section" | "nav" | "header" | "footer" | "main" | "article" | "aside" => {
             out.extend_from_slice(CONTAINER_PROPS);
         }
@@ -607,6 +624,12 @@ pub fn events_for_widget(kind: &str) -> Vec<&'static str> {
         }
         "DropTarget" => {
             out.push("on_drop");
+        }
+        "VideoPlayer" | "AudioPlayer" | "MediaPlayer" => {
+            out.extend_from_slice(&["on_toggle_play", "on_change"]);
+        }
+        "RichTextEditor" => {
+            out.push("on_change");
         }
         "Accordion" => out.extend_from_slice(&["on_change", "on_toggle"]),
         "DataTable" => out.extend_from_slice(&["on_select", "on_change", "on_sort"]),
@@ -1081,6 +1104,14 @@ fn populate_handler_locals(
         ("DropTarget", "on_drop") => {
             locals.insert("payload".into(), TypeExpr::Named("string".into()));
             locals.insert("value".into(), TypeExpr::Named("string".into()));
+        }
+        ("VideoPlayer" | "AudioPlayer" | "MediaPlayer", "on_toggle_play" | "on_change") => {
+            locals.insert("playing".into(), TypeExpr::Named("bool".into()));
+            locals.insert("value".into(), TypeExpr::Named("bool".into()));
+        }
+        ("RichTextEditor", "on_change") => {
+            locals.insert("value".into(), TypeExpr::Named("string".into()));
+            locals.insert("text".into(), TypeExpr::Named("string".into()));
         }
         ("Accordion", "on_change" | "on_toggle") => {
             locals.insert("expanded".into(), TypeExpr::Named("bool".into()));

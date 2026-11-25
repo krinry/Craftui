@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Cross-platform declarative UI framework in Rust with fine-grained signals, .cui DSL, and GPU/CPU rendering"
 
 [features]
 default = [

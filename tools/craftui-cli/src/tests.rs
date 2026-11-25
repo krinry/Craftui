@@ -24,6 +24,7 @@ fn scaffolds_all_templates_init_permissions_and_cross_platform_bundles() {
         (ProjectTemplate::Counter, "counter_demo"),
         (ProjectTemplate::Dashboard, "dash_demo"),
         (ProjectTemplate::Mobile, "mobile_demo"),
+        (ProjectTemplate::Plugin, "plugin_demo"),
     ] {
         let dir = base_tmp.join(sub);
         scaffold_project_with_template(sub, &dir, tmpl).unwrap();

@@ -210,6 +210,8 @@ impl WidgetTree {
                     | WidgetKind::MenuBar { .. }
                     | WidgetKind::Draggable { .. }
                     | WidgetKind::DropTarget { .. }
+                    | WidgetKind::MediaPlayer { .. }
+                    | WidgetKind::RichTextEditor { .. }
                     | WidgetKind::Custom(_)
             )
     }
@@ -1336,6 +1338,60 @@ impl WidgetTree {
                         node.dirty |= DirtyFlags::PAINT;
                     }
                 }
+                WidgetKind::MediaPlayer {
+                    kind,
+                    controller,
+                    on_toggle_play,
+                    ..
+                } => {
+                    let (_, play_r, scrub_r, mute_r) =
+                        crate::media_editor::media_control_rects(rect, *kind);
+                    if play_r.contains(local_pos) {
+                        let mut playing_now = false;
+                        controller.update(|c| {
+                            c.toggle_play();
+                            playing_now = c.playing;
+                        });
+                        if let Some(cb) = on_toggle_play.clone() {
+                            bool_cb = Some((cb, playing_now));
+                        }
+                        node.dirty |= DirtyFlags::PAINT;
+                    } else if mute_r.contains(local_pos) {
+                        controller.update(|c| c.toggle_mute());
+                        node.dirty |= DirtyFlags::PAINT;
+                    } else if scrub_r.contains(local_pos) && scrub_r.width > 0.0 {
+                        let frac = ((local_pos.x - scrub_r.x) / scrub_r.width).clamp(0.0, 1.0);
+                        controller.update(|c| c.seek_fraction(frac));
+                        node.dirty |= DirtyFlags::PAINT;
+                    }
+                }
+                WidgetKind::RichTextEditor {
+                    controller, style, ..
+                } => {
+                    if let Some(btn_idx) =
+                        crate::media_editor::rich_editor_hit_toolbar(rect, local_pos)
+                    {
+                        controller.update(|c| match btn_idx {
+                            0 => c.toggle_bold(),
+                            1 => c.toggle_italic(),
+                            _ => c.toggle_underline(),
+                        });
+                    } else {
+                        let (_, text_r) = crate::media_editor::rich_editor_layout(rect);
+                        let inner_x = local_pos.x - text_r.x;
+                        let inner_y = local_pos.y - text_r.y;
+                        let snap = controller.get_untracked();
+                        let layout = self.text_engine.build_layout_cached(
+                            &snap.editor.text,
+                            style,
+                            Some(text_r.width),
+                        );
+                        let byte_idx = self.text_engine.hit_test_point(&layout, inner_x, inner_y);
+                        controller.update(|c| c.editor.set_cursor_at(byte_idx, false));
+                    }
+                    node.dirty |= DirtyFlags::PAINT;
+                    reset_caret = true;
+                }
                 _ => {}
             }
         }
@@ -2126,6 +2182,84 @@ impl WidgetTree {
                     node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
                     reset_caret = true;
                 }
+                WidgetKind::RichTextEditor { controller, .. } => {
+                    let mut next_text: Option<String> = None;
+                    controller.update(|ctrl| {
+                        let prev = ctrl.editor.text.clone();
+                        match &ke.code {
+                            KeyCode::Backspace => {
+                                ctrl.editor.backspace();
+                                ctrl.sync_span_bounds();
+                            }
+                            KeyCode::Delete => {
+                                ctrl.editor.delete_forward();
+                                ctrl.sync_span_bounds();
+                            }
+                            KeyCode::ArrowLeft => ctrl.editor.move_left(ke.modifiers.shift),
+                            KeyCode::ArrowRight => ctrl.editor.move_right(ke.modifiers.shift),
+                            KeyCode::ArrowUp => ctrl.editor.move_up(ke.modifiers.shift),
+                            KeyCode::ArrowDown => ctrl.editor.move_down(ke.modifiers.shift),
+                            KeyCode::Home => ctrl.editor.move_home(ke.modifiers.shift),
+                            KeyCode::End => ctrl.editor.move_end(ke.modifiers.shift),
+                            code if ke.modifiers.command() && code.matches_ascii_letter('A') => {
+                                ctrl.editor.select_all();
+                            }
+                            code if ke.modifiers.command() && code.matches_ascii_letter('B') => {
+                                ctrl.toggle_bold();
+                            }
+                            code if ke.modifiers.command() && code.matches_ascii_letter('I') => {
+                                ctrl.toggle_italic();
+                            }
+                            code if ke.modifiers.command() && code.matches_ascii_letter('U') => {
+                                ctrl.toggle_underline();
+                            }
+                            code if ke.modifiers.command() && code.matches_ascii_letter('V') => {
+                                if let Some(ref clip) = paste_clip {
+                                    ctrl.insert_str(clip);
+                                }
+                            }
+                            KeyCode::Enter => ctrl.insert_str("\n"),
+                            _ => {
+                                if let Some(ref txt) = ke.text
+                                    && !ke.modifiers.command()
+                                    && !ke.modifiers.ctrl
+                                    && !ke.modifiers.alt
+                                    && !txt.chars().all(|c| c.is_control())
+                                {
+                                    ctrl.insert_str(txt);
+                                }
+                            }
+                        }
+                        if ctrl.editor.text != prev {
+                            next_text = Some(ctrl.editor.text.clone());
+                        }
+                    });
+                    if let Some(txt) = next_text {
+                        node.a11y.value = Some(txt.clone());
+                        text_changed = Some(txt);
+                    }
+                    node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                    reset_caret = true;
+                }
+                WidgetKind::MediaPlayer {
+                    controller,
+                    on_toggle_play,
+                    ..
+                } => {
+                    if matches!(ke.code, KeyCode::Space | KeyCode::Enter) {
+                        let mut playing_now = false;
+                        controller.update(|c| {
+                            c.toggle_play();
+                            playing_now = c.playing;
+                        });
+                        if let Some(cb) = on_toggle_play.clone() {
+                            if let Ok(mut f) = cb.try_borrow_mut() {
+                                f(playing_now);
+                            }
+                        }
+                        node.dirty |= DirtyFlags::PAINT;
+                    }
+                }
                 WidgetKind::Button { .. }
                 | WidgetKind::Checkbox { .. }
                 | WidgetKind::Switch { .. }
@@ -2567,7 +2701,8 @@ impl WidgetTree {
             let cb = self.nodes.get(focused).and_then(|n| match &n.kind {
                 WidgetKind::TextInput { on_change, .. }
                 | WidgetKind::DatePicker { on_change, .. }
-                | WidgetKind::TimePicker { on_change, .. } => on_change.clone(),
+                | WidgetKind::TimePicker { on_change, .. }
+                | WidgetKind::RichTextEditor { on_change, .. } => on_change.clone(),
                 _ => None,
             });
             if let Some(func) = cb
@@ -2600,37 +2735,53 @@ impl WidgetTree {
             return false;
         };
         let mut changed_cb: Option<(crate::widgets::TextCallback, String)> = None;
-        let WidgetKind::TextInput {
-            editor,
-            bound_signal,
-            on_change,
-            ..
-        } = &mut node.kind
-        else {
-            return false;
-        };
-        match ime {
-            craftui_core::ImeEvent::Preedit(s, cur) => {
-                editor.preedit = if s.is_empty() { None } else { Some(s.clone()) };
-                editor.preedit_cursor = *cur;
-            }
-            craftui_core::ImeEvent::Commit(s) => {
-                editor.preedit = None;
-                editor.preedit_cursor = None;
-                editor.insert_str(s);
-                node.a11y.value = Some(editor.text.clone());
-                if let Some(sig) = bound_signal {
-                    sig.set(editor.text.clone());
+        match &mut node.kind {
+            WidgetKind::TextInput {
+                editor,
+                bound_signal,
+                on_change,
+                ..
+            } => match ime {
+                craftui_core::ImeEvent::Preedit(s, cur) => {
+                    editor.preedit = if s.is_empty() { None } else { Some(s.clone()) };
+                    editor.preedit_cursor = *cur;
                 }
-                if let Some(cb) = on_change.clone() {
-                    changed_cb = Some((cb, editor.text.clone()));
+                craftui_core::ImeEvent::Commit(s) => {
+                    editor.preedit = None;
+                    editor.preedit_cursor = None;
+                    editor.insert_str(s);
+                    node.a11y.value = Some(editor.text.clone());
+                    if let Some(sig) = bound_signal {
+                        sig.set(editor.text.clone());
+                    }
+                    if let Some(cb) = on_change.clone() {
+                        changed_cb = Some((cb, editor.text.clone()));
+                    }
+                }
+                craftui_core::ImeEvent::Disabled => {
+                    editor.preedit = None;
+                    editor.preedit_cursor = None;
+                }
+                craftui_core::ImeEvent::Enabled => {}
+            },
+            WidgetKind::RichTextEditor {
+                controller,
+                on_change,
+                ..
+            } => {
+                if let craftui_core::ImeEvent::Commit(s) = ime {
+                    let mut updated = String::new();
+                    controller.update(|c| {
+                        c.insert_str(s);
+                        updated = c.editor.text.clone();
+                    });
+                    node.a11y.value = Some(updated.clone());
+                    if let Some(cb) = on_change.clone() {
+                        changed_cb = Some((cb, updated));
+                    }
                 }
             }
-            craftui_core::ImeEvent::Disabled => {
-                editor.preedit = None;
-                editor.preedit_cursor = None;
-            }
-            craftui_core::ImeEvent::Enabled => {}
+            _ => return false,
         }
         node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
         if let Some((cb, txt)) = changed_cb

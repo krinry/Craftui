@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Language Server Protocol (tower-lsp) implementation for CraftUI .cui files"
 
 [lints]
 workspace = true

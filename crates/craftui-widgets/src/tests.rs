@@ -2793,3 +2793,154 @@ fn menu_bar_and_cross_widget_drag_drop_work() {
     tree.paint(&mut scene);
     assert!(!scene.commands.is_empty());
 }
+
+#[test]
+fn rtl_locale_adaptive_presets_media_player_and_rich_editor_work() {
+    reset_runtime();
+    let cx = Scope::root();
+    let mut tree = WidgetTree::new(cx);
+
+    // 1) DesignSystem presets (Cupertino & WinUI)
+    tree.set_design_preset(craftui_core::DesignSystem::Cupertino, ThemeMode::Light);
+    tree.tick_animations(1.0);
+    let _ = tree.theme();
+    let cupertino = craftui_core::ThemeTokens::cupertino_light();
+    let winui = craftui_core::ThemeTokens::winui_dark();
+    assert_eq!(cupertino.primary, craftui_core::Color::rgb(0, 122, 255));
+    assert_eq!(winui.primary, craftui_core::Color::rgb(96, 205, 255));
+
+    // 2) Localization + RTL layout mirroring
+    let mut catalog = craftui_core::LocalizationCatalog::new("en");
+    catalog
+        .load_locale_json("ar", r#"{"send": "إرسال"}"#)
+        .unwrap();
+    assert_eq!(catalog.translate("ar-EG", "send"), "إرسال");
+
+    let row = tree.row(cx);
+    let a = tree.text(cx, "A", TextStyle::default());
+    let b = tree.text(cx, "B", TextStyle::default());
+    tree.append_child(row, a);
+    tree.append_child(row, b);
+
+    let media_ctrl = cx.signal(
+        crate::MediaController::new(90.0)
+            .with_platform_view(craftui_core::PlatformViewId::from_raw(7)),
+    );
+    let played = Rc::new(Cell::new(false));
+    let played_c = played.clone();
+    let player = tree.media_player(
+        cx,
+        crate::MediaKind::Video,
+        "demo.mp4",
+        media_ctrl,
+        false,
+        true,
+        Some(move |is_playing| played_c.set(is_playing)),
+    );
+    tree.append_child(row, player);
+
+    let rich_ctrl = cx.signal(crate::RichEditorController::with_text("Hi "));
+    let rich_ed = tree.rich_text_editor(
+        cx,
+        rich_ctrl,
+        "Placeholder",
+        TextStyle::default(),
+        None::<fn(String)>,
+    );
+    tree.append_child(row, rich_ed);
+
+    tree.set_root(row);
+    let metrics = WindowMetrics {
+        logical_size: Size::new(800.0, 400.0),
+        ..Default::default()
+    };
+
+    tree.layout(metrics);
+    let ax_ltr = tree.layout_engine.rect(a).x;
+    let bx_ltr = tree.layout_engine.rect(b).x;
+    assert!(
+        ax_ltr < bx_ltr,
+        "LTR expects a.x < b.x ({ax_ltr} vs {bx_ltr})"
+    );
+
+    tree.set_locale("ar-SA");
+    assert_eq!(tree.direction(), craftui_core::Direction::Rtl);
+    tree.layout(metrics);
+    let ax_rtl = tree.layout_engine.rect(a).x;
+    let bx_rtl = tree.layout_engine.rect(b).x;
+    assert!(
+        ax_rtl > bx_rtl,
+        "RTL expects a.x > b.x ({ax_rtl} vs {bx_rtl})"
+    );
+
+    // 3) MediaPlayer play button click + PlatformViewHole paint command
+    let player_rect = tree.layout_engine.rect(player);
+    let (_, play_r, scrub_r, _) =
+        crate::media_editor::media_control_rects(player_rect, crate::MediaKind::Video);
+    for (phase, ts) in [(PointerPhase::Down, 10), (PointerPhase::Up, 20)] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            position: play_r.center(),
+            phase,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: ts,
+        }));
+    }
+    assert!(
+        played.get(),
+        "clicking MediaPlayer play button toggles playback"
+    );
+    for (phase, ts) in [(PointerPhase::Down, 30), (PointerPhase::Up, 35)] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            position: scrub_r.center(),
+            phase,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: ts,
+        }));
+    }
+    assert!((media_ctrl.get_untracked().position_secs - 45.0).abs() < 2.0);
+
+    // 4) RichTextEditor toolbar Bold click + typing + Paint check
+    let rich_rect = tree.layout_engine.rect(rich_ed);
+    let (btns, text_r) = crate::media_editor::rich_editor_layout(rich_rect);
+    for (phase, ts) in [(PointerPhase::Down, 40), (PointerPhase::Up, 50)] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            position: btns[0].center(),
+            phase,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: ts,
+        }));
+    }
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: text_r.center(),
+        phase: PointerPhase::Down,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 60,
+    }));
+    tree.handle_event(&UiEvent::Ime(craftui_core::ImeEvent::Commit(
+        "Bold!".into(),
+    )));
+    assert!(rich_ctrl.get_untracked().editor.text.contains("Bold!"));
+    assert!(rich_ctrl.get_untracked().active_bold);
+
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    assert!(
+        scene
+            .commands
+            .iter()
+            .any(|c| matches!(c, craftui_render::PaintCommand::PlatformViewHole { .. })),
+        "VideoPlayer with PlatformViewId must emit PlatformViewHole"
+    );
+}

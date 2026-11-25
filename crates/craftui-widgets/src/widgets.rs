@@ -503,6 +503,22 @@ pub enum WidgetKind {
         hovered_drag: bool,
         on_drop: Option<TextCallback>,
     },
+    /// Audio or Video media playback surface with transport controls and optional `PlatformViewId`.
+    MediaPlayer {
+        kind: crate::MediaKind,
+        source: ReactiveValue<String>,
+        controller: Signal<crate::MediaController>,
+        autoplay: bool,
+        show_controls: bool,
+        on_toggle_play: Option<BoolCallback>,
+    },
+    /// Interactive formatted rich-text editor with `B`/`I`/`U` toolbar, styled spans, and IME input.
+    RichTextEditor {
+        controller: Signal<crate::RichEditorController>,
+        placeholder: String,
+        style: TextStyle,
+        on_change: Option<TextCallback>,
+    },
     Custom(Rc<RefCell<dyn CustomWidget>>),
 }
 

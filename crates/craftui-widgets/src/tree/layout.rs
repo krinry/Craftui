@@ -535,6 +535,30 @@ impl WidgetTree {
                         };
                         Size::new(w, 34.0)
                     }
+                    WidgetKind::MediaPlayer { kind, .. } => {
+                        let default_w = match kind {
+                            crate::MediaKind::Video => 360.0,
+                            crate::MediaKind::Audio => 320.0,
+                        };
+                        let w = if constraints.max_width.is_finite() {
+                            constraints.max_width.min(default_w)
+                        } else {
+                            default_w
+                        };
+                        let h = match kind {
+                            crate::MediaKind::Video => 210.0,
+                            crate::MediaKind::Audio => 56.0,
+                        };
+                        Size::new(w, h)
+                    }
+                    WidgetKind::RichTextEditor { .. } => {
+                        let w = if constraints.max_width.is_finite() {
+                            constraints.max_width.min(480.0)
+                        } else {
+                            320.0
+                        };
+                        Size::new(w, 160.0)
+                    }
                     WidgetKind::Custom(cw) => {
                         if let Ok(mut guard) = cw.try_borrow_mut() {
                             guard.measure(constraints, text_engine, &theme)

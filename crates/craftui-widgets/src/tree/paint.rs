@@ -1,5 +1,18 @@
 use super::*;
 
+#[inline]
+fn effective_text_align(align: craftui_text::TextAlign, dir: Direction) -> craftui_text::TextAlign {
+    if dir == Direction::Rtl {
+        match align {
+            craftui_text::TextAlign::Start => craftui_text::TextAlign::End,
+            craftui_text::TextAlign::End => craftui_text::TextAlign::Start,
+            other => other,
+        }
+    } else {
+        align
+    }
+}
+
 impl WidgetTree {
     /// Record [`PaintScene`] commands from the retained widget tree.
     pub fn paint(&mut self, scene: &mut PaintScene) {
@@ -515,10 +528,13 @@ impl WidgetTree {
                 if st.color == Color::TRANSPARENT {
                     st.color = theme.text_primary;
                 }
+                st.align = effective_text_align(st.align, self.direction);
                 scene.draw_text(rect.origin(), txt, st, Some(rect.width.max(1.0)));
             }
             WidgetKind::RichText { content, .. } => {
-                scene.draw_rich_text(rect.origin(), content.get(), Some(rect.width.max(1.0)));
+                let mut rich = content.get();
+                rich.align = effective_text_align(rich.align, self.direction);
+                scene.draw_rich_text(rect.origin(), rich, Some(rect.width.max(1.0)));
             }
             WidgetKind::Icon { svg, color, .. } => {
                 let tint = color.map(|c| c.get()).unwrap_or(theme.text_primary);
@@ -759,6 +775,7 @@ impl WidgetTree {
                 });
                 let disp = editor.display_text().into_owned();
                 let mut draw_style = style.clone();
+                draw_style.align = effective_text_align(draw_style.align, self.direction);
                 let font_sz = draw_style.font_size;
                 if disp.is_empty() {
                     draw_style.color = theme.text_secondary;
@@ -2671,6 +2688,194 @@ impl WidgetTree {
                     scene.fill_rect(rect, theme.primary.with_alpha(0.08), box_style.radius);
                     scene.stroke_rect(rect, theme.primary, 2.0, box_style.radius);
                 }
+            }
+            WidgetKind::MediaPlayer {
+                kind,
+                source,
+                controller,
+                show_controls,
+                ..
+            } => {
+                let rad = CornerRadii::all(theme.radius_md.min(10.0));
+                let ctrl = controller.get_untracked();
+                scene.fill_rect(rect, theme.surface_container, rad);
+                let (surface_r, play_r, scrub_r, mute_r) =
+                    crate::media_editor::media_control_rects(rect, kind);
+                if matches!(kind, crate::MediaKind::Video) && surface_r.height > 4.0 {
+                    if let Some(pv_id) = ctrl.platform_view_id {
+                        scene.push(PaintCommand::PlatformViewHole {
+                            id: pv_id,
+                            rect: surface_r,
+                        });
+                    } else {
+                        scene.fill_rect(surface_r, Color::rgb(16, 20, 28), CornerRadii::ZERO);
+                        let src_label = source.get();
+                        let st = TextStyle::default()
+                            .with_size(12.5)
+                            .with_color(Color::rgb(203, 213, 225));
+                        scene.draw_text(
+                            Point::new(surface_r.x + 12.0, surface_r.y + 10.0),
+                            if src_label.is_empty() {
+                                "Video Surface".to_string()
+                            } else {
+                                src_label
+                            },
+                            st,
+                            Some((surface_r.width - 24.0).max(40.0)),
+                        );
+                    }
+                }
+                if show_controls {
+                    let play_bg = if ctrl.playing {
+                        theme.primary
+                    } else {
+                        theme.surface_variant
+                    };
+                    let play_fg = if ctrl.playing {
+                        theme.on_primary
+                    } else {
+                        theme.text_primary
+                    };
+                    scene.fill_rect(play_r, play_bg, CornerRadii::all(6.0));
+                    scene.draw_text(
+                        Point::new(play_r.x + 8.0, play_r.y + 5.0),
+                        if ctrl.playing { "||" } else { ">" },
+                        TextStyle::default()
+                            .with_size(13.0)
+                            .with_weight(700.0)
+                            .with_color(play_fg),
+                        None,
+                    );
+                    scene.fill_rect(scrub_r, theme.border, CornerRadii::all(4.0));
+                    let fill_w = scrub_r.width * ctrl.progress_fraction();
+                    if fill_w > 0.5 {
+                        scene.fill_rect(
+                            Rect::new(scrub_r.x, scrub_r.y, fill_w, scrub_r.height),
+                            theme.primary,
+                            CornerRadii::all(4.0),
+                        );
+                    }
+                    let tc = format!(
+                        "{}/{}",
+                        crate::MediaController::format_timecode(ctrl.position_secs),
+                        crate::MediaController::format_timecode(ctrl.duration_secs)
+                    );
+                    scene.draw_text(
+                        Point::new(scrub_r.max_x() + 6.0, play_r.y + 6.0),
+                        tc,
+                        TextStyle::default()
+                            .with_size(11.0)
+                            .with_color(theme.text_secondary),
+                        None,
+                    );
+                    scene.fill_rect(mute_r, theme.surface_variant, CornerRadii::all(6.0));
+                    scene.draw_text(
+                        Point::new(mute_r.x + 6.0, mute_r.y + 5.0),
+                        if ctrl.muted { "M" } else { "V" },
+                        TextStyle::default()
+                            .with_size(12.0)
+                            .with_weight(600.0)
+                            .with_color(theme.text_primary),
+                        None,
+                    );
+                }
+                scene.stroke_rect(rect, theme.border, 1.0, rad);
+            }
+            WidgetKind::RichTextEditor {
+                controller,
+                placeholder,
+                style,
+                ..
+            } => {
+                let rad = CornerRadii::all(theme.radius_md.min(10.0));
+                let is_active = self.focused == Some(id);
+                scene.fill_rect(rect, theme.surface, rad);
+                scene.stroke_rect(
+                    rect,
+                    if is_active {
+                        theme.primary
+                    } else {
+                        theme.border
+                    },
+                    if is_active { 1.8 } else { 1.0 },
+                    rad,
+                );
+                let (btns, text_r) = crate::media_editor::rich_editor_layout(rect);
+                let snap = controller.get_untracked();
+                let flags = [
+                    ("B", snap.active_bold),
+                    ("I", snap.active_italic),
+                    ("U", snap.active_underline),
+                ];
+                for ((lbl, active), br) in flags.iter().zip(btns.iter()) {
+                    scene.fill_rect(
+                        *br,
+                        if *active {
+                            theme.primary
+                        } else {
+                            theme.surface_variant
+                        },
+                        CornerRadii::all(5.0),
+                    );
+                    scene.draw_text(
+                        Point::new(br.x + 9.0, br.y + 4.0),
+                        *lbl,
+                        TextStyle::default()
+                            .with_size(12.5)
+                            .with_weight(700.0)
+                            .with_italic(*lbl == "I")
+                            .with_underline(*lbl == "U")
+                            .with_color(if *active {
+                                theme.on_primary
+                            } else {
+                                theme.text_primary
+                            }),
+                        None,
+                    );
+                }
+                scene.fill_rect(
+                    Rect::new(rect.x, text_r.y - 4.0, rect.width, 1.0),
+                    theme.border,
+                    CornerRadii::ZERO,
+                );
+                scene.push(PaintCommand::PushClip {
+                    rect: text_r,
+                    radius: CornerRadii::ZERO,
+                });
+                let mut draw_st = style.clone();
+                draw_st.align = effective_text_align(draw_st.align, self.direction);
+                if draw_st.color == Color::TRANSPARENT {
+                    draw_st.color = theme.text_primary;
+                }
+                if snap.editor.text.is_empty() {
+                    let mut ph_st = draw_st.clone();
+                    ph_st.color = theme.text_secondary;
+                    scene.draw_text(text_r.origin(), &placeholder, ph_st, Some(text_r.width));
+                    if is_active && self.caret_visible {
+                        scene.fill_rect(
+                            Rect::new(text_r.x, text_r.y, 2.0, draw_st.font_size * 1.25),
+                            theme.primary,
+                            CornerRadii::ZERO,
+                        );
+                    }
+                } else {
+                    let rich = snap.to_rich_text(&draw_st);
+                    scene.draw_rich_text(text_r.origin(), rich, Some(text_r.width));
+                    if is_active && self.caret_visible {
+                        let layout = self.text_engine.build_layout_cached(
+                            &snap.editor.text,
+                            &draw_st,
+                            Some(text_r.width),
+                        );
+                        let cr = self.text_engine.cursor_rect(&layout, snap.editor.cursor);
+                        scene.fill_rect(
+                            Rect::new(text_r.x + cr.x, text_r.y + cr.y, 2.0, cr.height),
+                            theme.primary,
+                            CornerRadii::ZERO,
+                        );
+                    }
+                }
+                scene.push(PaintCommand::PopClip);
             }
             WidgetKind::Custom(cw) => {
                 if let Ok(mut guard) = cw.try_borrow_mut() {

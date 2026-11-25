@@ -7,6 +7,7 @@ pub mod error;
 pub mod events;
 pub mod geometry;
 pub mod hybrid;
+pub mod i18n;
 pub mod ids;
 pub mod platform;
 pub mod plugin;
@@ -34,6 +35,7 @@ pub use hybrid::{
     CRAFTUI_TAURI_IPC_SCRIPT, IpcMessage, IpcResponse, IpcRouter, ScreenKind, TailwindTokens,
     WebViewSource,
 };
+pub use i18n::{LocalizationCatalog, is_rtl_locale, locale_direction};
 pub use ids::{DirtyFlags, NodeId, PlatformViewId, ScopeId, TextureId};
 pub use platform::{
     AndroidPermissionSpec, AppLifecycleEvent, BatteryState, ClipboardBackend,
@@ -50,4 +52,6 @@ pub use style::{
     Alignment, Axis, BlendMode, Border, BoxShadow, Brush, ColorStop, CursorIcon, Direction, Fit,
     Justify, Length, auto, dp, pct, px,
 };
-pub use theme::{M3Elevation, Material3Tokens, ThemeMode, ThemeOverride, ThemeTokens};
+pub use theme::{
+    DesignSystem, M3Elevation, Material3Tokens, ThemeMode, ThemeOverride, ThemeTokens,
+};

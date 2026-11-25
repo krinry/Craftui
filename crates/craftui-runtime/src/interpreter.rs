@@ -893,6 +893,79 @@ pub(crate) fn build_element(
             }
             n
         }
+        "VideoPlayer" | "AudioPlayer" | "MediaPlayer" => {
+            let kind = if el.kind == "AudioPlayer" {
+                craftui_widgets::MediaKind::Audio
+            } else {
+                craftui_widgets::MediaKind::Video
+            };
+            let src_rv = find_prop(el, &["source", "src"])
+                .map(|p| expr_to_reactive_string(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(String::new()));
+            let autoplay = eval_prop("autoplay").map(|v| v.as_bool()).unwrap_or(false);
+            let show_controls = eval_prop("show_controls")
+                .or_else(|| eval_prop("controls"))
+                .map(|v| v.as_bool())
+                .unwrap_or(true);
+            let dur = eval_prop("duration").map(|v| v.as_f32()).unwrap_or(120.0);
+            let ctrl = scope.signal(craftui_widgets::MediaController::new(dur));
+            let n = tree.media_player(
+                scope,
+                kind,
+                src_rv,
+                ctrl,
+                autoplay,
+                show_controls,
+                None::<fn(bool)>,
+            );
+            if let Some(h) = el
+                .handlers
+                .iter()
+                .find(|h| h.event == "on_toggle_play" || h.event == "on_change")
+            {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_bool_change(n, move |playing| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("playing".into(), DynValue::Bool(playing));
+                    h_env.locals.insert("value".into(), DynValue::Bool(playing));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
+        "RichTextEditor" => {
+            let init = eval_prop("text")
+                .or_else(|| eval_prop("value"))
+                .map(|v| v.as_str())
+                .unwrap_or_default();
+            let ph = eval_prop("placeholder")
+                .map(|v| v.as_str())
+                .unwrap_or_else(|| "Write rich text...".into());
+            let ctrl = scope.signal(craftui_widgets::RichEditorController::with_text(init));
+            let n = tree.rich_text_editor(
+                scope,
+                ctrl,
+                ph,
+                craftui_text::TextStyle::default(),
+                None::<fn(String)>,
+            );
+            if let Some(h) = el.handlers.iter().find(|h| h.event == "on_change") {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_change(n, move |val| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("value".into(), DynValue::String(val.clone()));
+                    h_env.locals.insert("text".into(), DynValue::String(val));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
         "PopupMenu" => {
             let open_prop = find_prop(el, &["open", "visible"]);
             let open_rv = open_prop

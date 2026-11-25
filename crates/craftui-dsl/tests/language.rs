@@ -727,6 +727,16 @@ fn children_slot_and_new_picker_tree_widgets_validate_and_codegen() {
                     accept_prefix: "card:";
                     Text { text: "Drop here"; }
                 }
+                VideoPlayer {
+                    source: "intro.mp4";
+                    duration: 45;
+                }
+                AudioPlayer {
+                    source: "track.mp3";
+                }
+                RichTextEditor {
+                    text: "Formatted";
+                }
             }
         }
     "#;

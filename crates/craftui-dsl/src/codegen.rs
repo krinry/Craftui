@@ -1415,6 +1415,105 @@ fn emit_element(
                 );
             }
         }
+        "VideoPlayer" | "AudioPlayer" | "MediaPlayer" => {
+            let kind_expr = if el.kind == "AudioPlayer" {
+                "MediaKind::Audio"
+            } else {
+                "MediaKind::Video"
+            };
+            let src_rv = find_prop(el, &["source", "src"])
+                .map(|p| expr_to_reactive_string(&p.value, ctx))
+                .unwrap_or_else(|| "ReactiveValue::Static(String::new())".into());
+            let autoplay = find_prop(el, &["autoplay"])
+                .map(|p| expr_to_typed_rust(&p.value, "bool", ctx))
+                .unwrap_or_else(|| "false".into());
+            let show_controls = find_prop(el, &["show_controls", "controls"])
+                .map(|p| expr_to_typed_rust(&p.value, "bool", ctx))
+                .unwrap_or_else(|| "true".into());
+            let dur = find_prop(el, &["duration"])
+                .map(|p| expr_to_typed_rust(&p.value, "f32", ctx))
+                .unwrap_or_else(|| "120.0".into());
+            let ctrl_var = format!("__media_ctrl_{var}");
+            let _ = writeln!(
+                out,
+                "{indent}let {ctrl_var} = {cx}.signal(MediaController::new({dur}));"
+            );
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.media_player({cx}, {kind_expr}, {src_rv}, {ctrl_var}, {autoplay}, {show_controls}, None::<fn(bool)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_toggle_play", "on_change"]) {
+                let mut h_locals = ctx.locals.clone();
+                let mut alias_stmts = String::new();
+                let bind_p = can_bind_handler_local("playing", ctx);
+                let bind_v = can_bind_handler_local("value", ctx);
+                if bind_p {
+                    h_locals.insert("playing".into(), "bool".into());
+                    alias_stmts.push_str("let playing = __val; ");
+                }
+                if bind_v {
+                    h_locals.insert("value".into(), "bool".into());
+                    alias_stmts.push_str("let value = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_bool_change({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
+        "RichTextEditor" => {
+            let init_txt = find_prop(el, &["text", "value"])
+                .map(|p| expr_to_typed_rust(&p.value, "String", ctx))
+                .unwrap_or_else(|| "String::new()".into());
+            let ph = find_prop(el, &["placeholder"])
+                .map(|p| expr_to_typed_rust(&p.value, "String", ctx))
+                .unwrap_or_else(|| "\"Write rich text...\".to_string()".into());
+            let ctrl_var = format!("__rich_ctrl_{var}");
+            let _ = writeln!(
+                out,
+                "{indent}let {ctrl_var} = {cx}.signal(RichEditorController::with_text({init_txt}));"
+            );
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.rich_text_editor({cx}, {ctrl_var}, {ph}, TextStyle::default(), None::<fn(String)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_change"]) {
+                let mut h_locals = ctx.locals.clone();
+                let mut alias_stmts = String::new();
+                let bind_v = can_bind_handler_local("value", ctx);
+                let bind_t = can_bind_handler_local("text", ctx);
+                if bind_v {
+                    h_locals.insert("value".into(), "String".into());
+                    if bind_t {
+                        alias_stmts.push_str("let value = __val.clone(); ");
+                    } else {
+                        alias_stmts.push_str("let value = __val; ");
+                    }
+                }
+                if bind_t {
+                    h_locals.insert("text".into(), "String".into());
+                    alias_stmts.push_str("let text = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_change({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
         "PopupMenu" => {
             let open_prop = find_prop(el, &["open", "visible"]);
             let open_rv = open_prop
