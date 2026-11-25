@@ -58,6 +58,22 @@ This document provides an honest, engineering-level assessment of where **CraftU
    - Added `craftui new <name> --plugin` / `--template plugin` scaffolding (`CraftPlugin` Rust crate + Kotlin/Swift stubs + `craftui.toml`) and completed `description` metadata across workspace `Cargo.toml` files (`crates.io` live publishing still requires maintainer credentials/release).
 
 ### Remaining Path from ~60–65% to 90–100% (Beyond Step 4)
-1. Live execution verification on physical/CI Android emulator + macOS/Xcode iOS simulator runners (`ci.yml`).
-2. `crates.io` release publication across the 15 workspace crates + community plugin registry index.
-3. Custom WGSL shader effects, native OS System Tray (`tray-icon` integration), hardware AVFoundation/ExoPlayer video codecs, and rich block embeds.
+
+#### Phase A — Real CI Validation, iOS Build Check & Example Dogfooding (Highest Priority)
+1. **Full CI & Live Emulator/Device Verification:**
+   - Verify `notes-web`, `notes-android`, and `android-emulator-smoke` (`macos-14` ARM64 emulator) end-to-end on GitHub Actions CI, plus add an `ios-sim` compilation check (`cargo build --target aarch64-apple-ios-sim` + `swiftc` check for generated Swift templates) on `macos-14` / `macos-latest`.
+2. **Real App Dogfooding (`examples/showcase` / `examples/notes`):**
+   - Exercise `MenuBar`, `Draggable`/`DropTarget`, `FormGroup`, `DatePicker`, `TimePicker`, `MediaPlayer`, `RichTextEditor`, live `set_locale("ar-SA")` RTL toggling, and `Material3`/`Cupertino`/`WinUi` switching inside interactive example apps.
+
+#### Phase B — High-Impact Product Gaps (~65% -> ~80%+)
+1. **Desktop System Tray & Global Shortcuts (`craftui-platform-desktop`):**
+   - Native OS tray icon + context menu + show/hide window toggles and global keyboard shortcuts for Tauri-level desktop parity (~74% -> ~90%).
+2. **True Adaptive Widget Chrome (`paint.rs` + `DesignSystem`):**
+   - Adapt widget geometry and visuals (e.g., iOS pill toggles/sliders for `Cupertino`, Fluent toggles/buttons for `WinUi`) rather than swapping only colors and radii.
+3. **`crates.io` Multi-Crate Publish Pipeline:**
+   - Verify `cargo publish --dry-run` across all 15 workspace crates in topological dependency order and publish releases so `craftui new` projects compile externally without workspace overrides.
+
+#### Phase C — Deep Rendering, Editor & Media Polish (~80% -> ~95%+)
+1. **Custom WGSL Shader Hooks & Effects:** User-extensible fragment shaders, blur/mask filters, and richer `Canvas` effects.
+2. **`RichTextEditor` Span Undo/Redo & Rich Clipboard:** Snapshot `StyledSpanRange` alongside plain text edits so `Ctrl+Z` / `Ctrl+Y` undo/redo formatting, plus scrollable multi-line viewport & rich copy/cut.
+3. **Real Hardware Media Backends:** Connect `MediaPlayer` `PlatformView` textures to desktop media playback, Android `ExoPlayer`/`MediaPlayer`, and iOS `AVPlayer`.
