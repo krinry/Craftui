@@ -83,6 +83,9 @@ pub const BUILTIN_WIDGETS: &[&str] = &[
     "TimePicker",
     "TreeView",
     "ReorderableList",
+    "MenuBar",
+    "Draggable",
+    "DropTarget",
     "div",
     "span",
     "p",
@@ -321,6 +324,8 @@ pub fn widget_allows_children(kind: &str) -> bool {
             | "Dialog"
             | "Drawer"
             | "Scaffold"
+            | "Draggable"
+            | "DropTarget"
     )
 }
 
@@ -558,6 +563,17 @@ pub fn props_for_widget(kind: &str) -> Vec<&'static str> {
         "ReorderableList" => {
             out.extend_from_slice(&["items", "options", "selected", "row_height"]);
         }
+        "MenuBar" => {
+            out.extend_from_slice(&["menus", "items"]);
+        }
+        "Draggable" => {
+            out.extend_from_slice(CONTAINER_PROPS);
+            out.extend_from_slice(&["payload", "value"]);
+        }
+        "DropTarget" => {
+            out.extend_from_slice(CONTAINER_PROPS);
+            out.extend_from_slice(&["accept_prefix", "accept"]);
+        }
         "div" | "section" | "nav" | "header" | "footer" | "main" | "article" | "aside" => {
             out.extend_from_slice(CONTAINER_PROPS);
         }
@@ -585,6 +601,12 @@ pub fn events_for_widget(kind: &str) -> Vec<&'static str> {
         }
         "ReorderableList" => {
             out.extend_from_slice(&["on_reorder", "on_select", "on_change"]);
+        }
+        "MenuBar" => {
+            out.extend_from_slice(&["on_select", "on_change"]);
+        }
+        "DropTarget" => {
+            out.push("on_drop");
         }
         "Accordion" => out.extend_from_slice(&["on_change", "on_toggle"]),
         "DataTable" => out.extend_from_slice(&["on_select", "on_change", "on_sort"]),
@@ -1051,6 +1073,14 @@ fn populate_handler_locals(
         ("ReorderableList", "on_reorder") => {
             locals.insert("from".into(), TypeExpr::Named("int".into()));
             locals.insert("to".into(), TypeExpr::Named("int".into()));
+        }
+        ("MenuBar", "on_select" | "on_change") => {
+            locals.insert("value".into(), TypeExpr::Named("string".into()));
+            locals.insert("item".into(), TypeExpr::Named("string".into()));
+        }
+        ("DropTarget", "on_drop") => {
+            locals.insert("payload".into(), TypeExpr::Named("string".into()));
+            locals.insert("value".into(), TypeExpr::Named("string".into()));
         }
         ("Accordion", "on_change" | "on_toggle") => {
             locals.insert("expanded".into(), TypeExpr::Named("bool".into()));

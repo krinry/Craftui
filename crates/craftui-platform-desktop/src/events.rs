@@ -1,7 +1,7 @@
 use craftui_core::{CursorIcon, KeyCode, KeyEvent, Modifiers, PointerButton};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta};
 use winit::keyboard::{Key, KeyCode as WinitKeyCode, ModifiersState, NamedKey, PhysicalKey};
-use winit::window::CursorIcon as WinitCursorIcon;
+use winit::window::{CursorIcon as WinitCursorIcon, WindowId};
 
 /// Custom event loop messages delivered from background worker threads, AccessKit, `.cui` watcher, or window opening.
 #[derive(Debug)]
@@ -11,6 +11,8 @@ pub enum DesktopUserEvent {
     #[cfg(feature = "hot-reload")]
     FileChanged,
     OpenWindow(u64),
+    CloseWindow(WindowId),
+    SetWindowTitle(WindowId, String),
 }
 
 impl From<accesskit_winit::Event> for DesktopUserEvent {

@@ -2674,3 +2674,117 @@ fn reorderable_list_drag_and_keyboard_reorder() {
     tree.paint(&mut scene);
     assert!(!scene.commands.is_empty());
 }
+
+#[test]
+fn menu_bar_and_cross_widget_drag_drop_work() {
+    reset_runtime();
+    let scope = Scope::root();
+    let mut tree = WidgetTree::new(scope);
+
+    let chosen_menu = Rc::new(RefCell::new(String::new()));
+    let cm = Rc::clone(&chosen_menu);
+    let mb = tree.menu_bar(
+        scope,
+        vec![
+            "File:New,Open,Exit".to_string(),
+            "Edit:Cut,Copy".to_string(),
+        ],
+        Some(move |item: String| {
+            *cm.borrow_mut() = item;
+        }),
+    );
+
+    let dropped_payload = Rc::new(RefCell::new(String::new()));
+    let dp = Rc::clone(&dropped_payload);
+    let drag_src = tree.draggable(scope, "task:42");
+    let drag_lbl = tree.text(scope, "Task 42", TextStyle::default());
+    tree.append_child(drag_src, drag_lbl);
+
+    let drop_zone = tree.drop_target(
+        scope,
+        "task:",
+        Some(move |p: String| {
+            *dp.borrow_mut() = p;
+        }),
+    );
+    let drop_lbl = tree.text(scope, "Done Column", TextStyle::default());
+    tree.append_child(drop_zone, drop_lbl);
+
+    let row = tree.row(scope);
+    tree.append_child(row, drag_src);
+    tree.append_child(row, drop_zone);
+
+    let root = tree.column(scope);
+    tree.append_child(root, mb);
+    tree.append_child(root, row);
+    tree.set_root(root);
+    tree.layout(WindowMetrics::default());
+
+    let mb_rect = tree.layout_engine.rect(mb);
+    let parsed = crate::pickers::parse_menubar_specs(&[
+        "File:New,Open,Exit".to_string(),
+        "Edit:Cut,Copy".to_string(),
+    ]);
+    let hrs = crate::pickers::menubar_header_rects(mb_rect, &parsed);
+    let file_pt = hrs[0].center();
+    for (phase, ts) in [(PointerPhase::Down, 10), (PointerPhase::Up, 20)] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            position: file_pt,
+            phase,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: ts,
+        }));
+    }
+    let dr = crate::pickers::menubar_dropdown_rect(hrs[0], 3);
+    let open_pt = Point::new(dr.center().x, dr.y + 4.0 + 30.0 + 14.0);
+    for (phase, ts) in [(PointerPhase::Down, 100), (PointerPhase::Up, 110)] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            position: open_pt,
+            phase,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: ts,
+        }));
+    }
+    assert_eq!(&*chosen_menu.borrow(), "File/Open");
+
+    let src_pt = tree.layout_engine.rect(drag_src).center();
+    let dst_pt = tree.layout_engine.rect(drop_zone).center();
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: src_pt,
+        phase: PointerPhase::Down,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 200,
+    }));
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: dst_pt,
+        phase: PointerPhase::Move,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 220,
+    }));
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: dst_pt,
+        phase: PointerPhase::Up,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 240,
+    }));
+    assert_eq!(&*dropped_payload.borrow(), "task:42");
+
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    assert!(!scene.commands.is_empty());
+}

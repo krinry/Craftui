@@ -527,6 +527,14 @@ impl WidgetTree {
                         );
                         Size::new(w, h)
                     }
+                    WidgetKind::MenuBar { .. } => {
+                        let w = if constraints.max_width.is_finite() {
+                            constraints.max_width
+                        } else {
+                            480.0
+                        };
+                        Size::new(w, 34.0)
+                    }
                     WidgetKind::Custom(cw) => {
                         if let Ok(mut guard) = cw.try_borrow_mut() {
                             guard.measure(constraints, text_engine, &theme)

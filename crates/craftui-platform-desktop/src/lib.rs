@@ -27,6 +27,7 @@ pub use hot_reload::should_trigger_hot_reload;
 pub use permissions::DesktopPermissionBackend;
 pub use presenter::pack_rgba8_to_softbuffer_0rgb;
 pub use runner::{AppContext, WindowConfig, WindowLauncher, run_app};
+pub use winit::window::WindowId;
 #[cfg(feature = "hot-reload")]
 pub use runner::{run_hot_reload_cui, run_live_preview_cui};
 pub use services::{

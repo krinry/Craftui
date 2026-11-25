@@ -806,6 +806,22 @@ impl WidgetTree {
         }
     }
 
+    pub fn set_on_drop(&mut self, node: NodeId, cb: impl FnMut(String) + 'static) {
+        if let Some(n) = self.nodes.get_mut(node)
+            && let WidgetKind::DropTarget { on_drop, .. } = &mut n.kind
+        {
+            *on_drop = Some(Rc::new(RefCell::new(cb)));
+        }
+    }
+
+    pub fn set_on_menu_select(&mut self, node: NodeId, cb: impl FnMut(String) + 'static) {
+        if let Some(n) = self.nodes.get_mut(node)
+            && let WidgetKind::MenuBar { on_select, .. } = &mut n.kind
+        {
+            *on_select = Some(Rc::new(RefCell::new(cb)));
+        }
+    }
+
     pub fn set_on_submit(&mut self, node: NodeId, cb: impl FnMut(String) + 'static) {
         if let Some(n) = self.nodes.get_mut(node)
             && let WidgetKind::TextInput { on_submit, .. } = &mut n.kind

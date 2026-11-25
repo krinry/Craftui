@@ -9,6 +9,7 @@ impl WidgetTree {
         };
         let theme = self.theme_signal.get_untracked();
         let mut floating_selects: Vec<(Rect, Vec<String>, usize, f32)> = Vec::new();
+        let mut floating_menus: Vec<(Rect, Vec<String>)> = Vec::new();
         let mut active_tooltips: Vec<(Rect, String)> = Vec::new();
         self.paint_node_recursive(
             root,
@@ -17,6 +18,7 @@ impl WidgetTree {
             &theme,
             scene,
             &mut floating_selects,
+            &mut floating_menus,
             &mut active_tooltips,
         );
 
@@ -109,6 +111,48 @@ impl WidgetTree {
             );
             scene.stroke_rect(tip_rect, theme.border, 1.0, CornerRadii::all(6.0));
             scene.draw_text(Point::new(tx + 9.0, ty + 5.0), &tip_text, st, Some(240.0));
+        }
+
+        // Paint open MenuBar dropdowns on top of main UI
+        for (menu_rect, items) in floating_menus {
+            scene.drop_shadow(
+                menu_rect,
+                CornerRadii::all(8.0),
+                BoxShadow::drop(0.0, 4.0, 12.0, 0.0, Color::rgba(0, 0, 0, 110)),
+            );
+            scene.fill_rect(menu_rect, theme.surface, CornerRadii::all(8.0));
+            scene.stroke_rect(menu_rect, theme.border, 1.0, CornerRadii::all(8.0));
+            for (i, item) in items.iter().enumerate() {
+                let iy = menu_rect.y + 4.0 + i as f32 * 30.0;
+                if iy + 28.0 > menu_rect.max_y() {
+                    break;
+                }
+                scene.draw_text(
+                    Point::new(menu_rect.x + 12.0, iy + 7.0),
+                    item,
+                    TextStyle::default()
+                        .with_size(13.5)
+                        .with_color(theme.text_primary),
+                    Some((menu_rect.width - 24.0).max(20.0)),
+                );
+            }
+        }
+
+        // Paint active drag payload pill near cursor
+        if let Some((_, ref payload, pos)) = self.active_drag {
+            let st = TextStyle::default()
+                .with_size(12.5)
+                .with_weight(600.0)
+                .with_color(theme.on_primary);
+            let m = self.text_engine.measure(payload, &st, Some(200.0));
+            let pill = Rect::new(pos.x + 12.0, pos.y + 12.0, m.width + 18.0, m.height + 10.0);
+            scene.drop_shadow(
+                pill,
+                CornerRadii::all(8.0),
+                BoxShadow::drop(0.0, 3.0, 8.0, 0.0, Color::rgba(0, 0, 0, 90)),
+            );
+            scene.fill_rect(pill, theme.primary, CornerRadii::all(8.0));
+            scene.draw_text(Point::new(pill.x + 9.0, pill.y + 5.0), payload, st, Some(200.0));
         }
 
         if self.inspector.enabled {
@@ -320,6 +364,7 @@ impl WidgetTree {
         theme: &ThemeTokens,
         scene: &mut PaintScene,
         floating_selects: &mut Vec<(Rect, Vec<String>, usize, f32)>,
+        floating_menus: &mut Vec<(Rect, Vec<String>)>,
         active_tooltips: &mut Vec<(Rect, String)>,
     ) {
         let Some(node) = self.nodes.get(id) else {
@@ -617,6 +662,7 @@ impl WidgetTree {
                         theme,
                         scene,
                         floating_selects,
+                        floating_menus,
                         active_tooltips,
                     );
                 }
@@ -664,6 +710,7 @@ impl WidgetTree {
                         theme,
                         scene,
                         floating_selects,
+                        floating_menus,
                         active_tooltips,
                     );
                 }
@@ -2540,6 +2587,73 @@ impl WidgetTree {
                     scene.stroke_rect(rect.inflate(1.5, 1.5), theme.primary, 1.5, rad);
                 }
             }
+            WidgetKind::MenuBar {
+                menus, open_menu, ..
+            } => {
+                let bg = box_style
+                    .background
+                    .as_ref()
+                    .map(|b| b.get())
+                    .unwrap_or(Brush::Solid(theme.surface_container));
+                scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), CornerRadii::ZERO);
+                scene.fill_rect(
+                    Rect::new(rect.x, rect.max_y() - 1.0, rect.width, 1.0),
+                    theme.border,
+                    CornerRadii::ZERO,
+                );
+                let parsed = crate::pickers::parse_menubar_specs(&menus.get());
+                let header_rects = crate::pickers::menubar_header_rects(rect, &parsed);
+                for (i, ((title, items), hr)) in parsed.iter().zip(header_rects.iter()).enumerate() {
+                    let is_open = open_menu == Some(i);
+                    if is_open {
+                        scene.fill_rect(
+                            *hr,
+                            theme.primary.with_alpha(0.18),
+                            CornerRadii::all(6.0),
+                        );
+                    }
+                    let st = TextStyle::default()
+                        .with_size(13.5)
+                        .with_weight(if is_open { 600.0 } else { 500.0 })
+                        .with_color(if is_open {
+                            theme.primary
+                        } else {
+                            theme.text_primary
+                        });
+                    let sz = self.text_engine.measure(title, &st, None);
+                    scene.draw_text(
+                        Point::new(
+                            hr.x + (hr.width - sz.width) * 0.5,
+                            hr.y + (hr.height - sz.height) * 0.5,
+                        ),
+                        title,
+                        st,
+                        None,
+                    );
+                    if is_open && !items.is_empty() {
+                        let screen_hr = node_xform.transform_rect_bounds(*hr);
+                        let drop_r = crate::pickers::menubar_dropdown_rect(screen_hr, items.len());
+                        floating_menus.push((drop_r, items.clone()));
+                    }
+                }
+            }
+            WidgetKind::Draggable { dragging, .. } => {
+                if let Some(bg) = box_style.background.as_ref().map(|b| b.get()) {
+                    scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), box_style.radius);
+                }
+                if dragging {
+                    scene.stroke_rect(rect, theme.primary, 1.5, box_style.radius);
+                }
+            }
+            WidgetKind::DropTarget { hovered_drag, .. } => {
+                if let Some(bg) = box_style.background.as_ref().map(|b| b.get()) {
+                    scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), box_style.radius);
+                }
+                if hovered_drag {
+                    scene.fill_rect(rect, theme.primary.with_alpha(0.08), box_style.radius);
+                    scene.stroke_rect(rect, theme.primary, 2.0, box_style.radius);
+                }
+            }
             WidgetKind::Custom(cw) => {
                 if let Ok(mut guard) = cw.try_borrow_mut() {
                     guard.paint(rect, scene, &mut self.text_engine, theme, is_focused);
@@ -2588,6 +2702,7 @@ impl WidgetTree {
                     theme,
                     scene,
                     floating_selects,
+                    floating_menus,
                     active_tooltips,
                 );
             }

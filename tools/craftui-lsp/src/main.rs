@@ -701,6 +701,9 @@ pub fn lookup_hover(text: &str, pos: Position) -> Option<Hover> {
         "TimePicker" => "Interactive 24h/12h time picker (`<=> value: string` in `HH:MM`, `use_24h`, `on_change`).",
         "TreeView" => "Collapsible hierarchical tree view (`items: [string]` slash-delimited paths, `<=> selected`, `on_select`).",
         "ReorderableList" => "Drag-to-reorder and keyboard-reorderable list (`<=> items: [string]`, `<=> selected`, `on_reorder`, `on_select`).",
+        "MenuBar" => "Desktop top horizontal menu bar (`menus: [\"File:New,Open,Exit\"]`, `on_select` with `value` = `\"Menu/Item\"`).",
+        "Draggable" => "Cross-widget drag source container (`payload: string`).",
+        "DropTarget" => "Cross-widget drop zone accepting `Draggable` payloads (`accept_prefix`, `on_drop` with `payload`).",
         "@children" => "Child-slot placeholder inside a reusable component forwarding caller-supplied child elements.",
         "Theme" => {
             "Reactive `ThemeTokens` design system palette (`background`, `surface`, `primary`, `border`, etc.)."

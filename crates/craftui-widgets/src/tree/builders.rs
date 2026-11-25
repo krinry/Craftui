@@ -1517,6 +1517,75 @@ impl WidgetTree {
         id
     }
 
+    /// Build a top application `MenuBar` from `"Menu:Item1,Item2"` specifications.
+    pub fn menu_bar(
+        &mut self,
+        scope: Scope,
+        menus: impl Into<ReactiveValue<Vec<String>>>,
+        on_select: Option<impl FnMut(String) + 'static>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "MenuBar",
+            WidgetKind::MenuBar {
+                menus: menus.into(),
+                open_menu: None,
+                on_select: on_select.map(|f| Rc::new(RefCell::new(f)) as crate::TextCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Menu;
+            n.a11y.focusable = true;
+            n.a11y.label = Some("MenuBar".into());
+        }
+        id
+    }
+
+    /// Build a `Draggable` container carrying a string payload for [`WidgetTree::drop_target`].
+    pub fn draggable(
+        &mut self,
+        scope: Scope,
+        payload: impl Into<ReactiveValue<String>>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "Draggable",
+            WidgetKind::Draggable {
+                payload: payload.into(),
+                dragging: false,
+            },
+            LayoutStyle::column(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Container;
+        }
+        id
+    }
+
+    /// Build a `DropTarget` container accepting [`WidgetTree::draggable`] payloads matching `accept_prefix`.
+    pub fn drop_target(
+        &mut self,
+        scope: Scope,
+        accept_prefix: impl Into<String>,
+        on_drop: Option<impl FnMut(String) + 'static>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "DropTarget",
+            WidgetKind::DropTarget {
+                accept_prefix: accept_prefix.into(),
+                hovered_drag: false,
+                on_drop: on_drop.map(|f| Rc::new(RefCell::new(f)) as crate::TextCallback),
+            },
+            LayoutStyle::column(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Container;
+        }
+        id
+    }
+
     /// Mount any custom user-defined widget implementing [`CustomWidget`].
     pub fn custom_widget<W: CustomWidget + 'static>(
         &mut self,

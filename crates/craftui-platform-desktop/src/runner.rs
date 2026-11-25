@@ -105,6 +105,20 @@ impl WindowLauncher {
             .send_event(DesktopUserEvent::OpenWindow(id))
             .map_err(|e| CraftError::Platform(format!("failed queuing open_window: {e}")))
     }
+
+    /// Close a specific desktop window by its [`WindowId`].
+    pub fn close_window(&self, id: WindowId) -> Result<()> {
+        self.proxy
+            .send_event(DesktopUserEvent::CloseWindow(id))
+            .map_err(|e| CraftError::Platform(format!("failed queuing close_window: {e}")))
+    }
+
+    /// Update the OS title bar of an open desktop window.
+    pub fn set_title(&self, id: WindowId, title: impl Into<String>) -> Result<()> {
+        self.proxy
+            .send_event(DesktopUserEvent::SetWindowTitle(id, title.into()))
+            .map_err(|e| CraftError::Platform(format!("failed queuing set_title: {e}")))
+    }
 }
 
 /// Platform services provided during app setup.
@@ -417,12 +431,15 @@ impl DesktopRunner {
             },
         };
 
+        let win_id = window.id();
+        root_scope.provide_context(app_ctx.launcher.clone());
+        root_scope.provide_context(win_id);
+
         if let Some(build_fn) = builder {
             let root = build_fn(root_scope, &mut tree, &mut app_ctx);
             tree.set_root(root);
         }
 
-        let win_id = window.id();
         window.request_redraw();
         self.windows.insert(
             win_id,
@@ -609,6 +626,21 @@ impl ApplicationHandler<DesktopUserEvent> for DesktopRunner {
                         },
                         false,
                     );
+                }
+            }
+            DesktopUserEvent::CloseWindow(win_id) => {
+                if let Some(removed) = self.windows.remove(&win_id)
+                    && !removed.is_primary
+                {
+                    removed.root_scope.dispose();
+                }
+                if self.windows.is_empty() {
+                    event_loop.exit();
+                }
+            }
+            DesktopUserEvent::SetWindowTitle(win_id, title) => {
+                if let Some(state) = self.windows.get(&win_id) {
+                    state.window.set_title(&title);
                 }
             }
         }

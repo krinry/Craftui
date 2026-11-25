@@ -1040,6 +1040,17 @@ fn hot_reload_supports_children_slot_and_pickers_tree_view() {
                     items: ["First", "Second"];
                     selected <=> tree_idx;
                 }
+                MenuBar {
+                    menus: ["File:New,Save"];
+                }
+                Draggable {
+                    payload: "note:1";
+                    Text { text: "Card"; }
+                }
+                DropTarget {
+                    accept_prefix: "note:";
+                    Text { text: "Inbox"; }
+                }
             }
         }
     "#;
@@ -1051,5 +1062,5 @@ fn hot_reload_supports_children_slot_and_pickers_tree_view() {
     let root_node = tree.nodes.get(root).unwrap();
     assert_eq!(root_node.children.len(), 2);
     let row_slot = tree.nodes.get(root_node.children[1]).unwrap();
-    assert_eq!(row_slot.children.len(), 4);
+    assert_eq!(row_slot.children.len(), 7);
 }

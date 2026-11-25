@@ -1,6 +1,7 @@
 //! Retained widget tree, standard widget primitives, gestures, animations, router, and inspector.
 
 pub mod anim;
+pub mod form;
 pub mod gesture;
 pub mod inspector;
 pub mod pickers;
@@ -12,6 +13,7 @@ pub mod widgets;
 pub use anim::{
     AnimatableProp, AnimatedColor, AnimatedFloat, Easing, Spring, TransitionCurve, Tween,
 };
+pub use form::{FieldValidator, FormGroup, ValidationRule};
 pub use gesture::{GestureArena, RecognizedGesture, ScrollPhysics, VelocityTracker};
 pub use inspector::InspectorState;
 pub use router::{Router, RouterTransition};

@@ -716,6 +716,17 @@ fn children_slot_and_new_picker_tree_widgets_validate_and_codegen() {
                     items: ["Task A", "Task B"];
                     selected <=> selected_item;
                 }
+                MenuBar {
+                    menus: ["File:New,Open", "Help:About"];
+                }
+                Draggable {
+                    payload: "card:1";
+                    Text { text: "Drag me"; }
+                }
+                DropTarget {
+                    accept_prefix: "card:";
+                    Text { text: "Drop here"; }
+                }
             }
         }
     "#;
@@ -736,4 +747,7 @@ fn children_slot_and_new_picker_tree_widgets_validate_and_codegen() {
     assert!(rust.contains(".time_picker("));
     assert!(rust.contains(".tree_view("));
     assert!(rust.contains(".reorderable_list("));
+    assert!(rust.contains(".menu_bar("));
+    assert!(rust.contains(".draggable("));
+    assert!(rust.contains(".drop_target("));
 }

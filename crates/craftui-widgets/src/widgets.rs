@@ -486,6 +486,23 @@ pub enum WidgetKind {
         on_reorder: Option<ReorderCallback>,
         on_select: Option<IndexCallback>,
     },
+    /// Application top horizontal menu bar (`"File:New,Open,Exit"` specs) with dropdown menus.
+    MenuBar {
+        menus: ReactiveValue<Vec<String>>,
+        open_menu: Option<usize>,
+        on_select: Option<TextCallback>,
+    },
+    /// Drag source container carrying a string payload for cross-widget [`DropTarget`](WidgetKind::DropTarget).
+    Draggable {
+        payload: ReactiveValue<String>,
+        dragging: bool,
+    },
+    /// Drop target container accepting payloads matching `accept_prefix` from [`Draggable`](WidgetKind::Draggable).
+    DropTarget {
+        accept_prefix: String,
+        hovered_drag: bool,
+        on_drop: Option<TextCallback>,
+    },
     Custom(Rc<RefCell<dyn CustomWidget>>),
 }
 

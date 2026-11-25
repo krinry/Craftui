@@ -160,6 +160,50 @@ pub fn derive_visible_tree_rows(items: &[String], collapsed: &HashSet<String>) -
     out
 }
 
+/// Parse `"MenuLabel:Item1,Item2"` specs into `(title, items)` pairs for [`WidgetKind::MenuBar`](crate::WidgetKind::MenuBar).
+pub fn parse_menubar_specs(raw: &[String]) -> Vec<(String, Vec<String>)> {
+    raw.iter()
+        .filter_map(|entry| {
+            let trimmed = entry.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            if let Some((title, items_str)) = trimmed.split_once(':') {
+                let items: Vec<String> = items_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                Some((title.trim().to_string(), items))
+            } else {
+                Some((trimmed.to_string(), Vec::new()))
+            }
+        })
+        .collect()
+}
+
+/// Compute top-level menu header hit rectangles for a `MenuBar` rect.
+pub fn menubar_header_rects(bar_rect: craftui_core::Rect, menus: &[(String, Vec<String>)]) -> Vec<craftui_core::Rect> {
+    let mut x = bar_rect.x + 8.0;
+    let mut out = Vec::with_capacity(menus.len());
+    for (title, _) in menus {
+        let w = (title.chars().count() as f32 * 8.5 + 22.0).max(52.0);
+        out.push(craftui_core::Rect::new(x, bar_rect.y + 3.0, w, (bar_rect.height - 6.0).max(24.0)));
+        x += w + 4.0;
+    }
+    out
+}
+
+/// Compute the floating dropdown rectangle below a specific `MenuBar` header.
+pub fn menubar_dropdown_rect(
+    header_rect: craftui_core::Rect,
+    item_count: usize,
+) -> craftui_core::Rect {
+    let w = 180.0f32.max(header_rect.width + 24.0);
+    let h = (item_count.max(1) as f32 * 30.0 + 8.0).min(280.0);
+    craftui_core::Rect::new(header_rect.x, header_rect.max_y() + 2.0, w, h)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

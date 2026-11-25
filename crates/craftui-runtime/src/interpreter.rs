@@ -656,6 +656,57 @@ pub(crate) fn build_element(
             wire_index_change(n, el, env, tree);
             n
         }
+        "MenuBar" => {
+            let menus_rv = find_prop(el, &["menus", "items"])
+                .map(|p| expr_to_reactive_string_list(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(Vec::new()));
+            let n = tree.menu_bar(scope, menus_rv, None::<fn(String)>);
+            if let Some(h) = el
+                .handlers
+                .iter()
+                .find(|h| h.event == "on_select" || h.event == "on_change")
+            {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_menu_select(n, move |item| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("value".into(), DynValue::String(item.clone()));
+                    h_env.locals.insert("item".into(), DynValue::String(item));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
+        "Draggable" => {
+            let payload_rv = find_prop(el, &["payload", "value"])
+                .map(|p| expr_to_reactive_string(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(String::new()));
+            tree.draggable(scope, payload_rv)
+        }
+        "DropTarget" => {
+            let prefix = eval_prop("accept_prefix")
+                .or_else(|| eval_prop("accept"))
+                .map(|v| v.as_str())
+                .unwrap_or_default();
+            let n = tree.drop_target(scope, prefix, None::<fn(String)>);
+            if let Some(h) = el.handlers.iter().find(|h| h.event == "on_drop") {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_drop(n, move |payload| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("payload".into(), DynValue::String(payload.clone()));
+                    h_env
+                        .locals
+                        .insert("value".into(), DynValue::String(payload));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
         "PopupMenu" => {
             let open_prop = find_prop(el, &["open", "visible"]);
             let open_rv = open_prop

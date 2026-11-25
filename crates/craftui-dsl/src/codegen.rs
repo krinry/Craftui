@@ -1330,6 +1330,88 @@ fn emit_element(
             }
             emit_index_change_handler(out, &var, el, indent, ctx);
         }
+        "MenuBar" => {
+            let menus_rv = find_prop(el, &["menus", "items"])
+                .map(|p| expr_to_reactive_string_list(&p.value, ctx))
+                .unwrap_or_else(|| "ReactiveValue::Static(Vec::<String>::new())".into());
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.menu_bar({cx}, {menus_rv}, None::<fn(String)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_select", "on_change"]) {
+                let mut h_locals = ctx.locals.clone();
+                let mut alias_stmts = String::new();
+                let bind_val = can_bind_handler_local("value", ctx);
+                let bind_item = can_bind_handler_local("item", ctx);
+                if bind_val {
+                    h_locals.insert("value".into(), "String".into());
+                    if bind_item {
+                        alias_stmts.push_str("let value = __val.clone(); ");
+                    } else {
+                        alias_stmts.push_str("let value = __val; ");
+                    }
+                }
+                if bind_item {
+                    h_locals.insert("item".into(), "String".into());
+                    alias_stmts.push_str("let item = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_menu_select({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
+        "Draggable" => {
+            let payload_rv = find_prop(el, &["payload", "value"])
+                .map(|p| expr_to_reactive_string(&p.value, ctx))
+                .unwrap_or_else(|| "ReactiveValue::Static(String::new())".into());
+            let _ = writeln!(out, "{indent}let {var} = {tr}.draggable({cx}, {payload_rv});");
+        }
+        "DropTarget" => {
+            let prefix = find_prop(el, &["accept_prefix", "accept"])
+                .map(|p| expr_to_typed_rust(&p.value, "String", ctx))
+                .unwrap_or_else(|| "String::new()".into());
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.drop_target({cx}, {prefix}, None::<fn(String)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_drop"]) {
+                let mut h_locals = ctx.locals.clone();
+                let mut alias_stmts = String::new();
+                let bind_p = can_bind_handler_local("payload", ctx);
+                let bind_v = can_bind_handler_local("value", ctx);
+                if bind_p {
+                    h_locals.insert("payload".into(), "String".into());
+                    if bind_v {
+                        alias_stmts.push_str("let payload = __val.clone(); ");
+                    } else {
+                        alias_stmts.push_str("let payload = __val; ");
+                    }
+                }
+                if bind_v {
+                    h_locals.insert("value".into(), "String".into());
+                    alias_stmts.push_str("let value = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_drop({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
         "PopupMenu" => {
             let open_prop = find_prop(el, &["open", "visible"]);
             let open_rv = open_prop

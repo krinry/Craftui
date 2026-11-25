@@ -315,6 +315,7 @@ pub struct WidgetTree {
     pub focus_visible: bool,
     pub hovered: Option<NodeId>,
     last_pointer_pos: Option<Point>,
+    pub(crate) active_drag: Option<(NodeId, String, Point)>,
     pub metrics: WindowMetrics,
     pub clipboard_text: String,
     virtual_hosts: SecondaryMap<NodeId, VirtualListHost>,
@@ -362,6 +363,7 @@ impl WidgetTree {
             focus_visible: false,
             hovered: None,
             last_pointer_pos: None,
+            active_drag: None,
             metrics: WindowMetrics::default(),
             clipboard_text: String::new(),
             virtual_hosts: SecondaryMap::new(),
@@ -1150,6 +1152,27 @@ impl WidgetTree {
             } => {
                 items.bind_node(id, DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y);
                 selected.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+            }
+            WidgetKind::MenuBar { menus, .. } => {
+                let menus = menus.clone();
+                if menus.is_dynamic() {
+                    scope.effect(move || {
+                        let _ = menus.get();
+                        mark_node_dirty(
+                            id,
+                            DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y,
+                        );
+                    });
+                }
+            }
+            WidgetKind::Draggable { payload, .. } => {
+                let payload = payload.clone();
+                if payload.is_dynamic() {
+                    scope.effect(move || {
+                        let _ = payload.get();
+                        mark_node_dirty(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+                    });
+                }
             }
             _ => {}
         }

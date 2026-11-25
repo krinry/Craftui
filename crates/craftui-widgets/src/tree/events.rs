@@ -25,6 +25,26 @@ impl WidgetTree {
                     return Some(id);
                 }
             }
+            if let Some(node) = self.nodes.get(id)
+                && !node.layout.hidden
+                && let WidgetKind::MenuBar {
+                    menus,
+                    open_menu: Some(idx),
+                    ..
+                } = &node.kind
+            {
+                let bar_r = self.node_world_transform(id).transform_rect_bounds(self.node_visual_rect(id));
+                let parsed = crate::pickers::parse_menubar_specs(&menus.get());
+                let hrs = crate::pickers::menubar_header_rects(bar_r, &parsed);
+                if let (Some(hr), Some((_, items))) = (hrs.get(*idx), parsed.get(*idx))
+                    && !items.is_empty()
+                {
+                    let dr = crate::pickers::menubar_dropdown_rect(*hr, items.len());
+                    if dr.contains(point) {
+                        return Some(id);
+                    }
+                }
+            }
         }
 
         self.hit_test_recursive(root, point, Point::ZERO)
@@ -185,6 +205,9 @@ impl WidgetTree {
                     | WidgetKind::TimePicker { .. }
                     | WidgetKind::TreeView { .. }
                     | WidgetKind::ReorderableList { .. }
+                    | WidgetKind::MenuBar { .. }
+                    | WidgetKind::Draggable { .. }
+                    | WidgetKind::DropTarget { .. }
                     | WidgetKind::Custom(_)
             )
     }
@@ -259,6 +282,73 @@ impl WidgetTree {
                     changed = true;
                 }
             }
+
+            let open_menus: Vec<NodeId> = self
+                .nodes
+                .iter()
+                .filter_map(|(id, n)| {
+                    if matches!(n.kind, WidgetKind::MenuBar { open_menu: Some(_), .. }) && hit != Some(id) {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            for mid in open_menus {
+                if let Some(n) = self.nodes.get_mut(mid)
+                    && let WidgetKind::MenuBar { open_menu, .. } = &mut n.kind
+                {
+                    *open_menu = None;
+                    n.dirty |= DirtyFlags::PAINT;
+                    changed = true;
+                }
+            }
+
+            // Start cross-widget Draggable session if pointer hits inside a Draggable ancestor
+            let mut drag_cursor = hit;
+            while let Some(cid) = drag_cursor {
+                if let Some(n) = self.nodes.get_mut(cid)
+                    && !n.is_disabled()
+                    && let WidgetKind::Draggable { payload, dragging } = &mut n.kind
+                {
+                    *dragging = true;
+                    let val = payload.get();
+                    n.dirty |= DirtyFlags::PAINT;
+                    self.active_drag = Some((cid, val, pe.position));
+                    changed = true;
+                    break;
+                }
+                drag_cursor = self.nodes.get(cid).and_then(|n| n.parent);
+            }
+        }
+
+        // Track active cross-widget Draggable hover over DropTarget
+        if matches!(pe.phase, PointerPhase::Move)
+            && let Some((_, ref payload, ref mut drag_pos)) = self.active_drag
+        {
+            *drag_pos = pe.position;
+            let mut matched_drop: Option<NodeId> = None;
+            let mut dcur = hit;
+            while let Some(cid) = dcur {
+                if let Some(n) = self.nodes.get(cid)
+                    && let WidgetKind::DropTarget { accept_prefix, .. } = &n.kind
+                    && payload.starts_with(accept_prefix.as_str())
+                {
+                    matched_drop = Some(cid);
+                    break;
+                }
+                dcur = self.nodes.get(cid).and_then(|n| n.parent);
+            }
+            for (nid, node) in &mut self.nodes {
+                if let WidgetKind::DropTarget { hovered_drag, .. } = &mut node.kind {
+                    let want = matched_drop == Some(nid);
+                    if *hovered_drag != want {
+                        *hovered_drag = want;
+                        node.dirty |= DirtyFlags::PAINT;
+                    }
+                }
+            }
+            changed = true;
         }
 
         // Update hovered state, hover control animations, and fire on_hover callbacks
@@ -525,6 +615,47 @@ impl WidgetTree {
                 if let Ok(mut func) = cb.try_borrow_mut() {
                     func(f, t);
                 }
+            }
+
+            if let Some((drag_id, payload, _)) = self.active_drag.take() {
+                if let Some(dn) = self.nodes.get_mut(drag_id)
+                    && let WidgetKind::Draggable { dragging, .. } = &mut dn.kind
+                {
+                    *dragging = false;
+                    dn.dirty |= DirtyFlags::PAINT;
+                }
+                let mut drop_cb: Option<(crate::TextCallback, String)> = None;
+                let mut dcur = hit;
+                while let Some(cid) = dcur {
+                    if let Some(n) = self.nodes.get(cid)
+                        && let WidgetKind::DropTarget {
+                            accept_prefix,
+                            on_drop,
+                            ..
+                        } = &n.kind
+                        && payload.starts_with(accept_prefix.as_str())
+                    {
+                        if let Some(cb) = on_drop.clone() {
+                            drop_cb = Some((cb, payload.clone()));
+                        }
+                        break;
+                    }
+                    dcur = self.nodes.get(cid).and_then(|n| n.parent);
+                }
+                for (_, node) in &mut self.nodes {
+                    if let WidgetKind::DropTarget { hovered_drag, .. } = &mut node.kind
+                        && *hovered_drag
+                    {
+                        *hovered_drag = false;
+                        node.dirty |= DirtyFlags::PAINT;
+                    }
+                }
+                if let Some((cb, p)) = drop_cb
+                    && let Ok(mut func) = cb.try_borrow_mut()
+                {
+                    func(p);
+                }
+                changed = true;
             }
             for nid in released {
                 self.sync_control_anim_target(nid);
@@ -1161,6 +1292,43 @@ impl WidgetTree {
                         }
                     }
                 }
+                WidgetKind::MenuBar {
+                    menus,
+                    open_menu,
+                    on_select,
+                } => {
+                    let parsed = crate::pickers::parse_menubar_specs(&menus.get());
+                    let hrs = crate::pickers::menubar_header_rects(rect, &parsed);
+                    let mut handled_drop = false;
+                    if let Some(oidx) = *open_menu
+                        && let (Some(hr), Some((menu_title, items))) =
+                            (hrs.get(oidx), parsed.get(oidx))
+                        && !items.is_empty()
+                    {
+                        let dr = crate::pickers::menubar_dropdown_rect(*hr, items.len());
+                        if dr.contains(local_pos) {
+                            let item_idx = ((local_pos.y - (dr.y + 4.0)) / 30.0).floor() as isize;
+                            if item_idx >= 0 && (item_idx as usize) < items.len() {
+                                let chosen = format!("{}/{}", menu_title, items[item_idx as usize]);
+                                if let Some(cb) = on_select.clone() {
+                                    link_cb = Some((cb, chosen));
+                                }
+                            }
+                            *open_menu = None;
+                            node.dirty |= DirtyFlags::PAINT;
+                            handled_drop = true;
+                        }
+                    }
+                    if !handled_drop {
+                        let clicked_hdr = hrs.iter().position(|hr| hr.contains(local_pos));
+                        *open_menu = match (clicked_hdr, *open_menu) {
+                            (Some(i), Some(cur)) if i == cur => None,
+                            (Some(i), _) => Some(i),
+                            (None, _) => None,
+                        };
+                        node.dirty |= DirtyFlags::PAINT;
+                    }
+                }
                 _ => {}
             }
         }
@@ -1606,6 +1774,15 @@ impl WidgetTree {
                     WidgetKind::Select { open: true, .. } => {
                         if let WidgetKind::Select { open, .. } = &mut node.kind {
                             *open = false;
+                            node.dirty |= DirtyFlags::PAINT;
+                        }
+                        return true;
+                    }
+                    WidgetKind::MenuBar {
+                        open_menu: Some(_), ..
+                    } => {
+                        if let WidgetKind::MenuBar { open_menu, .. } = &mut node.kind {
+                            *open_menu = None;
                             node.dirty |= DirtyFlags::PAINT;
                         }
                         return true;
