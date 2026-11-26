@@ -166,3 +166,77 @@ fn desktop_services_support_permissions_share_secure_storage_and_device_telemetr
         }
     );
 }
+
+#[test]
+fn system_tray_menu_and_global_shortcuts_dispatch_correctly() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    let tray = crate::tray::SystemTrayHandle::in_memory();
+    tray.set_tooltip("CraftUI Tray");
+    tray.set_visible(true);
+    assert_eq!(tray.tooltip(), "CraftUI Tray");
+    assert!(tray.is_visible());
+
+    tray.set_menu(vec![
+        crate::tray::TrayMenuItem::new("show", "Show Window"),
+        crate::tray::TrayMenuItem::separator(),
+        crate::tray::TrayMenuItem::new("disabled_item", "Disabled").with_enabled(false),
+    ]);
+    assert_eq!(tray.menu().len(), 3);
+
+    let shown = Rc::new(Cell::new(0usize));
+    let shown_c = shown.clone();
+    tray.on_menu_select("show", move || {
+        shown_c.set(shown_c.get() + 1);
+    });
+    assert!(tray.trigger_menu_item("show"));
+    assert_eq!(shown.get(), 1);
+    assert!(!tray.trigger_menu_item("disabled_item"));
+    assert!(!tray.trigger_menu_item("missing"));
+
+    let shortcut_hits = Rc::new(Cell::new(0usize));
+    let sc_c = shortcut_hits.clone();
+    let mods = craftui_core::Modifiers {
+        ctrl: true,
+        shift: true,
+        ..Default::default()
+    };
+    tray.register_shortcut(
+        crate::tray::GlobalShortcut::new(
+            "toggle_win",
+            mods,
+            craftui_core::KeyCode::Space,
+            "Ctrl+Shift+Space",
+        ),
+        move || {
+            sc_c.set(sc_c.get() + 1);
+        },
+    );
+    assert_eq!(tray.shortcuts().len(), 1);
+
+    let matching = craftui_core::KeyEvent {
+        code: craftui_core::KeyCode::Space,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: mods,
+    };
+    assert!(tray.dispatch_key_event(&matching));
+    assert_eq!(shortcut_hits.get(), 1);
+
+    let non_matching = craftui_core::KeyEvent {
+        modifiers: craftui_core::Modifiers::default(),
+        ..matching
+    };
+    assert!(!tray.dispatch_key_event(&non_matching));
+    assert!(tray.unregister_shortcut("toggle_win"));
+    assert!(tray.shortcuts().is_empty());
+
+    let dummy_id = winit::window::WindowId::dummy();
+    assert!(!tray.is_window_hidden(dummy_id));
+    tray.hide_window(dummy_id).unwrap();
+    assert!(tray.is_window_hidden(dummy_id));
+    tray.toggle_window(dummy_id).unwrap();
+    assert!(!tray.is_window_hidden(dummy_id));
+}

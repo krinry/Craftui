@@ -433,6 +433,9 @@ impl WidgetTree {
         let mut spring = Spring::new(0.0, 260.0, 28.0);
         spring.set_target(1.0);
         self.theme_spring = Some((from, to, spring));
+        for node in self.nodes.values_mut() {
+            node.dirty |= DirtyFlags::PAINT;
+        }
     }
 
     /// Apply a native adaptive [`DesignSystem`](craftui_core::DesignSystem) preset (`Material3`, `Cupertino`, `WinUi`).
@@ -444,6 +447,9 @@ impl WidgetTree {
         let mut spring = Spring::new(0.0, 260.0, 28.0);
         spring.set_target(1.0);
         self.theme_spring = Some((from, to, spring));
+        for node in self.nodes.values_mut() {
+            node.dirty |= DirtyFlags::PAINT;
+        }
     }
 
     /// Current layout writing direction (`Ltr` or `Rtl`).
