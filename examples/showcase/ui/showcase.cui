@@ -43,6 +43,13 @@ export component ShowcaseScreen {
     in-out property <bool> req_perm_hovered: false;
     in-out property <bool> haptic_btn_hovered: false;
     in-out property <bool> share_btn_hovered: false;
+    in-out property <string> selected_date: "2026-11-26";
+    in-out property <string> selected_time: "09:30";
+    in-out property <string> rich_draft: "Rich editor with B / I / U toolbar";
+    in-out property <string> design_preset_label: "Material3";
+    in-out property <string> locale_label: "en-US (LTR)";
+    in-out property <string> form_status: "Form Valid";
+    in-out property <int> drop_count: 0;
 
     callback on_theme_cycle();
     callback on_notify_toast();
@@ -52,6 +59,9 @@ export component ShowcaseScreen {
     callback on_request_permission();
     callback on_trigger_haptic();
     callback on_share_payload();
+    callback on_cycle_preset();
+    callback on_toggle_locale();
+    callback on_validate_form();
 
     Stack {
         width: 100%;
@@ -144,7 +154,7 @@ export component ShowcaseScreen {
 
             Tabs {
                 id: "showcase_tabs";
-                tabs: ["Controls", "Virtual Data", "Glass & Split", "Overlays", "Mobile & Native"];
+                tabs: ["Controls", "Virtual Data", "Glass & Split", "Overlays", "Mobile & Native", "Parity & Rich"];
                 active <=> active_tab;
                 on_change => {
                     active_tab = index;
@@ -706,6 +716,173 @@ export component ShowcaseScreen {
                             on_hover => { share_btn_hovered = value; }
                             on_tap => {
                                 on_share_payload();
+                            }
+                        }
+                    }
+                }
+            }
+
+            if active_tab == 5 : ScrollView {
+                id: "parity_tab_panel";
+                width: 100%;
+                flex_grow: 1.0;
+
+                Column {
+                    width: 100%;
+                    background: Theme.surface;
+                    border_radius: 12dp;
+                    border_width: 1;
+                    border_color: Theme.border;
+                    padding: 16dp;
+                    gap: 12dp;
+
+                    MenuBar {
+                        id: "parity_menubar";
+                        menus: ["File:New,Export,Reset", "Preset:Material3,Cupertino,WinUI", "Locale:en-US,ar-SA"];
+                        on_select => {
+                            last_action = "Menu selected: " + item;
+                        }
+                    }
+
+                    SectionHeader {
+                        title: "Parity Dogfooding: i18n/RTL, Presets, DnD, Media & Rich Editor";
+                        badge: "Phase A";
+                        icon_name: "star";
+                        on_badge_tap => { last_action = "Parity section tapped"; }
+                    }
+
+                    Row {
+                        width: 100%;
+                        gap: 10dp;
+                        align: Center;
+
+                        Button {
+                            id: "preset_btn";
+                            text: "Preset: " + design_preset_label;
+                            background: Theme.primary;
+                            foreground: Theme.on_primary;
+                            border_radius: 10dp;
+                            cursor: Pointer;
+                            on_tap => { on_cycle_preset(); }
+                        }
+
+                        Button {
+                            id: "rtl_toggle_btn";
+                            text: "Locale: " + locale_label;
+                            background: Theme.surface_variant;
+                            foreground: Theme.text_primary;
+                            border_radius: 10dp;
+                            cursor: Pointer;
+                            on_tap => { on_toggle_locale(); }
+                        }
+
+                        Button {
+                            id: "validate_form_btn";
+                            text: "Validate Form (" + form_status + ")";
+                            background: Theme.surface_variant;
+                            foreground: Theme.text_primary;
+                            border_radius: 10dp;
+                            cursor: Pointer;
+                            on_tap => { on_validate_form(); }
+                        }
+                    }
+
+                    Row {
+                        width: 100%;
+                        gap: 12dp;
+                        align: Center;
+
+                        Draggable {
+                            id: "parity_draggable";
+                            payload: "widget-card:craftui";
+                            Container {
+                                padding: 10dp;
+                                background: Theme.surface_variant;
+                                border_radius: 8dp;
+                                border_width: 1;
+                                border_color: Theme.border;
+                                Text {
+                                    text: "Drag Payload Card";
+                                    font_size: 13;
+                                    color: Theme.text_primary;
+                                }
+                            }
+                        }
+
+                        DropTarget {
+                            id: "parity_drop_target";
+                            accept_prefix: "widget-card:";
+                            flex_grow: 1.0;
+                            padding: 12dp;
+                            background: Theme.background;
+                            border_radius: 8dp;
+                            border_width: 1;
+                            border_color: Theme.primary;
+                            on_drop => {
+                                drop_count = drop_count + 1;
+                                last_action = "Dropped: " + payload;
+                            }
+                            Text {
+                                text: "Drop Target Zone (drops: " + drop_count + ")";
+                                font_size: 13;
+                                color: Theme.text_secondary;
+                            }
+                        }
+                    }
+
+                    Row {
+                        width: 100%;
+                        gap: 12dp;
+
+                        DatePicker {
+                            id: "parity_date_picker";
+                            value: selected_date;
+                            width: 260dp;
+                            height: 250dp;
+                            on_change => {
+                                selected_date = value;
+                                last_action = "Date: " + value;
+                            }
+                        }
+
+                        TimePicker {
+                            id: "parity_time_picker";
+                            value: selected_time;
+                            use_24h: true;
+                            width: 200dp;
+                            height: 150dp;
+                            on_change => {
+                                selected_time = value;
+                                last_action = "Time: " + value;
+                            }
+                        }
+                    }
+
+                    Row {
+                        width: 100%;
+                        gap: 12dp;
+
+                        MediaPlayer {
+                            id: "parity_media_player";
+                            source: "https://example.invalid/demo.mp4";
+                            duration: 90.0;
+                            show_controls: true;
+                            width: 320dp;
+                            height: 180dp;
+                            on_toggle_play => {
+                                last_action = playing ? "Media playing" : "Media paused";
+                            }
+                        }
+
+                        RichTextEditor {
+                            id: "parity_rich_editor";
+                            text: rich_draft;
+                            placeholder: "Write rich text...";
+                            flex_grow: 1.0;
+                            height: 180dp;
+                            on_change => {
+                                rich_draft = value;
+                                last_action = "Rich text updated";
                             }
                         }
                     }

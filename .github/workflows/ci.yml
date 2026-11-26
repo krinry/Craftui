@@ -264,6 +264,40 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  ios-sim:
+    name: iOS Simulator (clippy, build & Swift template check)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy report (all warnings, never fails on lints)
+        run: .github/scripts/logged.sh clippy-report cargo clippy --locked -p craftui-platform-ios --target aarch64-apple-ios-sim
+      - name: Clippy (deny warnings)
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh clippy cargo clippy --locked -p craftui-platform-ios --target aarch64-apple-ios-sim -- -D warnings
+      - name: Build iOS simulator crate
+        if: ${{ !cancelled() }}
+        run: .github/scripts/logged.sh ios-sim-build cargo build --locked -p craftui-platform-ios --target aarch64-apple-ios-sim
+      - name: Generate Notes iOS Swift template and typecheck with swiftc
+        if: ${{ !cancelled() }}
+        run: |
+          .github/scripts/logged.sh notes-ios-template cargo run --locked -p craftui-cli -- build --platform ios --skip-cargo -p craftui-example-notes -o dist/notes-ios
+          .github/scripts/logged.sh notes-ios-swiftc xcrun --sdk iphonesimulator swiftc -typecheck -target arm64-apple-ios15.0-simulator -import-objc-header dist/notes-ios/CraftUI.h dist/notes-ios/CraftUIPermissions.swift dist/notes-ios/CraftUIViewController.swift
+      - name: Upload the job logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-ios-sim
+          path: ${{ runner.temp }}/ci-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
   # The notes example is the end-to-end proof that one codebase ships to the
   # Web and to Android. Both jobs go through the `craftui` CLI, the same way a
   # user would, instead of calling cargo with hand-picked flags.
@@ -481,7 +515,7 @@ jobs:
   publish-logs:
     name: Publish job logs
     if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [license-guard, lockfile, linux, desktop-matrix, wasm, android, notes-web, notes-android, android-emulator-smoke, bench-smoke]
+    needs: [license-guard, lockfile, linux, desktop-matrix, wasm, android, ios-sim, notes-web, notes-android, android-emulator-smoke, bench-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: write

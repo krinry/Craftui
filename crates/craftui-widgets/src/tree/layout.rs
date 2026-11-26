@@ -16,6 +16,10 @@ impl WidgetTree {
         if self.metrics_signal.get_untracked() != metrics {
             self.metrics_signal.set(metrics);
         }
+        let sig_dir = self.direction_signal.get_untracked();
+        if sig_dir != self.direction {
+            self.set_direction(sig_dir);
+        }
         let dirty_updates = drain_dirty_nodes();
         let dirty_count = dirty_updates.len();
 

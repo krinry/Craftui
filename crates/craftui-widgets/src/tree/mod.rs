@@ -312,6 +312,7 @@ pub struct WidgetTree {
     pub metrics_signal: Signal<WindowMetrics>,
     pub services: PlatformServices,
     pub direction: Direction,
+    pub direction_signal: Signal<Direction>,
     pub focused: Option<NodeId>,
     pub focus_visible: bool,
     pub hovered: Option<NodeId>,
@@ -342,9 +343,11 @@ impl WidgetTree {
         let theme_signal = root_scope.signal(initial_theme);
         let theme_override_signal = root_scope.signal(ThemeOverride::default());
         let metrics_signal = root_scope.signal(WindowMetrics::default());
+        let direction_signal = root_scope.signal(Direction::Ltr);
         root_scope.provide_context(theme_signal);
         root_scope.provide_context(theme_override_signal);
         root_scope.provide_context(metrics_signal);
+        root_scope.provide_context(direction_signal);
         root_scope.provide_context(services.clone());
         Self {
             nodes: SlotMap::with_key(),
@@ -362,6 +365,7 @@ impl WidgetTree {
             metrics_signal,
             services,
             direction: Direction::Ltr,
+            direction_signal,
             focused: None,
             focus_visible: false,
             hovered: None,
@@ -448,9 +452,15 @@ impl WidgetTree {
     /// Switch layout and text alignment direction (`Direction::Ltr` / `Direction::Rtl`), triggering re-layout.
     pub fn set_direction(&mut self, direction: Direction) {
         if self.direction == direction {
+            if self.direction_signal.get_untracked() != direction {
+                self.direction_signal.set(direction);
+            }
             return;
         }
         self.direction = direction;
+        if self.direction_signal.get_untracked() != direction {
+            self.direction_signal.set(direction);
+        }
         if let Some(root) = self.root {
             self.layout_engine.mark_dirty(root);
         }
