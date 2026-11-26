@@ -74,19 +74,23 @@ impl GlobalShortcut {
         }
     }
 
-    /// Returns true if a non-repeat key press matches this shortcut's modifiers and key.
-    pub fn matches(&self, ev: &KeyEvent) -> bool {
+    /// Returns true if a key press matches this shortcut's modifiers and key (including repeats).
+    pub fn matches_chord(&self, ev: &KeyEvent) -> bool {
         ev.pressed
-            && !ev.repeat
             && ev.code == self.key
             && ev.modifiers.ctrl == self.modifiers.ctrl
             && ev.modifiers.alt == self.modifiers.alt
             && ev.modifiers.shift == self.modifiers.shift
             && ev.modifiers.super_key == self.modifiers.super_key
     }
+
+    /// Returns true if a non-repeat key press matches this shortcut's modifiers and key.
+    pub fn matches(&self, ev: &KeyEvent) -> bool {
+        !ev.repeat && self.matches_chord(ev)
+    }
 }
 
-type TrayActionCb = Box<dyn FnMut()>;
+type TrayActionCb = Rc<RefCell<Box<dyn FnMut()>>>;
 
 struct ShortcutEntry {
     spec: GlobalShortcut,
@@ -151,7 +155,7 @@ impl SystemTrayHandle {
         self.state
             .borrow_mut()
             .menu_callbacks
-            .insert(item_id.into(), Box::new(cb));
+            .insert(item_id.into(), Rc::new(RefCell::new(Box::new(cb))));
     }
 
     /// Trigger a tray menu item callback by ID (returns false if disabled, separator, or unbound).
@@ -166,21 +170,13 @@ impl SystemTrayHandle {
         if !enabled {
             return false;
         }
-        let mut cb = self.state.borrow_mut().menu_callbacks.remove(item_id);
-        let ran = if let Some(ref mut f) = cb {
-            f();
+        let cb = self.state.borrow().menu_callbacks.get(item_id).cloned();
+        if let Some(cb) = cb {
+            (cb.borrow_mut())();
             true
         } else {
             false
-        };
-        if let Some(f) = cb {
-            self.state
-                .borrow_mut()
-                .menu_callbacks
-                .entry(item_id.to_string())
-                .or_insert(f);
         }
-        ran
     }
 
     pub fn show_window(&self, id: WindowId) -> Result<()> {
@@ -224,7 +220,7 @@ impl SystemTrayHandle {
         st.shortcuts.retain(|s| s.spec.id != shortcut.id);
         st.shortcuts.push(ShortcutEntry {
             spec: shortcut,
-            callback: Box::new(cb),
+            callback: Rc::new(RefCell::new(Box::new(cb))),
         });
     }
 
@@ -244,22 +240,21 @@ impl SystemTrayHandle {
             .collect()
     }
 
-    /// Match a keyboard event against registered global shortcuts and invoke its callback.
+    /// Match a keyboard event against registered shortcuts; consumes matching repeats without re-invoking.
     pub fn dispatch_key_event(&self, ev: &KeyEvent) -> bool {
-        let matched_idx = self
+        let matched = self
             .state
             .borrow()
             .shortcuts
             .iter()
-            .position(|entry| entry.spec.matches(ev));
-        let Some(idx) = matched_idx else {
+            .find(|entry| entry.spec.matches_chord(ev))
+            .map(|entry| entry.callback.clone());
+        let Some(cb) = matched else {
             return false;
         };
-        let mut entry = self.state.borrow_mut().shortcuts.remove(idx);
-        (entry.callback)();
-        let mut st = self.state.borrow_mut();
-        let insert_at = idx.min(st.shortcuts.len());
-        st.shortcuts.insert(insert_at, entry);
+        if !ev.repeat {
+            (cb.borrow_mut())();
+        }
         true
     }
 }

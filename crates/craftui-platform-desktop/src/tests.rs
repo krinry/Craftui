@@ -225,12 +225,30 @@ fn system_tray_menu_and_global_shortcuts_dispatch_correctly() {
     assert!(tray.dispatch_key_event(&matching));
     assert_eq!(shortcut_hits.get(), 1);
 
+    let repeat_matching = craftui_core::KeyEvent {
+        repeat: true,
+        ..matching.clone()
+    };
+    assert!(tray.dispatch_key_event(&repeat_matching));
+    assert_eq!(shortcut_hits.get(), 1);
+
     let non_matching = craftui_core::KeyEvent {
         modifiers: craftui_core::Modifiers::default(),
-        ..matching
+        ..matching.clone()
     };
     assert!(!tray.dispatch_key_event(&non_matching));
     assert!(tray.unregister_shortcut("toggle_win"));
+    assert!(tray.shortcuts().is_empty());
+
+    // Verify self-unregistering inside a shortcut callback is preserved.
+    let self_tray = tray.clone();
+    tray.register_shortcut(
+        crate::tray::GlobalShortcut::new("one_shot", mods, craftui_core::KeyCode::Space, "OneShot"),
+        move || {
+            self_tray.unregister_shortcut("one_shot");
+        },
+    );
+    assert!(tray.dispatch_key_event(&matching));
     assert!(tray.shortcuts().is_empty());
 
     let dummy_id = winit::window::WindowId::dummy();

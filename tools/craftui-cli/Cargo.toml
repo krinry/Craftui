@@ -18,12 +18,12 @@ workspace = true
 [dependencies]
 craftui-core.workspace = true
 craftui-reactive.workspace = true
-craftui-text = { path = "../../crates/craftui-text", features = ["embedded-fallback-font"] }
-craftui-render = { path = "../../crates/craftui-render", features = ["gpu-sdf", "cpu-vello", "cpu-tiny-skia"] }
+craftui-text = { path = "../../crates/craftui-text", version = "0.1.0", features = ["embedded-fallback-font"] }
+craftui-render = { path = "../../crates/craftui-render", version = "0.1.0", features = ["gpu-sdf", "cpu-vello", "cpu-tiny-skia"] }
 craftui-widgets.workspace = true
 craftui-dsl.workspace = true
 craftui-runtime.workspace = true
-craftui-platform-desktop = { path = "../../crates/craftui-platform-desktop", features = ["hot-reload", "gpu-sdf", "cpu-vello", "cpu-tiny-skia"] }
+craftui-platform-desktop = { path = "../../crates/craftui-platform-desktop", version = "0.1.0", features = ["hot-reload", "gpu-sdf", "cpu-vello", "cpu-tiny-skia"] }
 clap.workspace = true
 notify.workspace = true
 serde = { workspace = true, features = ["derive"] }

@@ -40,9 +40,14 @@ case "$MODE" in
     echo "All ${#CRATES[@]} crates passed package-list & craftui-core dry-run checks."
     ;;
   --dry-run)
-    for pkg in "${CRATES[@]}"; do
-      echo "==> Dry-run publish: $pkg"
-      cargo publish --dry-run --locked -p "$pkg"
+    # Before 0.1.0 is published on crates.io, dependent crates cannot resolve
+    # unpublished workspace versions from the public registry, so run dry-run
+    # on the leaf crate (craftui-core) and verify packaging on all remaining crates.
+    echo "==> Dry-run publish (leaf crate): craftui-core"
+    cargo publish --dry-run --locked -p craftui-core
+    for pkg in "${CRATES[@]:1}"; do
+      echo "==> Verifying package list: $pkg"
+      cargo package --list --locked -p "$pkg" >/dev/null
     done
     ;;
   --publish)
