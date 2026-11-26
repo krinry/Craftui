@@ -462,10 +462,15 @@ class MainActivity : GameActivity() {{
     private fun openCameraIntent() {{
         try {{
             takePictureLauncher.launch(null)
-        }} catch (_: Exception) {{
-            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
-            if (intent.resolveActivity(packageManager) != null) {{
-                startActivity(intent)
+        }} catch (e: Exception) {{
+            val reqId = pendingCameraRequestId
+            pendingCameraRequestId = 0L
+            if (reqId != 0L) {{
+                onNativeMethodChannelResult(
+                    reqId,
+                    false,
+                    JSONObject().put("error", e.message ?: "camera launcher unavailable").toString()
+                )
             }}
         }}
     }}
@@ -473,9 +478,16 @@ class MainActivity : GameActivity() {{
     private fun openGalleryIntent() {{
         try {{
             pickImageLauncher.launch("image/*")
-        }} catch (_: Exception) {{
-            val intent = Intent(Intent.ACTION_PICK, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-            startActivity(intent)
+        }} catch (e: Exception) {{
+            val reqId = pendingCameraRequestId
+            pendingCameraRequestId = 0L
+            if (reqId != 0L) {{
+                onNativeMethodChannelResult(
+                    reqId,
+                    false,
+                    JSONObject().put("error", e.message ?: "gallery launcher unavailable").toString()
+                )
+            }}
         }}
     }}
 

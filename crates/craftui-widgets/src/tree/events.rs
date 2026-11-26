@@ -315,6 +315,12 @@ impl WidgetTree {
                 }
             }
 
+            // Clear stale drag session if its source node was removed from the tree
+            if let Some((drag_id, _, _, _, _)) = self.active_drag
+                && !self.nodes.contains_key(drag_id)
+            {
+                self.active_drag = None;
+            }
             // Start cross-widget Draggable session if pointer hits inside a Draggable ancestor
             if self.active_drag.is_none() {
                 let mut drag_cursor = hit;
@@ -528,6 +534,7 @@ impl WidgetTree {
         {
             let h_rect = self.node_visual_rect(h);
             let h_local = self.screen_to_node_local_point(h, pe.position);
+            let mut started_reorder_item: Option<Option<String>> = None;
             if let Some(n) = self.nodes.get_mut(h) {
                 match &mut n.kind {
                     WidgetKind::Button { pressed, .. }
@@ -570,18 +577,24 @@ impl WidgetTree {
                         ..
                     } => {
                         let rh = row_height.max(24.0);
-                        let len = items.get_untracked().len();
+                        let list_snap = items.get_untracked();
+                        let len = list_snap.len();
                         let idx =
                             ((h_local.y - (h_rect.y + 4.0) + *scroll_offset) / rh).floor() as isize;
                         if idx >= 0 && (idx as usize) < len && h_local.x <= h_rect.x + 40.0 {
-                            *dragging_index = Some(idx as usize);
-                            *target_index = Some(idx as usize);
+                            let u = idx as usize;
+                            *dragging_index = Some(u);
+                            *target_index = Some(u);
+                            started_reorder_item = Some(list_snap.get(u).cloned());
                             n.dirty |= DirtyFlags::PAINT;
                             changed = true;
                         }
                     }
                     _ => {}
                 }
+            }
+            if let Some(item_opt) = started_reorder_item {
+                self.reorder_drag_owner = Some((h, pe.id, item_opt));
             }
             if let Some(ControlVisualAnim::Slider {
                 dragging, drag_t, ..
@@ -624,7 +637,13 @@ impl WidgetTree {
                         target_index,
                         on_reorder,
                         ..
-                    } if dragging_index.is_some() => {
+                    } if dragging_index.is_some()
+                        && self
+                            .reorder_drag_owner
+                            .as_ref()
+                            .is_some_and(|(id, pid, _)| *id == nid && *pid == pe.id) =>
+                    {
+                        let grabbed = self.reorder_drag_owner.take().and_then(|(_, _, item)| item);
                         let from = dragging_index.take();
                         let to = target_index.take();
                         if !is_cancel
@@ -633,7 +652,10 @@ impl WidgetTree {
                         {
                             let mut moved = false;
                             items.update(|list| {
-                                if f < list.len() && t < list.len() {
+                                if f < list.len()
+                                    && t < list.len()
+                                    && grabbed.as_ref().is_none_or(|exp| list.get(f) == Some(exp))
+                                {
                                     let el = list.remove(f);
                                     list.insert(t, el);
                                     moved = true;
@@ -660,7 +682,7 @@ impl WidgetTree {
             }
 
             if let Some((_, _, _, _, ptr_id)) = self.active_drag
-                && (is_cancel || ptr_id == pe.id)
+                && ptr_id == pe.id
             {
                 let (drag_id, payload, _, moved, _) = self.active_drag.take().unwrap();
                 if let Some(dn) = self.nodes.get_mut(drag_id)
@@ -813,6 +835,7 @@ impl WidgetTree {
 
     pub(crate) fn activate_tap(&mut self, node_id: NodeId, pos: Point, is_screen_pos: bool) {
         let rect = self.node_visual_rect(node_id);
+        let node_xform = self.node_world_transform(node_id);
 
         if self.nodes.get(node_id).is_some_and(WidgetNode::is_disabled) {
             return;
@@ -1368,9 +1391,13 @@ impl WidgetTree {
                             (hrs.get(oidx), parsed.get(oidx))
                         && !items.is_empty()
                     {
-                        let dr = crate::pickers::menubar_dropdown_rect(*hr, items.len());
-                        if dr.contains(local_pos) {
-                            let item_idx = ((local_pos.y - (dr.y + 4.0)) / 30.0).floor() as isize;
+                        let screen_pos = node_xform.transform_point(local_pos);
+                        let dr = crate::pickers::menubar_dropdown_rect(
+                            node_xform.transform_rect_bounds(*hr),
+                            items.len(),
+                        );
+                        if dr.contains(screen_pos) {
+                            let item_idx = ((screen_pos.y - (dr.y + 4.0)) / 30.0).floor() as isize;
                             if item_idx >= 0 && (item_idx as usize) < items.len() {
                                 let chosen = format!("{}/{}", menu_title, items[item_idx as usize]);
                                 if let Some(cb) = on_select.clone() {

@@ -252,6 +252,44 @@ impl WidgetTree {
             }
         }
 
+        // Clamp TreeView / ReorderableList scroll_offset so paint and hit-testing always match.
+        let list_ids: Vec<NodeId> = self.nodes.keys().collect();
+        for id in list_ids {
+            let rect = self.layout_engine.rect(id);
+            if let Some(n) = self.nodes.get_mut(id) {
+                match &mut n.kind {
+                    WidgetKind::TreeView {
+                        items,
+                        collapsed,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let rh = (*row_height).max(22.0);
+                        let vis_len = crate::pickers::derive_visible_tree_rows(
+                            &items.get(),
+                            &collapsed.borrow(),
+                        )
+                        .len();
+                        let max_off = (vis_len as f32 * rh + 8.0 - rect.height).max(0.0);
+                        *scroll_offset = scroll_offset.clamp(0.0, max_off);
+                    }
+                    WidgetKind::ReorderableList {
+                        items,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let rh = (*row_height).max(24.0);
+                        let max_off =
+                            (items.get_untracked().len() as f32 * rh + 8.0 - rect.height).max(0.0);
+                        *scroll_offset = scroll_offset.clamp(0.0, max_off);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         dirty_count
     }
 

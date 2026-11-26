@@ -2281,6 +2281,7 @@ fn build_children(
                     },
                     move |for_cx, item_sig, idx_sig, for_tree| {
                         let mut child_env = env_fac.clone();
+                        child_env.locals.remove(&item_name);
                         child_env.signal_locals.insert(item_name.clone(), item_sig);
                         if let Some(ref iv) = idx_name {
                             let idx_dyn =
@@ -2291,6 +2292,7 @@ fn build_children(
                                     idx_dyn.set(nv);
                                 }
                             });
+                            child_env.locals.remove(iv);
                             child_env.signal_locals.insert(iv.clone(), idx_dyn);
                         }
                         build_element(for_cx, &body_el, &child_env, for_tree)

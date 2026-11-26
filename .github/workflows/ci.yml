@@ -433,9 +433,7 @@ jobs:
             adb logcat -c
             adb shell am start -W -n dev.craftui.notes/dev.craftui.app.MainActivity | tee "$RUNNER_TEMP/ci-logs/android-am-start.log"
             sleep 5
-            pid="$(adb shell pidof dev.craftui.notes | tr -d '\r\n')"
-            test -n "$pid"
-            printf '%s\n' "$pid" | tee "$RUNNER_TEMP/ci-logs/android-pid.log"
+            pid="$(adb shell pidof dev.craftui.notes | tr -d '\r\n')" && test -n "$pid" && printf '%s\n' "$pid" | tee "$RUNNER_TEMP/ci-logs/android-pid.log"
             adb logcat -d > "$RUNNER_TEMP/ci-logs/android-logcat.log"
             ! grep -q "FATAL EXCEPTION" "$RUNNER_TEMP/ci-logs/android-logcat.log"
       - name: Upload emulator smoke logs
