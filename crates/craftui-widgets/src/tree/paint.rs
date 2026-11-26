@@ -836,8 +836,13 @@ impl WidgetTree {
                 let box_rect = Rect::new(rect.x, rect.y + (rect.height - 20.0) * 0.5, 20.0, 20.0);
                 let fill = theme.surface.lerp(theme.primary, check_t);
                 let bcol = theme.border.lerp(theme.primary, check_t);
-                scene.fill_rect(box_rect, fill, CornerRadii::all(5.0));
-                scene.stroke_rect(box_rect, bcol, 1.5, CornerRadii::all(5.0));
+                let box_rad = match self.design_preset {
+                    craftui_core::DesignSystem::Cupertino => CornerRadii::all(10.0),
+                    craftui_core::DesignSystem::WinUi => CornerRadii::all(4.0),
+                    craftui_core::DesignSystem::Material3 => CornerRadii::all(5.0),
+                };
+                scene.fill_rect(box_rect, fill, box_rad);
+                scene.stroke_rect(box_rect, bcol, 1.5, box_rad);
                 if check_t > 0.02 {
                     let p0 = (box_rect.x as f64 + 4.5, box_rect.y as f64 + 10.5);
                     let p1 = (box_rect.x as f64 + 8.5, box_rect.y as f64 + 14.5);
@@ -881,19 +886,51 @@ impl WidgetTree {
                         }
                     }
                 };
-                let track = Rect::new(rect.x, rect.y + (rect.height - 24.0) * 0.5, 44.0, 24.0);
-                let track_col = theme
-                    .surface_variant
-                    .lerp(theme.primary, knob_t.clamp(0.0, 1.0));
-                scene.fill_rect(track, track_col, CornerRadii::all(12.0));
-                let knob_x = track.x + 3.0 + knob_t * 19.0;
-                let knob_r = Rect::new(knob_x, track.y + 3.0, 18.0, 18.0);
-                scene.drop_shadow(
-                    knob_r,
-                    CornerRadii::all(9.0),
-                    BoxShadow::drop(0.0, 1.0, 3.0, 0.0, Color::rgba(0, 0, 0, 55)),
-                );
-                scene.fill_rect(knob_r, Color::WHITE, CornerRadii::all(9.0));
+                let knob_t_clamped = knob_t.clamp(0.0, 1.0);
+                let track_col = theme.surface_variant.lerp(theme.primary, knob_t_clamped);
+                match self.design_preset {
+                    craftui_core::DesignSystem::Cupertino => {
+                        let track =
+                            Rect::new(rect.x, rect.y + (rect.height - 28.0) * 0.5, 48.0, 28.0);
+                        scene.fill_rect(track, track_col, CornerRadii::all(14.0));
+                        if knob_t_clamped < 0.5 {
+                            scene.stroke_rect(track, theme.border, 1.0, CornerRadii::all(14.0));
+                        }
+                        let knob_x = track.x + 3.0 + knob_t * 20.0;
+                        let knob_r = Rect::new(knob_x, track.y + 3.0, 22.0, 22.0);
+                        scene.drop_shadow(
+                            knob_r,
+                            CornerRadii::all(11.0),
+                            BoxShadow::drop(0.0, 1.5, 4.0, 0.0, Color::rgba(0, 0, 0, 60)),
+                        );
+                        scene.fill_rect(knob_r, Color::WHITE, CornerRadii::all(11.0));
+                    }
+                    craftui_core::DesignSystem::WinUi => {
+                        let track =
+                            Rect::new(rect.x, rect.y + (rect.height - 20.0) * 0.5, 40.0, 20.0);
+                        let win_fill = theme.surface.lerp(theme.primary, knob_t_clamped);
+                        let win_border = theme.border.lerp(theme.primary, knob_t_clamped);
+                        scene.fill_rect(track, win_fill, CornerRadii::all(10.0));
+                        scene.stroke_rect(track, win_border, 1.5, CornerRadii::all(10.0));
+                        let knob_x = track.x + 4.0 + knob_t * 20.0;
+                        let knob_r = Rect::new(knob_x, track.y + 4.0, 12.0, 12.0);
+                        let knob_col = theme.text_secondary.lerp(Color::WHITE, knob_t_clamped);
+                        scene.fill_rect(knob_r, knob_col, CornerRadii::all(6.0));
+                    }
+                    craftui_core::DesignSystem::Material3 => {
+                        let track =
+                            Rect::new(rect.x, rect.y + (rect.height - 24.0) * 0.5, 44.0, 24.0);
+                        scene.fill_rect(track, track_col, CornerRadii::all(12.0));
+                        let knob_x = track.x + 3.0 + knob_t * 19.0;
+                        let knob_r = Rect::new(knob_x, track.y + 3.0, 18.0, 18.0);
+                        scene.drop_shadow(
+                            knob_r,
+                            CornerRadii::all(9.0),
+                            BoxShadow::drop(0.0, 1.0, 3.0, 0.0, Color::rgba(0, 0, 0, 55)),
+                        );
+                        scene.fill_rect(knob_r, Color::WHITE, CornerRadii::all(9.0));
+                    }
+                }
                 if is_focused {
                     scene.stroke_rect(
                         rect.inflate(2.0, 2.0),
@@ -970,13 +1007,28 @@ impl WidgetTree {
                 } else {
                     rect.y + rect.height * 0.5
                 };
-                let track = Rect::new(rect.x + 8.0, cy - 3.0, (rect.width - 16.0).max(8.0), 6.0);
-                scene.fill_rect(track, theme.surface_variant, CornerRadii::all(3.0));
+                let track_h = match self.design_preset {
+                    craftui_core::DesignSystem::Material3 => 6.0,
+                    craftui_core::DesignSystem::Cupertino | craftui_core::DesignSystem::WinUi => {
+                        4.0
+                    }
+                };
+                let track = Rect::new(
+                    rect.x + 8.0,
+                    cy - track_h * 0.5,
+                    (rect.width - 16.0).max(8.0),
+                    track_h,
+                );
+                scene.fill_rect(
+                    track,
+                    theme.surface_variant,
+                    CornerRadii::all(track_h * 0.5),
+                );
                 let active_w = track.width * frac;
                 scene.fill_rect(
                     Rect::new(track.x, track.y, active_w, track.height),
                     theme.primary,
-                    CornerRadii::all(3.0),
+                    CornerRadii::all(track_h * 0.5),
                 );
                 let kx_center = track.x + active_w;
                 if hover_t > 0.01 || drag_t > 0.01 {
@@ -988,7 +1040,12 @@ impl WidgetTree {
                         CornerRadii::all(halo_r),
                     );
                 }
-                let thumb_r = 9.0 + 1.5 * drag_t;
+                let thumb_r = match self.design_preset {
+                    craftui_core::DesignSystem::Cupertino => 10.0 + 1.5 * drag_t,
+                    craftui_core::DesignSystem::WinUi | craftui_core::DesignSystem::Material3 => {
+                        9.0 + 1.5 * drag_t
+                    }
+                };
                 let thumb_rect = Rect::new(
                     kx_center - thumb_r,
                     cy - thumb_r,
@@ -1000,13 +1057,41 @@ impl WidgetTree {
                     CornerRadii::all(thumb_r),
                     BoxShadow::drop(0.0, 1.5, 4.0, 0.0, Color::rgba(0, 0, 0, 70)),
                 );
-                scene.fill_rect(thumb_rect, Color::WHITE, CornerRadii::all(thumb_r));
-                scene.stroke_rect(
-                    thumb_rect,
-                    theme.primary,
-                    2.0 + 0.5 * drag_t,
-                    CornerRadii::all(thumb_r),
-                );
+                match self.design_preset {
+                    craftui_core::DesignSystem::Cupertino => {
+                        scene.fill_rect(thumb_rect, Color::WHITE, CornerRadii::all(thumb_r));
+                        scene.stroke_rect(
+                            thumb_rect,
+                            theme.border.with_alpha(0.6),
+                            1.0,
+                            CornerRadii::all(thumb_r),
+                        );
+                    }
+                    craftui_core::DesignSystem::WinUi => {
+                        scene.fill_rect(thumb_rect, theme.surface, CornerRadii::all(thumb_r));
+                        scene.stroke_rect(thumb_rect, theme.border, 1.0, CornerRadii::all(thumb_r));
+                        let inner_r = (thumb_r * 0.52).max(4.0);
+                        scene.fill_rect(
+                            Rect::new(
+                                kx_center - inner_r,
+                                cy - inner_r,
+                                inner_r * 2.0,
+                                inner_r * 2.0,
+                            ),
+                            theme.primary,
+                            CornerRadii::all(inner_r),
+                        );
+                    }
+                    craftui_core::DesignSystem::Material3 => {
+                        scene.fill_rect(thumb_rect, Color::WHITE, CornerRadii::all(thumb_r));
+                        scene.stroke_rect(
+                            thumb_rect,
+                            theme.primary,
+                            2.0 + 0.5 * drag_t,
+                            CornerRadii::all(thumb_r),
+                        );
+                    }
+                }
                 if is_focused {
                     scene.stroke_rect(
                         rect.inflate(1.5, 1.5),

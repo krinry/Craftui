@@ -12,6 +12,7 @@ pub mod permissions;
 pub mod presenter;
 pub mod runner;
 pub mod services;
+pub mod tray;
 
 #[cfg(test)]
 mod tests;
@@ -32,4 +33,5 @@ pub use runner::{run_hot_reload_cui, run_live_preview_cui};
 pub use services::{
     DesktopDeviceCapabilities, DesktopSecureStorage, DesktopShareBackend, default_desktop_services,
 };
+pub use tray::{GlobalShortcut, SystemTrayHandle, TrayMenuItem};
 pub use winit::window::WindowId;

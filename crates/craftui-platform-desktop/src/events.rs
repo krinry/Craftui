@@ -13,6 +13,7 @@ pub enum DesktopUserEvent {
     OpenWindow(u64),
     CloseWindow(WindowId),
     SetWindowTitle(WindowId, String),
+    SetWindowVisible(WindowId, bool),
 }
 
 impl From<accesskit_winit::Event> for DesktopUserEvent {

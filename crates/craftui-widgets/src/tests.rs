@@ -3104,3 +3104,54 @@ fn layout_skips_full_walk_on_paint_only_redraw() {
         "LAYOUT flag must not be set on PAINT-only redraw"
     );
 }
+
+#[test]
+fn adaptive_widget_chrome_varies_geometry_across_design_systems() {
+    reset_runtime();
+    let cx = Scope::root();
+    let mut tree = WidgetTree::new(cx);
+    let root = tree.column(cx);
+    let sw = tree.switch(cx, cx.signal(true), "Alerts");
+    let cb = tree.checkbox(cx, cx.signal(false), "Accept");
+    let sl = tree.slider(cx, cx.signal(0.5), 0.0, 1.0, "Volume");
+    tree.append_child(root, sw);
+    tree.append_child(root, cb);
+    tree.append_child(root, sl);
+    tree.set_root(root);
+
+    tree.layout(WindowMetrics {
+        logical_size: Size::new(400.0, 300.0),
+        ..Default::default()
+    });
+
+    let switch_track_width = |preset: craftui_core::DesignSystem, tree: &mut WidgetTree| -> f32 {
+        tree.set_design_preset(preset, ThemeMode::Light);
+        let mut scene = PaintScene::new();
+        tree.paint(&mut scene);
+        scene
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                craftui_render::PaintCommand::FillRect { rect, .. }
+                    if (rect.height - 20.0).abs() < 0.1
+                        || (rect.height - 24.0).abs() < 0.1
+                        || (rect.height - 28.0).abs() < 0.1 =>
+                {
+                    if rect.width >= 40.0 && rect.width <= 50.0 {
+                        Some(rect.width)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .expect("switch track FillRect missing")
+    };
+
+    let m3_w = switch_track_width(craftui_core::DesignSystem::Material3, &mut tree);
+    let cup_w = switch_track_width(craftui_core::DesignSystem::Cupertino, &mut tree);
+    let win_w = switch_track_width(craftui_core::DesignSystem::WinUi, &mut tree);
+    assert_eq!(m3_w, 44.0);
+    assert_eq!(cup_w, 48.0);
+    assert_eq!(win_w, 40.0);
+}

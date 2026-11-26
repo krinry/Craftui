@@ -126,12 +126,17 @@ pub struct AppContext {
     pub dispatcher: UiDispatcher,
     pub textures: TextureRegistry,
     pub services: PlatformServices,
+    pub tray: crate::tray::SystemTrayHandle,
     pub(crate) launcher: WindowLauncher,
 }
 
 impl AppContext {
     pub fn window_launcher(&self) -> WindowLauncher {
         self.launcher.clone()
+    }
+
+    pub fn system_tray(&self) -> crate::tray::SystemTrayHandle {
+        self.tray.clone()
     }
 
     pub fn open_window<F>(&self, config: WindowConfig, build_ui: F) -> Result<()>
@@ -182,6 +187,7 @@ pub(crate) struct DesktopRunner {
     proxy: EventLoopProxy<DesktopUserEvent>,
     dispatcher: UiDispatcher,
     services: PlatformServices,
+    tray: crate::tray::SystemTrayHandle,
     softbuffer_ctx: Option<softbuffer::Context<OwnedDisplayHandle>>,
     pending_primary: Option<InitialWindowSetup>,
     windows: HashMap<WindowId, DesktopWindowState>,
@@ -218,10 +224,12 @@ impl DesktopRunner {
             scale_factor: 1.0,
             ..Default::default()
         };
+        let tray = crate::tray::SystemTrayHandle::with_proxy(proxy.clone());
         Self {
             proxy,
             dispatcher,
             services,
+            tray,
             softbuffer_ctx: None,
             pending_primary: Some(InitialWindowSetup {
                 config,
@@ -425,6 +433,7 @@ impl DesktopRunner {
             dispatcher: self.dispatcher.clone(),
             textures: TextureRegistry::new(),
             services: self.services.clone(),
+            tray: self.tray.clone(),
             launcher: WindowLauncher {
                 proxy: self.proxy.clone(),
                 _not_send: PhantomData,
@@ -433,6 +442,7 @@ impl DesktopRunner {
 
         let win_id = window.id();
         root_scope.provide_context(app_ctx.launcher.clone());
+        root_scope.provide_context(app_ctx.tray.clone());
         root_scope.provide_context(win_id);
 
         if let Some(build_fn) = builder {
@@ -643,6 +653,15 @@ impl ApplicationHandler<DesktopUserEvent> for DesktopRunner {
                     state.window.set_title(&title);
                 }
             }
+            DesktopUserEvent::SetWindowVisible(win_id, visible) => {
+                if let Some(state) = self.windows.get(&win_id) {
+                    state.window.set_visible(visible);
+                    if visible {
+                        state.window.focus_window();
+                        state.window.request_redraw();
+                    }
+                }
+            }
         }
     }
 
@@ -814,6 +833,10 @@ impl ApplicationHandler<DesktopUserEvent> for DesktopRunner {
             WindowEvent::KeyboardInput { event: key_ev, .. } => {
                 sync_modifiers_from_key(&mut state.modifiers, &key_ev);
                 let ke = translate_winit_key(&key_ev, state.modifiers);
+                if self.tray.dispatch_key_event(&ke) {
+                    state.window.request_redraw();
+                    return;
+                }
                 #[cfg(feature = "hot-reload")]
                 if key_ev.state == ElementState::Pressed
                     && let Some(spec) = state.hot_reload.as_mut()
