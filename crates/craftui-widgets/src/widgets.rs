@@ -153,6 +153,7 @@ pub type BoolCallback = Rc<RefCell<dyn FnMut(bool)>>;
 pub type FloatCallback = Rc<RefCell<dyn FnMut(f32)>>;
 pub type IndexCallback = Rc<RefCell<dyn FnMut(usize)>>;
 pub type TextCallback = Rc<RefCell<dyn FnMut(String)>>;
+pub type ReorderCallback = Rc<RefCell<dyn FnMut(usize, usize)>>;
 pub type PinchRotateCallback = Rc<RefCell<dyn FnMut(Point, f32, f32)>>;
 pub type CanvasPaintFn = Rc<dyn Fn(Rect, &mut PaintScene)>;
 pub type CanvasPointerFn = Rc<RefCell<dyn FnMut(Rect, &craftui_core::PointerEvent)>>;
@@ -451,6 +452,72 @@ pub enum WidgetKind {
         open: Signal<bool>,
         width: f32,
         on_close: Option<TapHandler>,
+    },
+    /// Interactive calendar date picker binding an ISO `"YYYY-MM-DD"` string signal.
+    DatePicker {
+        value: Signal<String>,
+        view_year: i32,
+        view_month: u32,
+        on_change: Option<TextCallback>,
+    },
+    /// Interactive 24h/12h time picker binding an `"HH:MM"` string signal.
+    TimePicker {
+        value: Signal<String>,
+        use_24h: bool,
+        on_change: Option<TextCallback>,
+    },
+    /// Collapsible hierarchical tree view driven by slash-delimited item paths.
+    TreeView {
+        items: ReactiveValue<Vec<String>>,
+        selected: Signal<usize>,
+        collapsed: Rc<RefCell<std::collections::HashSet<String>>>,
+        row_height: f32,
+        scroll_offset: f32,
+        on_select: Option<IndexCallback>,
+    },
+    /// Drag-to-reorder and keyboard-reorderable list bound to a `Signal<Vec<String>>`.
+    ReorderableList {
+        items: Signal<Vec<String>>,
+        selected: Signal<usize>,
+        dragging_index: Option<usize>,
+        target_index: Option<usize>,
+        row_height: f32,
+        scroll_offset: f32,
+        on_reorder: Option<ReorderCallback>,
+        on_select: Option<IndexCallback>,
+    },
+    /// Application top horizontal menu bar (`"File:New,Open,Exit"` specs) with dropdown menus.
+    MenuBar {
+        menus: ReactiveValue<Vec<String>>,
+        open_menu: Option<usize>,
+        on_select: Option<TextCallback>,
+    },
+    /// Drag source container carrying a string payload for cross-widget [`DropTarget`](WidgetKind::DropTarget).
+    Draggable {
+        payload: ReactiveValue<String>,
+        dragging: bool,
+    },
+    /// Drop target container accepting payloads matching `accept_prefix` from [`Draggable`](WidgetKind::Draggable).
+    DropTarget {
+        accept_prefix: String,
+        hovered_drag: bool,
+        on_drop: Option<TextCallback>,
+    },
+    /// Audio or Video media playback surface with transport controls and optional `PlatformViewId`.
+    MediaPlayer {
+        kind: crate::MediaKind,
+        source: ReactiveValue<String>,
+        controller: Signal<crate::MediaController>,
+        autoplay: bool,
+        show_controls: bool,
+        on_toggle_play: Option<BoolCallback>,
+    },
+    /// Interactive formatted rich-text editor with `B`/`I`/`U` toolbar, styled spans, and IME input.
+    RichTextEditor {
+        controller: Signal<crate::RichEditorController>,
+        placeholder: String,
+        style: TextStyle,
+        on_change: Option<TextCallback>,
     },
     Custom(Rc<RefCell<dyn CustomWidget>>),
 }

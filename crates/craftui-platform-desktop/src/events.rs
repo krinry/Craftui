@@ -1,7 +1,7 @@
 use craftui_core::{CursorIcon, KeyCode, KeyEvent, Modifiers, PointerButton};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta};
 use winit::keyboard::{Key, KeyCode as WinitKeyCode, ModifiersState, NamedKey, PhysicalKey};
-use winit::window::CursorIcon as WinitCursorIcon;
+use winit::window::{CursorIcon as WinitCursorIcon, WindowId};
 
 /// Custom event loop messages delivered from background worker threads, AccessKit, `.cui` watcher, or window opening.
 #[derive(Debug)]
@@ -11,6 +11,8 @@ pub enum DesktopUserEvent {
     #[cfg(feature = "hot-reload")]
     FileChanged,
     OpenWindow(u64),
+    CloseWindow(WindowId),
+    SetWindowTitle(WindowId, String),
 }
 
 impl From<accesskit_winit::Event> for DesktopUserEvent {
@@ -32,14 +34,18 @@ pub fn translate_modifiers(state: ModifiersState) -> Modifiers {
 /// Update `caps_lock` and `alt_gr` tracking on desktop keyboard press/release events.
 pub fn sync_modifiers_from_key(mods: &mut Modifiers, key_ev: &winit::event::KeyEvent) {
     let pressed = key_ev.state == ElementState::Pressed;
-    if matches!(key_ev.physical_key, PhysicalKey::Code(WinitKeyCode::AltRight))
-        || matches!(&key_ev.logical_key, Key::Named(NamedKey::AltGraph))
+    if matches!(
+        key_ev.physical_key,
+        PhysicalKey::Code(WinitKeyCode::AltRight)
+    ) || matches!(&key_ev.logical_key, Key::Named(NamedKey::AltGraph))
     {
         mods.alt_gr = pressed;
     }
 
-    if (matches!(key_ev.physical_key, PhysicalKey::Code(WinitKeyCode::CapsLock))
-        || matches!(&key_ev.logical_key, Key::Named(NamedKey::CapsLock)))
+    if (matches!(
+        key_ev.physical_key,
+        PhysicalKey::Code(WinitKeyCode::CapsLock)
+    ) || matches!(&key_ev.logical_key, Key::Named(NamedKey::CapsLock)))
         && pressed
         && !key_ev.repeat
     {
@@ -98,8 +104,9 @@ pub fn translate_scroll_delta(delta: MouseScrollDelta, scale_factor: f32) -> (f3
 
 pub fn translate_winit_key(key_ev: &winit::event::KeyEvent, modifiers: Modifiers) -> KeyEvent {
     let code = match key_ev.physical_key {
-        PhysicalKey::Code(WinitKeyCode::Enter)
-        | PhysicalKey::Code(WinitKeyCode::NumpadEnter) => KeyCode::Enter,
+        PhysicalKey::Code(WinitKeyCode::Enter) | PhysicalKey::Code(WinitKeyCode::NumpadEnter) => {
+            KeyCode::Enter
+        }
         PhysicalKey::Code(WinitKeyCode::Tab) => KeyCode::Tab,
         PhysicalKey::Code(WinitKeyCode::Backspace) => KeyCode::Backspace,
         PhysicalKey::Code(WinitKeyCode::Delete) => KeyCode::Delete,

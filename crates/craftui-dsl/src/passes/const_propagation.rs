@@ -52,6 +52,7 @@ fn fold_element(el: &mut ElementNode) {
                     fold_element(else_b);
                 }
             }
+            ChildItem::ChildrenSlot { .. } => {}
         }
     }
 }

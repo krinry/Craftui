@@ -174,6 +174,11 @@ where
         .unwrap_or(2.0);
 
     let mut host = AndroidHost::new(dispatcher.clone(), 1080, 1920, density);
+    host.bridge.set_runtime_thread();
+    let bridge_waker = app.create_waker();
+    host.bridge.set_waker(move || {
+        bridge_waker.wake();
+    });
     #[cfg(feature = "hot-reload")]
     host.enable_remote_preview(craftui_core::DEFAULT_REMOTE_PREVIEW_PORT);
     let root = build_ui(host.scope, &mut host.tree, &mut host.textures, &dispatcher);
@@ -379,6 +384,16 @@ where
                 AndroidPlatformCommand::SaveFileDialog { request_id, .. } => {
                     tracing::debug!("Android platform command: SaveFileDialog {request_id}");
                 }
+                AndroidPlatformCommand::InvokeMethodChannel {
+                    request_id,
+                    channel,
+                    method,
+                    args_json,
+                } if host.bridge.is_method_channel_pending(request_id) => {
+                    forward_method_channel_to_kotlin(
+                        &app, request_id, &channel, &method, &args_json,
+                    );
+                }
                 _ => {}
             }
         }
@@ -429,4 +444,51 @@ where
         }
     }
     host.bridge.terminate();
+}
+
+#[cfg(target_os = "android")]
+fn forward_method_channel_to_kotlin(
+    app: &AndroidApp,
+    request_id: u64,
+    channel: &str,
+    method: &str,
+    args_json: &str,
+) {
+    let vm_ptr = app.vm_as_ptr().cast::<jni::sys::JavaVM>();
+    let activity_ptr = app.activity_as_ptr().cast::<jni::sys::_jobject>();
+    if vm_ptr.is_null() || activity_ptr.is_null() {
+        return;
+    }
+    let vm = unsafe { jni::JavaVM::from_raw(vm_ptr) };
+    let res = vm.attach_current_thread(|env| {
+        // Borrow the activity global ref without transferring ownership across threads.
+        let activity = std::mem::ManuallyDrop::new(unsafe {
+            jni::objects::JObject::from_raw(env, activity_ptr)
+        });
+        let j_channel = env.new_string(channel)?;
+        let j_method = env.new_string(method)?;
+        let j_args = env.new_string(args_json)?;
+        env.call_method(
+            &*activity,
+            jni::jni_str!("dispatchCraftUiMethodChannel"),
+            jni::jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
+            &[
+                jni::objects::JValue::Long(request_id as i64),
+                jni::objects::JValue::Object(&j_channel),
+                jni::objects::JValue::Object(&j_method),
+                jni::objects::JValue::Object(&j_args),
+            ],
+        )?;
+        Ok::<(), jni::errors::Error>(())
+    });
+    if let Err(err) = res {
+        tracing::warn!("failed invoking MainActivity.dispatchCraftUiMethodChannel: {err}");
+        if let Some(bridge) = active_android_bridge() {
+            bridge.push_method_channel_result(
+                request_id,
+                false,
+                &format!(r#"{{"error":"jni dispatch failed: {err}"}}"#),
+            );
+        }
+    }
 }

@@ -466,11 +466,12 @@ impl WidgetTree {
             | WidgetKind::Accordion { .. }
             | WidgetKind::DataTable { .. }
             | WidgetKind::Select { .. }
-            | WidgetKind::RadioGroup { .. } => CursorIcon::Pointer,
+            | WidgetKind::RadioGroup { .. }
+            | WidgetKind::MediaPlayer { .. } => CursorIcon::Pointer,
             WidgetKind::RichText {
                 on_link: Some(_), ..
             } => CursorIcon::Pointer,
-            WidgetKind::TextInput { .. } => CursorIcon::Text,
+            WidgetKind::TextInput { .. } | WidgetKind::RichTextEditor { .. } => CursorIcon::Text,
             WidgetKind::Slider { .. } => CursorIcon::Grab,
             WidgetKind::SplitPane { axis, .. } => match axis {
                 Axis::Horizontal => CursorIcon::ResizeHorizontal,
@@ -733,10 +734,17 @@ impl WidgetTree {
     }
 
     pub fn set_on_change(&mut self, node: NodeId, cb: impl FnMut(String) + 'static) {
-        if let Some(n) = self.nodes.get_mut(node)
-            && let WidgetKind::TextInput { on_change, .. } = &mut n.kind
-        {
-            *on_change = Some(Rc::new(RefCell::new(cb)));
+        if let Some(n) = self.nodes.get_mut(node) {
+            let rc: crate::TextCallback = Rc::new(RefCell::new(cb));
+            match &mut n.kind {
+                WidgetKind::TextInput { on_change, .. }
+                | WidgetKind::DatePicker { on_change, .. }
+                | WidgetKind::TimePicker { on_change, .. }
+                | WidgetKind::RichTextEditor { on_change, .. } => {
+                    *on_change = Some(rc);
+                }
+                _ => {}
+            }
         }
     }
 
@@ -746,7 +754,11 @@ impl WidgetTree {
             match &mut n.kind {
                 WidgetKind::Checkbox { on_change, .. }
                 | WidgetKind::Switch { on_change, .. }
-                | WidgetKind::Accordion { on_change, .. } => {
+                | WidgetKind::Accordion { on_change, .. }
+                | WidgetKind::MediaPlayer {
+                    on_toggle_play: on_change,
+                    ..
+                } => {
                     *on_change = Some(rc);
                 }
                 _ => {}
@@ -778,8 +790,50 @@ impl WidgetTree {
                     *on_change = Some(rc);
                 }
                 WidgetKind::DataTable { on_select, .. }
-                | WidgetKind::PopupMenu { on_select, .. } => {
+                | WidgetKind::PopupMenu { on_select, .. }
+                | WidgetKind::TreeView { on_select, .. }
+                | WidgetKind::ReorderableList { on_select, .. } => {
                     *on_select = Some(rc);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    pub fn set_on_reorder(&mut self, node: NodeId, cb: impl FnMut(usize, usize) + 'static) {
+        if let Some(n) = self.nodes.get_mut(node)
+            && let WidgetKind::ReorderableList { on_reorder, .. } = &mut n.kind
+        {
+            *on_reorder = Some(Rc::new(RefCell::new(cb)));
+        }
+    }
+
+    pub fn set_on_drop(&mut self, node: NodeId, cb: impl FnMut(String) + 'static) {
+        if let Some(n) = self.nodes.get_mut(node)
+            && let WidgetKind::DropTarget { on_drop, .. } = &mut n.kind
+        {
+            *on_drop = Some(Rc::new(RefCell::new(cb)));
+        }
+    }
+
+    pub fn set_on_menu_select(&mut self, node: NodeId, cb: impl FnMut(String) + 'static) {
+        if let Some(n) = self.nodes.get_mut(node)
+            && let WidgetKind::MenuBar { on_select, .. } = &mut n.kind
+        {
+            *on_select = Some(Rc::new(RefCell::new(cb)));
+        }
+    }
+
+    pub fn set_row_height(&mut self, node: NodeId, height: f32) {
+        if let Some(n) = self.nodes.get_mut(node) {
+            match &mut n.kind {
+                WidgetKind::TreeView { row_height, .. } => {
+                    *row_height = height.max(22.0);
+                    n.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
+                }
+                WidgetKind::ReorderableList { row_height, .. } => {
+                    *row_height = height.max(24.0);
+                    n.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
                 }
                 _ => {}
             }

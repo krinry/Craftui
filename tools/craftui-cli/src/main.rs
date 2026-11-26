@@ -1,3 +1,4 @@
+mod add;
 mod dev;
 mod doctor;
 mod manifest;
@@ -10,6 +11,7 @@ mod templates;
 #[cfg(test)]
 mod tests;
 
+use crate::add::run_add_crate;
 use crate::dev::{check_cui_paths, render_cui_file_to_png, run_dev_watcher};
 use crate::doctor::{run_doctor, run_setup};
 use crate::permissions::{run_permissions_check, run_permissions_list};
@@ -52,6 +54,7 @@ pub enum ProjectTemplate {
     Counter,
     Dashboard,
     Mobile,
+    Plugin,
 }
 
 #[derive(Subcommand, Debug)]
@@ -79,6 +82,9 @@ enum Commands {
         path: Option<PathBuf>,
         #[arg(long, value_enum, default_value_t = ProjectTemplate::Counter)]
         template: ProjectTemplate,
+        /// Shortcut for `--template plugin` to scaffold a distributable MethodChannel plugin crate
+        #[arg(long)]
+        plugin: bool,
     },
     /// Initialize craftui.toml in an existing project without overwriting existing source files
     Init {
@@ -191,6 +197,17 @@ enum Commands {
         #[arg(long)]
         skip_cargo: bool,
     },
+    /// Add a crates.io dependency to Cargo.toml and record it in craftui.toml
+    Add {
+        /// Crate name or name@version (for example `reqwest` or `serde@1.0`)
+        crate_spec: String,
+        #[arg(long, value_delimiter = ',')]
+        features: Vec<String>,
+        #[arg(long, default_value = ".")]
+        path: PathBuf,
+        #[arg(long)]
+        skip_cargo: bool,
+    },
     /// Run the CraftUI Model Context Protocol (MCP) server over stdio for AI assistants & IDEs
     Mcp {
         #[arg(long, default_value_t = true)]
@@ -212,18 +229,29 @@ fn run() -> Result<()> {
             name,
             path,
             template,
+            plugin,
         } => {
+            let effective_template = if plugin {
+                ProjectTemplate::Plugin
+            } else {
+                template
+            };
             let target_dir = path.unwrap_or_else(|| PathBuf::from(&name));
-            scaffold_project_with_template(&name, &target_dir, template)?;
+            scaffold_project_with_template(&name, &target_dir, effective_template)?;
             println!(
                 "Created CraftUI ({}) project '{}' at {}",
-                template_label(template),
+                template_label(effective_template),
                 name,
                 target_dir.display()
             );
             println!(
-                "Next steps:\n  cd {}\n  craftui permissions check craftui.toml\n  craftui check ui/main.cui\n  craftui run --platform desktop",
-                target_dir.display()
+                "Next steps:\n  cd {}\n  craftui permissions check craftui.toml\n  craftui check ui/main.cui\n  {}",
+                target_dir.display(),
+                if effective_template == ProjectTemplate::Plugin {
+                    "cargo test"
+                } else {
+                    "craftui run --platform desktop"
+                }
             );
             Ok(())
         }
@@ -371,6 +399,12 @@ fn run() -> Result<()> {
             out.as_deref(),
             skip_cargo,
         ),
+        Commands::Add {
+            crate_spec,
+            features,
+            path,
+            skip_cargo,
+        } => run_add_crate(&crate_spec, &features, &path, skip_cargo),
         Commands::Mcp { stdio } => mcp::run_mcp_server(stdio),
     }
 }

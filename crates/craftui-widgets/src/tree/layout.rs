@@ -23,6 +23,18 @@ impl WidgetTree {
         for (id, flags) in dirty_updates {
             if let Some(node) = self.nodes.get_mut(id) {
                 node.dirty |= flags;
+                if flags.contains(DirtyFlags::A11Y)
+                    && let WidgetKind::DatePicker {
+                        value,
+                        view_year,
+                        view_month,
+                        ..
+                    } = &mut node.kind
+                {
+                    let (y, m, _) = crate::pickers::parse_iso_date(&value.get_untracked());
+                    *view_year = y;
+                    *view_month = m;
+                }
                 drained_masks
                     .entry(id)
                     .and_modify(|f| *f |= flags)
@@ -166,6 +178,13 @@ impl WidgetTree {
                             layout_changed = true;
                         }
                     }
+                    WidgetKind::DatePicker { value, .. } | WidgetKind::TimePicker { value, .. } => {
+                        node.a11y.value = Some(value.get_untracked());
+                    }
+                    WidgetKind::TreeView { selected, .. }
+                    | WidgetKind::ReorderableList { selected, .. } => {
+                        node.a11y.numeric_value = Some(selected.get_untracked() as f64);
+                    }
                     WidgetKind::Custom(cw) => {
                         if let Ok(guard) = cw.try_borrow() {
                             node.a11y = guard.a11y();
@@ -241,6 +260,44 @@ impl WidgetTree {
                     };
                     let max_off = (*content_extent - view).max(0.0);
                     *offset = offset.clamp(0.0, max_off);
+                }
+            }
+        }
+
+        // Clamp TreeView / ReorderableList scroll_offset so paint and hit-testing always match.
+        let list_ids: Vec<NodeId> = self.nodes.keys().collect();
+        for id in list_ids {
+            let rect = self.layout_engine.rect(id);
+            if let Some(n) = self.nodes.get_mut(id) {
+                match &mut n.kind {
+                    WidgetKind::TreeView {
+                        items,
+                        collapsed,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let rh = (*row_height).max(22.0);
+                        let vis_len = crate::pickers::derive_visible_tree_rows(
+                            &items.get(),
+                            &collapsed.borrow(),
+                        )
+                        .len();
+                        let max_off = (vis_len as f32 * rh + 8.0 - rect.height).max(0.0);
+                        *scroll_offset = scroll_offset.clamp(0.0, max_off);
+                    }
+                    WidgetKind::ReorderableList {
+                        items,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let rh = (*row_height).max(24.0);
+                        let max_off =
+                            (items.get_untracked().len() as f32 * rh + 8.0 - rect.height).max(0.0);
+                        *scroll_offset = scroll_offset.clamp(0.0, max_off);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -472,6 +529,85 @@ impl WidgetTree {
                             800.0
                         };
                         Size::new(*width, h)
+                    }
+                    WidgetKind::DatePicker { .. } => Size::new(280.0, 296.0),
+                    WidgetKind::TimePicker { use_24h, .. } => {
+                        Size::new(if *use_24h { 172.0 } else { 232.0 }, 132.0)
+                    }
+                    WidgetKind::TreeView {
+                        items,
+                        collapsed,
+                        row_height,
+                        ..
+                    } => {
+                        let list = items.get();
+                        let col = collapsed.borrow();
+                        let vis_len = crate::pickers::derive_visible_tree_rows(&list, &col)
+                            .len()
+                            .max(1);
+                        let w = if constraints.max_width.is_finite() {
+                            constraints.max_width.min(320.0)
+                        } else {
+                            240.0
+                        };
+                        let h = (vis_len as f32 * *row_height + 8.0).min(
+                            if constraints.max_height.is_finite() {
+                                constraints.max_height
+                            } else {
+                                320.0
+                            },
+                        );
+                        Size::new(w, h)
+                    }
+                    WidgetKind::ReorderableList {
+                        items, row_height, ..
+                    } => {
+                        let count = items.get().len().max(1);
+                        let w = if constraints.max_width.is_finite() {
+                            constraints.max_width.min(360.0)
+                        } else {
+                            280.0
+                        };
+                        let h = (count as f32 * row_height.max(24.0) + 8.0).min(
+                            if constraints.max_height.is_finite() {
+                                constraints.max_height
+                            } else {
+                                360.0
+                            },
+                        );
+                        Size::new(w, h)
+                    }
+                    WidgetKind::MenuBar { .. } => {
+                        let w = if constraints.max_width.is_finite() {
+                            constraints.max_width
+                        } else {
+                            480.0
+                        };
+                        Size::new(w, 34.0)
+                    }
+                    WidgetKind::MediaPlayer { kind, .. } => {
+                        let default_w = match kind {
+                            crate::MediaKind::Video => 360.0,
+                            crate::MediaKind::Audio => 320.0,
+                        };
+                        let w = if constraints.max_width.is_finite() {
+                            constraints.max_width.min(default_w)
+                        } else {
+                            default_w
+                        };
+                        let h = match kind {
+                            crate::MediaKind::Video => 210.0,
+                            crate::MediaKind::Audio => 56.0,
+                        };
+                        Size::new(w, h)
+                    }
+                    WidgetKind::RichTextEditor { .. } => {
+                        let w = if constraints.max_width.is_finite() {
+                            constraints.max_width.min(480.0)
+                        } else {
+                            320.0
+                        };
+                        Size::new(w, 160.0)
                     }
                     WidgetKind::Custom(cw) => {
                         if let Ok(mut guard) = cw.try_borrow_mut() {

@@ -684,3 +684,80 @@ fn the_property_and_event_tables_cover_every_widget() {
         );
     }
 }
+
+#[test]
+fn children_slot_and_new_picker_tree_widgets_validate_and_codegen() {
+    let source = r#"
+        component PanelBox {
+            in property <string> title: "Header";
+            Column {
+                padding: 12;
+                Text { text: root.title; }
+                Container {
+                    @children;
+                }
+            }
+        }
+
+        export component MainApp {
+            in-out property <string> chosen_date: "2026-11-25";
+            in-out property <string> chosen_time: "09:30";
+            in-out property <int> selected_item: 0;
+
+            PanelBox {
+                title: "Schedule";
+                DatePicker { value <=> chosen_date; }
+                TimePicker { value <=> chosen_time; use_24h: false; }
+                TreeView {
+                    items: ["Workspace", "Workspace/src", "Workspace/src/main.rs"];
+                    selected <=> selected_item;
+                }
+                ReorderableList {
+                    items: ["Task A", "Task B"];
+                    selected <=> selected_item;
+                }
+                MenuBar {
+                    menus: ["File:New,Open", "Help:About"];
+                }
+                Draggable {
+                    payload: "card:1";
+                    Text { text: "Drag me"; }
+                }
+                DropTarget {
+                    accept_prefix: "card:";
+                    Text { text: "Drop here"; }
+                }
+                VideoPlayer {
+                    source: "intro.mp4";
+                    duration: 45;
+                }
+                AudioPlayer {
+                    source: "track.mp3";
+                }
+                RichTextEditor {
+                    text: "Formatted";
+                }
+            }
+        }
+    "#;
+
+    let unit = resolve_source(source, None);
+    let errors: Vec<&str> = unit
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .map(|d| d.message.as_str())
+        .collect();
+    assert!(errors.is_empty(), "unexpected diagnostics: {errors:#?}");
+
+    let rust = generate_rust(&unit.merged);
+    assert!(rust.contains("pub fn build_with_children"));
+    assert!(rust.contains("__slot_children("));
+    assert!(rust.contains(".date_picker("));
+    assert!(rust.contains(".time_picker("));
+    assert!(rust.contains(".tree_view("));
+    assert!(rust.contains(".reorderable_list("));
+    assert!(rust.contains(".menu_bar("));
+    assert!(rust.contains(".draggable("));
+    assert!(rust.contains(".drop_target("));
+}

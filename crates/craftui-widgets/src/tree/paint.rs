@@ -1,5 +1,18 @@
 use super::*;
 
+#[inline]
+fn effective_text_align(align: craftui_text::TextAlign, dir: Direction) -> craftui_text::TextAlign {
+    if dir == Direction::Rtl {
+        match align {
+            craftui_text::TextAlign::Start => craftui_text::TextAlign::End,
+            craftui_text::TextAlign::End => craftui_text::TextAlign::Start,
+            other => other,
+        }
+    } else {
+        align
+    }
+}
+
 impl WidgetTree {
     /// Record [`PaintScene`] commands from the retained widget tree.
     pub fn paint(&mut self, scene: &mut PaintScene) {
@@ -9,6 +22,7 @@ impl WidgetTree {
         };
         let theme = self.theme_signal.get_untracked();
         let mut floating_selects: Vec<(Rect, Vec<String>, usize, f32)> = Vec::new();
+        let mut floating_menus: Vec<(Rect, Vec<String>)> = Vec::new();
         let mut active_tooltips: Vec<(Rect, String)> = Vec::new();
         self.paint_node_recursive(
             root,
@@ -17,6 +31,7 @@ impl WidgetTree {
             &theme,
             scene,
             &mut floating_selects,
+            &mut floating_menus,
             &mut active_tooltips,
         );
 
@@ -109,6 +124,56 @@ impl WidgetTree {
             );
             scene.stroke_rect(tip_rect, theme.border, 1.0, CornerRadii::all(6.0));
             scene.draw_text(Point::new(tx + 9.0, ty + 5.0), &tip_text, st, Some(240.0));
+        }
+
+        // Paint open MenuBar dropdowns on top of main UI
+        for (menu_rect, items) in floating_menus {
+            scene.drop_shadow(
+                menu_rect,
+                CornerRadii::all(8.0),
+                BoxShadow::drop(0.0, 4.0, 12.0, 0.0, Color::rgba(0, 0, 0, 110)),
+            );
+            scene.fill_rect(menu_rect, theme.surface, CornerRadii::all(8.0));
+            scene.stroke_rect(menu_rect, theme.border, 1.0, CornerRadii::all(8.0));
+            for (i, item) in items.iter().enumerate() {
+                let iy = menu_rect.y + 4.0 + i as f32 * 30.0;
+                if iy + 28.0 > menu_rect.max_y() {
+                    break;
+                }
+                scene.draw_text(
+                    Point::new(menu_rect.x + 12.0, iy + 7.0),
+                    item,
+                    TextStyle::default()
+                        .with_size(13.5)
+                        .with_color(theme.text_primary),
+                    Some((menu_rect.width - 24.0).max(20.0)),
+                );
+            }
+        }
+
+        // Paint active drag payload pill near cursor only after drag movement and if source still exists
+        if let Some((drag_id, ref payload, pos, moved, _)) = self.active_drag
+            && moved
+            && self.nodes.contains_key(drag_id)
+        {
+            let st = TextStyle::default()
+                .with_size(12.5)
+                .with_weight(600.0)
+                .with_color(theme.on_primary);
+            let m = self.text_engine.measure(payload, &st, Some(200.0));
+            let pill = Rect::new(pos.x + 12.0, pos.y + 12.0, m.width + 18.0, m.height + 10.0);
+            scene.drop_shadow(
+                pill,
+                CornerRadii::all(8.0),
+                BoxShadow::drop(0.0, 3.0, 8.0, 0.0, Color::rgba(0, 0, 0, 90)),
+            );
+            scene.fill_rect(pill, theme.primary, CornerRadii::all(8.0));
+            scene.draw_text(
+                Point::new(pill.x + 9.0, pill.y + 5.0),
+                payload,
+                st,
+                Some(200.0),
+            );
         }
 
         if self.inspector.enabled {
@@ -320,6 +385,7 @@ impl WidgetTree {
         theme: &ThemeTokens,
         scene: &mut PaintScene,
         floating_selects: &mut Vec<(Rect, Vec<String>, usize, f32)>,
+        floating_menus: &mut Vec<(Rect, Vec<String>)>,
         active_tooltips: &mut Vec<(Rect, String)>,
     ) {
         let Some(node) = self.nodes.get(id) else {
@@ -465,10 +531,13 @@ impl WidgetTree {
                 if st.color == Color::TRANSPARENT {
                     st.color = theme.text_primary;
                 }
+                st.align = effective_text_align(st.align, self.direction);
                 scene.draw_text(rect.origin(), txt, st, Some(rect.width.max(1.0)));
             }
             WidgetKind::RichText { content, .. } => {
-                scene.draw_rich_text(rect.origin(), content.get(), Some(rect.width.max(1.0)));
+                let mut rich = content.get();
+                rich.align = effective_text_align(rich.align, self.direction);
+                scene.draw_rich_text(rect.origin(), rich, Some(rect.width.max(1.0)));
             }
             WidgetKind::Icon { svg, color, .. } => {
                 let tint = color.map(|c| c.get()).unwrap_or(theme.text_primary);
@@ -617,6 +686,7 @@ impl WidgetTree {
                         theme,
                         scene,
                         floating_selects,
+                        floating_menus,
                         active_tooltips,
                     );
                 }
@@ -664,6 +734,7 @@ impl WidgetTree {
                         theme,
                         scene,
                         floating_selects,
+                        floating_menus,
                         active_tooltips,
                     );
                 }
@@ -707,6 +778,7 @@ impl WidgetTree {
                 });
                 let disp = editor.display_text().into_owned();
                 let mut draw_style = style.clone();
+                draw_style.align = effective_text_align(draw_style.align, self.direction);
                 let font_sz = draw_style.font_size;
                 if disp.is_empty() {
                     draw_style.color = theme.text_secondary;
@@ -2175,6 +2247,668 @@ impl WidgetTree {
                     scene.fill_rect(drawer_r, adapted, CornerRadii::new(0.0, 16.0, 16.0, 0.0));
                 }
             }
+            WidgetKind::DatePicker {
+                value,
+                view_year,
+                view_month,
+                ..
+            } => {
+                let rad = CornerRadii::all(12.0);
+                let bg = box_style
+                    .background
+                    .as_ref()
+                    .map(|b| b.get())
+                    .unwrap_or(Brush::Solid(theme.surface));
+                scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), rad);
+                if box_style.border.is_none() {
+                    scene.stroke_rect(rect, theme.border, 1.0, rad);
+                }
+
+                let (sel_y, sel_m, sel_d) = crate::pickers::parse_iso_date(&value.get());
+                let prev_r = Rect::new(rect.x + 8.0, rect.y + 8.0, 28.0, 28.0);
+                let next_r = Rect::new(rect.max_x() - 36.0, rect.y + 8.0, 28.0, 28.0);
+                scene.fill_rect(prev_r, theme.surface_variant, CornerRadii::all(6.0));
+                scene.fill_rect(next_r, theme.surface_variant, CornerRadii::all(6.0));
+                let nav_st = TextStyle::default()
+                    .with_size(14.0)
+                    .with_weight(600.0)
+                    .with_color(theme.text_primary);
+                scene.draw_text(
+                    Point::new(prev_r.x + 9.0, prev_r.y + 6.0),
+                    "<",
+                    nav_st.clone(),
+                    None,
+                );
+                scene.draw_text(
+                    Point::new(next_r.x + 9.0, next_r.y + 6.0),
+                    ">",
+                    nav_st,
+                    None,
+                );
+
+                let hdr_title =
+                    format!("{} {view_year:04}", crate::pickers::month_name(view_month));
+                let hdr_st = TextStyle::default()
+                    .with_size(14.0)
+                    .with_weight(600.0)
+                    .with_color(theme.text_primary);
+                let hsz = self.text_engine.measure(&hdr_title, &hdr_st, None);
+                scene.draw_text(
+                    Point::new(rect.x + (rect.width - hsz.width) * 0.5, rect.y + 13.0),
+                    hdr_title,
+                    hdr_st,
+                    None,
+                );
+
+                let cell_w = ((rect.width - 16.0) / 7.0).max(20.0);
+                let cell_h = ((rect.height - 74.0) / 6.0).max(22.0);
+                let wk_st = TextStyle::default()
+                    .with_size(11.0)
+                    .with_weight(600.0)
+                    .with_color(theme.text_secondary);
+                for (col, wd) in ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+                    .iter()
+                    .enumerate()
+                {
+                    let cx = rect.x + 8.0 + col as f32 * cell_w;
+                    let wsz = self.text_engine.measure(wd, &wk_st, None);
+                    scene.draw_text(
+                        Point::new(cx + (cell_w - wsz.width) * 0.5, rect.y + 44.0),
+                        *wd,
+                        wk_st.clone(),
+                        None,
+                    );
+                }
+
+                let first_wd = crate::pickers::weekday_sunday0(view_year, view_month, 1);
+                let total_days = crate::pickers::days_in_month(view_year, view_month);
+                for day in 1..=total_days {
+                    let slot = first_wd + (day - 1);
+                    let r = slot / 7;
+                    let c = slot % 7;
+                    let cell = Rect::new(
+                        rect.x + 8.0 + c as f32 * cell_w,
+                        rect.y + 66.0 + r as f32 * cell_h,
+                        cell_w,
+                        cell_h,
+                    );
+                    let is_sel = sel_y == view_year && sel_m == view_month && sel_d == day;
+                    if is_sel {
+                        let pill = cell.inflate(-3.0, -3.0);
+                        scene.fill_rect(pill, theme.primary, CornerRadii::all(pill.height * 0.5));
+                    }
+                    let txt = format!("{day}");
+                    let dst = TextStyle::default()
+                        .with_size(12.5)
+                        .with_weight(if is_sel { 600.0 } else { 400.0 })
+                        .with_color(if is_sel {
+                            theme.on_primary
+                        } else {
+                            theme.text_primary
+                        });
+                    let dsz = self.text_engine.measure(&txt, &dst, None);
+                    scene.draw_text(
+                        Point::new(
+                            cell.x + (cell.width - dsz.width) * 0.5,
+                            cell.y + (cell.height - dsz.height) * 0.5,
+                        ),
+                        txt,
+                        dst,
+                        None,
+                    );
+                }
+                if is_focused {
+                    scene.stroke_rect(rect.inflate(1.5, 1.5), theme.primary, 1.5, rad);
+                }
+            }
+            WidgetKind::TimePicker { value, use_24h, .. } => {
+                let rad = CornerRadii::all(12.0);
+                let bg = box_style
+                    .background
+                    .as_ref()
+                    .map(|b| b.get())
+                    .unwrap_or(Brush::Solid(theme.surface));
+                scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), rad);
+                if box_style.border.is_none() {
+                    scene.stroke_rect(rect, theme.border, 1.0, rad);
+                }
+
+                let (h24, min) = crate::pickers::parse_time_hm(&value.get());
+                let (disp_h, am_pm) = if use_24h {
+                    (h24, None)
+                } else {
+                    let pm = h24 >= 12;
+                    let h12 = match h24 % 12 {
+                        0 => 12,
+                        x => x,
+                    };
+                    (h12, Some(if pm { "PM" } else { "AM" }))
+                };
+
+                let col_w = 58.0;
+                let h_x = rect.x + 12.0;
+                let m_x = rect.x + 92.0;
+                let paint_spin =
+                    |scene: &mut PaintScene, te: &mut TextEngine, x: f32, val: String| {
+                        let plus_r = Rect::new(x, rect.y + 10.0, col_w, 28.0);
+                        let val_r = Rect::new(x, rect.y + 42.0, col_w, 46.0);
+                        let minus_r = Rect::new(x, rect.y + 92.0, col_w, 28.0);
+                        scene.fill_rect(plus_r, theme.surface_variant, CornerRadii::all(6.0));
+                        scene.fill_rect(val_r, theme.surface_container, CornerRadii::all(8.0));
+                        scene.fill_rect(minus_r, theme.surface_variant, CornerRadii::all(6.0));
+                        let btn_st = TextStyle::default()
+                            .with_size(14.0)
+                            .with_weight(600.0)
+                            .with_color(theme.text_primary);
+                        let v_st = TextStyle::default()
+                            .with_size(22.0)
+                            .with_weight(600.0)
+                            .with_color(theme.text_primary);
+                        let psz = te.measure("+", &btn_st, None);
+                        let msz = te.measure("-", &btn_st, None);
+                        let vsz = te.measure(&val, &v_st, None);
+                        scene.draw_text(
+                            Point::new(plus_r.x + (col_w - psz.width) * 0.5, plus_r.y + 5.0),
+                            "+",
+                            btn_st.clone(),
+                            None,
+                        );
+                        scene.draw_text(
+                            Point::new(
+                                val_r.x + (col_w - vsz.width) * 0.5,
+                                val_r.y + (val_r.height - vsz.height) * 0.5,
+                            ),
+                            val,
+                            v_st,
+                            None,
+                        );
+                        scene.draw_text(
+                            Point::new(minus_r.x + (col_w - msz.width) * 0.5, minus_r.y + 5.0),
+                            "-",
+                            btn_st,
+                            None,
+                        );
+                    };
+
+                paint_spin(scene, &mut self.text_engine, h_x, format!("{disp_h:02}"));
+                paint_spin(scene, &mut self.text_engine, m_x, format!("{min:02}"));
+
+                let sep_st = TextStyle::default()
+                    .with_size(22.0)
+                    .with_weight(700.0)
+                    .with_color(theme.text_secondary);
+                scene.draw_text(Point::new(rect.x + 77.0, rect.y + 52.0), ":", sep_st, None);
+
+                if let Some(label) = am_pm {
+                    let am_r = Rect::new(rect.x + 162.0, rect.y + 42.0, 54.0, 46.0);
+                    scene.fill_rect(am_r, theme.primary, CornerRadii::all(8.0));
+                    let ast = TextStyle::default()
+                        .with_size(14.0)
+                        .with_weight(600.0)
+                        .with_color(theme.on_primary);
+                    let asz = self.text_engine.measure(label, &ast, None);
+                    scene.draw_text(
+                        Point::new(
+                            am_r.x + (am_r.width - asz.width) * 0.5,
+                            am_r.y + (am_r.height - asz.height) * 0.5,
+                        ),
+                        label,
+                        ast,
+                        None,
+                    );
+                }
+                if is_focused {
+                    scene.stroke_rect(rect.inflate(1.5, 1.5), theme.primary, 1.5, rad);
+                }
+            }
+            WidgetKind::TreeView {
+                items,
+                selected,
+                collapsed,
+                row_height,
+                scroll_offset,
+                ..
+            } => {
+                let rad = CornerRadii::all(8.0);
+                let bg = box_style
+                    .background
+                    .as_ref()
+                    .map(|b| b.get())
+                    .unwrap_or(Brush::Solid(theme.surface));
+                scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), rad);
+                scene.push(PaintCommand::PushClip { rect, radius: rad });
+
+                let list = items.get();
+                let col = collapsed.borrow();
+                let vis = crate::pickers::derive_visible_tree_rows(&list, &col);
+                let sel_raw = selected.get();
+                let rh = row_height.max(22.0);
+                let total_h = vis.len() as f32 * rh + 8.0;
+                let eff_scroll = scroll_offset.clamp(0.0, (total_h - rect.height).max(0.0));
+
+                for (vi, row) in vis.iter().enumerate() {
+                    let ry = rect.y + 4.0 + vi as f32 * rh - eff_scroll;
+                    if ry + rh < rect.y || ry > rect.max_y() {
+                        continue;
+                    }
+                    let row_r = Rect::new(rect.x + 4.0, ry, (rect.width - 8.0).max(16.0), rh);
+                    let is_sel = row.raw_index == sel_raw;
+                    if is_sel {
+                        scene.fill_rect(
+                            row_r,
+                            theme.primary.with_alpha(0.18),
+                            CornerRadii::all(6.0),
+                        );
+                    }
+                    let indent = row.depth as f32 * 16.0;
+                    let tx = row_r.x + 8.0 + indent;
+                    if row.has_children {
+                        let caret = if row.expanded { "v" } else { ">" };
+                        let cst = TextStyle::default()
+                            .with_size(12.0)
+                            .with_weight(600.0)
+                            .with_color(theme.text_secondary);
+                        scene.draw_text(Point::new(tx, ry + (rh - 14.0) * 0.5), caret, cst, None);
+                    }
+                    let lst = TextStyle::default()
+                        .with_size(13.5)
+                        .with_weight(if is_sel { 600.0 } else { 400.0 })
+                        .with_color(if is_sel {
+                            theme.primary
+                        } else {
+                            theme.text_primary
+                        });
+                    scene.draw_text(
+                        Point::new(tx + 16.0, ry + (rh - 16.0) * 0.5),
+                        &row.label,
+                        lst,
+                        Some((row_r.max_x() - (tx + 20.0)).max(20.0)),
+                    );
+                }
+
+                scene.push(PaintCommand::PopClip);
+                if box_style.border.is_none() {
+                    scene.stroke_rect(rect, theme.border, 1.0, rad);
+                }
+                if is_focused {
+                    scene.stroke_rect(rect.inflate(1.5, 1.5), theme.primary, 1.5, rad);
+                }
+            }
+            WidgetKind::ReorderableList {
+                items,
+                selected,
+                dragging_index,
+                target_index,
+                row_height,
+                scroll_offset,
+                ..
+            } => {
+                let rad = CornerRadii::all(10.0);
+                let bg = box_style
+                    .background
+                    .as_ref()
+                    .map(|b| b.get())
+                    .unwrap_or(Brush::Solid(theme.surface));
+                scene.fill_rect(rect, Self::adapt_brush_to_rect(&bg, rect), rad);
+                scene.push(PaintCommand::PushClip { rect, radius: rad });
+
+                let list = items.get();
+                let sel_idx = selected.get();
+                let rh = row_height.max(24.0);
+                let total_h = list.len() as f32 * rh + 8.0;
+                let eff_scroll = scroll_offset.clamp(0.0, (total_h - rect.height).max(0.0));
+
+                for (i, label) in list.iter().enumerate() {
+                    let ry = rect.y + 4.0 + i as f32 * rh - eff_scroll;
+                    if ry + rh < rect.y || ry > rect.max_y() {
+                        continue;
+                    }
+                    let row_r = Rect::new(
+                        rect.x + 4.0,
+                        ry + 1.0,
+                        (rect.width - 8.0).max(20.0),
+                        rh - 2.0,
+                    );
+                    let is_dragging = dragging_index == Some(i);
+                    let is_sel = i == sel_idx;
+                    if is_dragging {
+                        scene.fill_rect(
+                            row_r,
+                            theme.primary.with_alpha(0.28),
+                            CornerRadii::all(6.0),
+                        );
+                    } else if is_sel {
+                        scene.fill_rect(
+                            row_r,
+                            theme.primary.with_alpha(0.14),
+                            CornerRadii::all(6.0),
+                        );
+                    }
+                    let grip_st = TextStyle::default()
+                        .with_size(13.0)
+                        .with_weight(700.0)
+                        .with_color(theme.text_secondary);
+                    scene.draw_text(
+                        Point::new(row_r.x + 10.0, ry + (rh - 15.0) * 0.5),
+                        "::",
+                        grip_st,
+                        None,
+                    );
+                    let lst = TextStyle::default()
+                        .with_size(13.5)
+                        .with_weight(if is_sel || is_dragging { 600.0 } else { 400.0 })
+                        .with_color(if is_sel || is_dragging {
+                            theme.primary
+                        } else {
+                            theme.text_primary
+                        });
+                    scene.draw_text(
+                        Point::new(row_r.x + 30.0, ry + (rh - 16.0) * 0.5),
+                        label,
+                        lst,
+                        Some((row_r.width - 38.0).max(20.0)),
+                    );
+                }
+
+                if let (Some(_from), Some(to)) = (dragging_index, target_index)
+                    && rect.height >= 8.0
+                {
+                    let drop_y = (rect.y + 4.0 + to as f32 * rh - eff_scroll)
+                        .clamp(rect.y + 2.0, rect.max_y() - 3.0);
+                    scene.fill_rect(
+                        Rect::new(rect.x + 6.0, drop_y, (rect.width - 12.0).max(12.0), 2.5),
+                        theme.primary,
+                        CornerRadii::all(1.25),
+                    );
+                }
+
+                scene.push(PaintCommand::PopClip);
+                if box_style.border.is_none() {
+                    scene.stroke_rect(rect, theme.border, 1.0, rad);
+                }
+                if is_focused {
+                    scene.stroke_rect(rect.inflate(1.5, 1.5), theme.primary, 1.5, rad);
+                }
+            }
+            WidgetKind::MenuBar {
+                menus, open_menu, ..
+            } => {
+                let bg = box_style
+                    .background
+                    .as_ref()
+                    .map(|b| b.get())
+                    .unwrap_or(Brush::Solid(theme.surface_container));
+                scene.fill_rect(
+                    rect,
+                    Self::adapt_brush_to_rect(&bg, rect),
+                    CornerRadii::ZERO,
+                );
+                scene.fill_rect(
+                    Rect::new(rect.x, rect.max_y() - 1.0, rect.width, 1.0),
+                    theme.border,
+                    CornerRadii::ZERO,
+                );
+                let parsed = crate::pickers::parse_menubar_specs(&menus.get());
+                let header_rects = crate::pickers::menubar_header_rects(rect, &parsed);
+                for (i, ((title, items), hr)) in parsed.iter().zip(header_rects.iter()).enumerate()
+                {
+                    let is_open = open_menu == Some(i);
+                    if is_open {
+                        scene.fill_rect(*hr, theme.primary.with_alpha(0.18), CornerRadii::all(6.0));
+                    }
+                    let st = TextStyle::default()
+                        .with_size(13.5)
+                        .with_weight(if is_open { 600.0 } else { 500.0 })
+                        .with_color(if is_open {
+                            theme.primary
+                        } else {
+                            theme.text_primary
+                        });
+                    let sz = self.text_engine.measure(title, &st, None);
+                    scene.draw_text(
+                        Point::new(
+                            hr.x + (hr.width - sz.width) * 0.5,
+                            hr.y + (hr.height - sz.height) * 0.5,
+                        ),
+                        title,
+                        st,
+                        None,
+                    );
+                    if is_open && !items.is_empty() {
+                        let screen_hr = node_xform.transform_rect_bounds(*hr);
+                        let drop_r = crate::pickers::menubar_dropdown_rect(screen_hr, items.len());
+                        floating_menus.push((drop_r, items.clone()));
+                    }
+                }
+            }
+            WidgetKind::Draggable { dragging, .. } => {
+                if dragging {
+                    scene.stroke_rect(rect, theme.primary, 1.5, box_style.radius);
+                }
+            }
+            WidgetKind::DropTarget { hovered_drag, .. } => {
+                if hovered_drag {
+                    scene.fill_rect(rect, theme.primary.with_alpha(0.08), box_style.radius);
+                    scene.stroke_rect(rect, theme.primary, 2.0, box_style.radius);
+                }
+            }
+            WidgetKind::MediaPlayer {
+                kind,
+                source,
+                controller,
+                show_controls,
+                ..
+            } => {
+                let rad = CornerRadii::all(theme.radius_md.min(10.0));
+                let ctrl = controller.get_untracked();
+                scene.fill_rect(rect, theme.surface_container, rad);
+                let (surface_r, play_r, scrub_r, mute_r, show_time) =
+                    crate::media_editor::media_control_rects(rect, kind);
+                if matches!(kind, crate::MediaKind::Video) && surface_r.height > 4.0 {
+                    if let Some(pv_id) = ctrl.platform_view_id {
+                        scene.push(PaintCommand::PlatformViewHole {
+                            id: pv_id,
+                            rect: surface_r,
+                        });
+                    } else {
+                        scene.fill_rect(surface_r, Color::rgb(16, 20, 28), CornerRadii::ZERO);
+                        let src_label = source.get();
+                        let st = TextStyle::default()
+                            .with_size(12.5)
+                            .with_color(Color::rgb(203, 213, 225));
+                        scene.draw_text(
+                            Point::new(surface_r.x + 12.0, surface_r.y + 10.0),
+                            if src_label.is_empty() {
+                                "Video Surface".to_string()
+                            } else {
+                                src_label
+                            },
+                            st,
+                            Some((surface_r.width - 24.0).max(40.0)),
+                        );
+                    }
+                }
+                if show_controls {
+                    let play_bg = if ctrl.playing {
+                        theme.primary
+                    } else {
+                        theme.surface_variant
+                    };
+                    let play_fg = if ctrl.playing {
+                        theme.on_primary
+                    } else {
+                        theme.text_primary
+                    };
+                    scene.fill_rect(play_r, play_bg, CornerRadii::all(6.0));
+                    scene.draw_text(
+                        Point::new(play_r.x + 8.0, play_r.y + 5.0),
+                        if ctrl.playing { "||" } else { ">" },
+                        TextStyle::default()
+                            .with_size(13.0)
+                            .with_weight(700.0)
+                            .with_color(play_fg),
+                        None,
+                    );
+                    if scrub_r.width >= 6.0 {
+                        scene.fill_rect(scrub_r, theme.border, CornerRadii::all(4.0));
+                        let fill_w = scrub_r.width * ctrl.progress_fraction();
+                        if fill_w > 0.5 {
+                            scene.fill_rect(
+                                Rect::new(scrub_r.x, scrub_r.y, fill_w, scrub_r.height),
+                                theme.primary,
+                                CornerRadii::all(4.0),
+                            );
+                        }
+                    }
+                    if show_time {
+                        let tc = format!(
+                            "{}/{}",
+                            crate::MediaController::format_timecode(ctrl.position_secs),
+                            crate::MediaController::format_timecode(ctrl.duration_secs)
+                        );
+                        scene.draw_text(
+                            Point::new(scrub_r.max_x() + 6.0, play_r.y + 6.0),
+                            tc,
+                            TextStyle::default()
+                                .with_size(11.0)
+                                .with_color(theme.text_secondary),
+                            None,
+                        );
+                    }
+                    scene.fill_rect(mute_r, theme.surface_variant, CornerRadii::all(6.0));
+                    scene.draw_text(
+                        Point::new(mute_r.x + 6.0, mute_r.y + 5.0),
+                        if ctrl.muted { "M" } else { "V" },
+                        TextStyle::default()
+                            .with_size(12.0)
+                            .with_weight(600.0)
+                            .with_color(theme.text_primary),
+                        None,
+                    );
+                }
+                scene.stroke_rect(rect, theme.border, 1.0, rad);
+            }
+            WidgetKind::RichTextEditor {
+                controller,
+                placeholder,
+                style,
+                ..
+            } => {
+                let rad = CornerRadii::all(theme.radius_md.min(10.0));
+                let is_active = self.focused == Some(id);
+                scene.fill_rect(rect, theme.surface, rad);
+                scene.stroke_rect(
+                    rect,
+                    if is_active {
+                        theme.primary
+                    } else {
+                        theme.border
+                    },
+                    if is_active { 1.8 } else { 1.0 },
+                    rad,
+                );
+                let (btns, text_r) = crate::media_editor::rich_editor_layout(rect);
+                let snap = controller.get_untracked();
+                let flags = [
+                    ("B", snap.active_bold),
+                    ("I", snap.active_italic),
+                    ("U", snap.active_underline),
+                ];
+                for ((lbl, active), br) in flags.iter().zip(btns.iter()) {
+                    scene.fill_rect(
+                        *br,
+                        if *active {
+                            theme.primary
+                        } else {
+                            theme.surface_variant
+                        },
+                        CornerRadii::all(5.0),
+                    );
+                    scene.draw_text(
+                        Point::new(br.x + 9.0, br.y + 4.0),
+                        *lbl,
+                        TextStyle::default()
+                            .with_size(12.5)
+                            .with_weight(700.0)
+                            .with_italic(*lbl == "I")
+                            .with_underline(*lbl == "U")
+                            .with_color(if *active {
+                                theme.on_primary
+                            } else {
+                                theme.text_primary
+                            }),
+                        None,
+                    );
+                }
+                scene.fill_rect(
+                    Rect::new(rect.x, text_r.y - 4.0, rect.width, 1.0),
+                    theme.border,
+                    CornerRadii::ZERO,
+                );
+                scene.push(PaintCommand::PushClip {
+                    rect: text_r,
+                    radius: CornerRadii::ZERO,
+                });
+                let mut draw_st = style.clone();
+                draw_st.align = effective_text_align(draw_st.align, self.direction);
+                if draw_st.color == Color::TRANSPARENT {
+                    draw_st.color = theme.text_primary;
+                }
+                if snap.editor.display_text().is_empty() {
+                    let mut ph_st = draw_st.clone();
+                    ph_st.color = theme.text_secondary;
+                    scene.draw_text(text_r.origin(), &placeholder, ph_st, Some(text_r.width));
+                    if is_active && self.caret_visible {
+                        scene.fill_rect(
+                            Rect::new(text_r.x, text_r.y, 2.0, draw_st.font_size * 1.25),
+                            theme.primary,
+                            CornerRadii::ZERO,
+                        );
+                    }
+                } else if snap.editor.preedit.is_some() {
+                    let disp = snap.editor.display_text().into_owned();
+                    let layout =
+                        self.text_engine
+                            .build_layout_cached(&disp, &draw_st, Some(text_r.width));
+                    let cr = self.text_engine.cursor_rect(&layout, snap.editor.cursor);
+                    let scroll_y = (cr.max_y() - text_r.height).max(0.0);
+                    let origin = Point::new(text_r.x, text_r.y - scroll_y);
+                    scene.draw_text(origin, &disp, draw_st.clone(), Some(text_r.width));
+                    if is_active && self.caret_visible {
+                        scene.fill_rect(
+                            Rect::new(origin.x + cr.x, origin.y + cr.y, 2.0, cr.height),
+                            theme.primary,
+                            CornerRadii::ZERO,
+                        );
+                    }
+                } else {
+                    let rich = snap.to_rich_text(&draw_st);
+                    let layout = self
+                        .text_engine
+                        .build_rich_layout(&rich, Some(text_r.width));
+                    let cr = self.text_engine.cursor_rect(&layout, snap.editor.cursor);
+                    let scroll_y = (cr.max_y() - text_r.height).max(0.0);
+                    let origin = Point::new(text_r.x, text_r.y - scroll_y);
+                    if let Some((s, e)) = snap.editor.selection_range() {
+                        for sr in self.text_engine.selection_rects(&layout, s, e) {
+                            scene.fill_rect(
+                                sr.translate(origin.x, origin.y),
+                                theme.primary.with_alpha(0.32),
+                                CornerRadii::ZERO,
+                            );
+                        }
+                    }
+                    scene.draw_rich_text(origin, rich, Some(text_r.width));
+                    if is_active && self.caret_visible {
+                        scene.fill_rect(
+                            Rect::new(origin.x + cr.x, origin.y + cr.y, 2.0, cr.height),
+                            theme.primary,
+                            CornerRadii::ZERO,
+                        );
+                    }
+                }
+                scene.push(PaintCommand::PopClip);
+            }
             WidgetKind::Custom(cw) => {
                 if let Ok(mut guard) = cw.try_borrow_mut() {
                     guard.paint(rect, scene, &mut self.text_engine, theme, is_focused);
@@ -2223,6 +2957,7 @@ impl WidgetTree {
                     theme,
                     scene,
                     floating_selects,
+                    floating_menus,
                     active_tooltips,
                 );
             }

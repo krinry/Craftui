@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Android GameActivity, JNI, GPU/CPU rendering, permissions, and MethodChannel backend for CraftUI"
 
 [lib]
 crate-type = ["lib", "cdylib"]

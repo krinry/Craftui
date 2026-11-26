@@ -12,6 +12,15 @@ pub enum ThemeMode {
     HighContrast,
 }
 
+/// Platform-native adaptive design system presets alongside Material 3.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum DesignSystem {
+    #[default]
+    Material3,
+    Cupertino,
+    WinUi,
+}
+
 /// Extensible theme customization & brand palette overrides.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ThemeOverride {
@@ -125,6 +134,179 @@ impl ThemeTokens {
             ThemeMode::Dark => Self::dark(),
             ThemeMode::Amoled => Self::amoled(),
             ThemeMode::HighContrast => Self::high_contrast(),
+        }
+    }
+
+    /// Construct tokens adapted to a platform [`DesignSystem`] preset and [`ThemeMode`].
+    pub fn from_preset(preset: DesignSystem, mode: ThemeMode) -> Self {
+        match preset {
+            DesignSystem::Material3 => Self::from_mode(mode),
+            DesignSystem::Cupertino => Self::cupertino(mode),
+            DesignSystem::WinUi => Self::winui(mode),
+        }
+    }
+
+    /// Apple HIG / Cupertino adaptive theme tokens.
+    pub fn cupertino(mode: ThemeMode) -> Self {
+        match mode {
+            ThemeMode::Light => Self::cupertino_light(),
+            ThemeMode::Dark | ThemeMode::Amoled | ThemeMode::HighContrast => Self::cupertino_dark(),
+        }
+    }
+
+    /// Cupertino Light palette (`#007AFF` systemBlue, `#F2F2F7` grouped canvas).
+    pub fn cupertino_light() -> Self {
+        Self {
+            mode: ThemeMode::Light,
+            background: Color::rgb(242, 242, 247),
+            surface: Color::WHITE,
+            surface_variant: Color::rgb(229, 229, 234),
+            surface_container: Color::rgb(249, 249, 251),
+            border: Color::rgb(198, 198, 200),
+            primary: Color::rgb(0, 122, 255),
+            on_primary: Color::WHITE,
+            primary_container: Color::rgb(214, 234, 255),
+            on_primary_container: Color::rgb(0, 64, 152),
+            secondary: Color::rgb(88, 86, 214),
+            on_secondary: Color::WHITE,
+            secondary_container: Color::rgb(232, 232, 252),
+            on_secondary_container: Color::rgb(44, 42, 132),
+            tertiary: Color::rgb(52, 199, 89),
+            on_tertiary: Color::WHITE,
+            text_primary: Color::BLACK,
+            text_secondary: Color::rgb(108, 108, 112),
+            outline: Color::rgb(174, 174, 178),
+            outline_variant: Color::rgb(209, 209, 214),
+            danger: Color::rgb(255, 59, 48),
+            error: Color::rgb(255, 59, 48),
+            on_error: Color::WHITE,
+            radius_md: 10.0,
+            spacing_unit: 8.0,
+            spacing_xs: 4.0,
+            spacing_sm: 8.0,
+            spacing_md: 12.0,
+            spacing_lg: 16.0,
+            spacing_xl: 20.0,
+            spacing_xxl: 28.0,
+        }
+    }
+
+    /// Cupertino Dark palette (`#0A84FF` dark systemBlue, `#000000` grouped canvas).
+    pub fn cupertino_dark() -> Self {
+        Self {
+            mode: ThemeMode::Dark,
+            background: Color::BLACK,
+            surface: Color::rgb(28, 28, 30),
+            surface_variant: Color::rgb(44, 44, 46),
+            surface_container: Color::rgb(36, 36, 38),
+            border: Color::rgb(56, 56, 58),
+            primary: Color::rgb(10, 132, 255),
+            on_primary: Color::WHITE,
+            primary_container: Color::rgb(0, 64, 140),
+            on_primary_container: Color::rgb(180, 218, 255),
+            secondary: Color::rgb(94, 92, 230),
+            on_secondary: Color::WHITE,
+            secondary_container: Color::rgb(48, 46, 118),
+            on_secondary_container: Color::rgb(218, 218, 255),
+            tertiary: Color::rgb(48, 209, 88),
+            on_tertiary: Color::BLACK,
+            text_primary: Color::WHITE,
+            text_secondary: Color::rgb(152, 152, 157),
+            outline: Color::rgb(99, 99, 102),
+            outline_variant: Color::rgb(58, 58, 60),
+            danger: Color::rgb(255, 69, 58),
+            error: Color::rgb(255, 69, 58),
+            on_error: Color::WHITE,
+            radius_md: 10.0,
+            spacing_unit: 8.0,
+            spacing_xs: 4.0,
+            spacing_sm: 8.0,
+            spacing_md: 12.0,
+            spacing_lg: 16.0,
+            spacing_xl: 20.0,
+            spacing_xxl: 28.0,
+        }
+    }
+
+    /// Windows 11 Fluent / WinUI adaptive theme tokens.
+    pub fn winui(mode: ThemeMode) -> Self {
+        match mode {
+            ThemeMode::Light => Self::winui_light(),
+            ThemeMode::Dark | ThemeMode::Amoled | ThemeMode::HighContrast => Self::winui_dark(),
+        }
+    }
+
+    /// WinUI 3 Light palette (Mica `#F3F3F3` canvas, `#0067C0` accent, sharp `6.0` radius).
+    pub fn winui_light() -> Self {
+        Self {
+            mode: ThemeMode::Light,
+            background: Color::rgb(243, 243, 243),
+            surface: Color::rgb(255, 255, 255),
+            surface_variant: Color::rgb(249, 249, 249),
+            surface_container: Color::rgb(238, 238, 238),
+            border: Color::rgb(229, 229, 229),
+            primary: Color::rgb(0, 103, 192),
+            on_primary: Color::WHITE,
+            primary_container: Color::rgb(216, 235, 252),
+            on_primary_container: Color::rgb(0, 62, 117),
+            secondary: Color::rgb(96, 94, 92),
+            on_secondary: Color::WHITE,
+            secondary_container: Color::rgb(237, 235, 233),
+            on_secondary_container: Color::rgb(32, 31, 30),
+            tertiary: Color::rgb(0, 130, 114),
+            on_tertiary: Color::WHITE,
+            text_primary: Color::rgb(27, 27, 27),
+            text_secondary: Color::rgb(96, 96, 96),
+            outline: Color::rgb(138, 136, 134),
+            outline_variant: Color::rgb(225, 223, 221),
+            danger: Color::rgb(196, 43, 28),
+            error: Color::rgb(196, 43, 28),
+            on_error: Color::WHITE,
+            radius_md: 6.0,
+            spacing_unit: 8.0,
+            spacing_xs: 4.0,
+            spacing_sm: 8.0,
+            spacing_md: 12.0,
+            spacing_lg: 16.0,
+            spacing_xl: 24.0,
+            spacing_xxl: 32.0,
+        }
+    }
+
+    /// WinUI 3 Dark palette (Mica `#202020` canvas, `#60CDFF` accent, sharp `6.0` radius).
+    pub fn winui_dark() -> Self {
+        Self {
+            mode: ThemeMode::Dark,
+            background: Color::rgb(32, 32, 32),
+            surface: Color::rgb(43, 43, 43),
+            surface_variant: Color::rgb(52, 52, 52),
+            surface_container: Color::rgb(39, 39, 39),
+            border: Color::rgb(61, 61, 61),
+            primary: Color::rgb(96, 205, 255),
+            on_primary: Color::BLACK,
+            primary_container: Color::rgb(0, 78, 140),
+            on_primary_container: Color::rgb(209, 240, 255),
+            secondary: Color::rgb(161, 159, 157),
+            on_secondary: Color::BLACK,
+            secondary_container: Color::rgb(59, 58, 57),
+            on_secondary_container: Color::rgb(243, 242, 241),
+            tertiary: Color::rgb(77, 182, 172),
+            on_tertiary: Color::BLACK,
+            text_primary: Color::WHITE,
+            text_secondary: Color::rgb(200, 200, 200),
+            outline: Color::rgb(138, 136, 134),
+            outline_variant: Color::rgb(68, 68, 68),
+            danger: Color::rgb(255, 153, 164),
+            error: Color::rgb(255, 153, 164),
+            on_error: Color::BLACK,
+            radius_md: 6.0,
+            spacing_unit: 8.0,
+            spacing_xs: 4.0,
+            spacing_sm: 8.0,
+            spacing_md: 12.0,
+            spacing_lg: 16.0,
+            spacing_xl: 24.0,
+            spacing_xxl: 32.0,
         }
     }
 

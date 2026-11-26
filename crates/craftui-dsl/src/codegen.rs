@@ -25,7 +25,7 @@ pub fn generate_rust(file: &CuiFile) -> String {
     let _ = writeln!(out, "#[allow(unused_imports)]");
     let _ = writeln!(
         out,
-        "use ::craftui::widgets::{{AnimatableProp, BoxStyle, CardVariant, Easing, ReactiveValue, ToastItem, ToastSeverity, TransitionCurve, WidgetTree}};"
+        "use ::craftui::widgets::{{AnimatableProp, BoxStyle, CardVariant, Easing, MediaController, MediaKind, ReactiveValue, RichEditorController, ToastItem, ToastSeverity, TransitionCurve, WidgetTree}};"
     );
     let _ = writeln!(out);
 
@@ -275,20 +275,47 @@ fn emit_component(
         let _ = writeln!(out);
     }
 
+    let has_slot = component_has_children_slot(comp);
+    if has_slot {
+        let _ = writeln!(out, "    #[allow(dead_code)]");
+        let _ = writeln!(
+            out,
+            "    pub fn build(&self, cx: Scope, tree: &mut WidgetTree) -> NodeId {{"
+        );
+        let _ = writeln!(
+            out,
+            "        self.build_with_children(cx, tree, std::rc::Rc::new(|_, _, _| {{}}))"
+        );
+        let _ = writeln!(out, "    }}");
+        let _ = writeln!(out);
+    }
+
     let _ = writeln!(
         out,
         "    #[allow(dead_code, unused_variables, unused_parens, unused_mut, clippy::double_parens, clippy::clone_on_copy, clippy::unnecessary_cast, clippy::redundant_locals, clippy::type_complexity, clippy::let_and_return, clippy::needless_parens_on_range_literals, clippy::overly_complex_bool_expr, clippy::needless_update, clippy::possible_missing_else, clippy::format_in_format_args)]"
     );
-    let _ = writeln!(
-        out,
-        "    pub fn build(&self, cx: Scope, tree: &mut WidgetTree) -> NodeId {{"
-    );
+    if has_slot {
+        let _ = writeln!(
+            out,
+            "    pub fn build_with_children(&self, cx: Scope, tree: &mut WidgetTree, __slot_children: std::rc::Rc<dyn Fn(Scope, &mut WidgetTree, NodeId)>) -> NodeId {{"
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "    pub fn build(&self, cx: Scope, tree: &mut WidgetTree) -> NodeId {{"
+        );
+    }
     let _ = writeln!(out, "        let __theme_sig = tree.theme_signal;");
     let _ = writeln!(
         out,
         "        let __theme_ov_sig = tree.theme_override_signal;"
     );
     let _ = writeln!(out, "        let __metrics_sig = tree.metrics_signal;");
+
+    let mut slot_locals = empty_locals.clone();
+    if has_slot {
+        slot_locals.insert("__slot_children".into(), "Rc".into());
+    }
 
     if let Some(ref root) = comp.root {
         let mut counter = 0usize;
@@ -299,7 +326,7 @@ fn emit_component(
             prop_types: &prop_types,
             signal_locals: &empty_sig_locals,
             cb_params: &cb_params,
-            locals: &empty_locals,
+            locals: &slot_locals,
             scope_var: "cx",
             tree_var: "tree",
             use_self: true,
@@ -312,6 +339,28 @@ fn emit_component(
     let _ = writeln!(out, "    }}");
     let _ = writeln!(out, "}}");
     let _ = writeln!(out);
+}
+
+fn element_has_children_slot(el: &ElementNode) -> bool {
+    el.children.iter().any(|c| match c {
+        ChildItem::ChildrenSlot { .. } => true,
+        ChildItem::Element(inner) => element_has_children_slot(inner),
+        ChildItem::For { body, .. } => element_has_children_slot(body),
+        ChildItem::If {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            element_has_children_slot(then_branch)
+                || else_branch
+                    .as_ref()
+                    .is_some_and(|eb| element_has_children_slot(eb))
+        }
+    })
+}
+
+fn component_has_children_slot(comp: &ComponentDecl) -> bool {
+    comp.root.as_ref().is_some_and(element_has_children_slot)
 }
 
 #[derive(Clone, Copy)]
@@ -555,15 +604,42 @@ fn emit_element(
                 );
             }
         }
-        let _ = writeln!(out, "{indent}    let __sub_node = __sub.build({cx}, {tr});");
-        emit_children(
-            out,
-            "__sub_node",
-            el,
-            counter,
-            &format!("{indent}    "),
-            ctx,
-        );
+        if component_has_children_slot(sub) {
+            let slot_captures = emit_signal_captures(ctx, &[]);
+            let slot_ctx = EmitCtx {
+                scope_var: "__slot_cx",
+                tree_var: "__slot_tree",
+                use_self: false,
+                ..*ctx
+            };
+            let mut slot_buf = String::new();
+            emit_children(
+                &mut slot_buf,
+                "__slot_parent",
+                el,
+                counter,
+                &format!("{indent}        "),
+                &slot_ctx,
+            );
+            let _ = writeln!(
+                out,
+                "{indent}    let __sub_slot: std::rc::Rc<dyn Fn(Scope, &mut WidgetTree, NodeId)> = {{ {slot_captures} std::rc::Rc::new(move |__slot_cx, __slot_tree, __slot_parent| {{\n{slot_buf}{indent}    }}) }};"
+            );
+            let _ = writeln!(
+                out,
+                "{indent}    let __sub_node = __sub.build_with_children({cx}, {tr}, __sub_slot);"
+            );
+        } else {
+            let _ = writeln!(out, "{indent}    let __sub_node = __sub.build({cx}, {tr});");
+            emit_children(
+                out,
+                "__sub_node",
+                el,
+                counter,
+                &format!("{indent}    "),
+                ctx,
+            );
+        }
         emit_common_props_and_events(out, "__sub_node", el, &format!("{indent}    "), ctx, true);
         let _ = writeln!(out, "{indent}    __sub_node");
         let _ = writeln!(out, "{indent}}};");
@@ -674,7 +750,7 @@ fn emit_element(
                     );
                 }
                 "TonalButton" | "FilledTonalButton" => {
-                    let fg_code = custom_fg.unwrap_or_else(|| "ReactiveValue::Dynamic(std::rc::Rc::new(move || __ts_btn.get().on_surface))".into());
+                    let fg_code = custom_fg.unwrap_or_else(|| "ReactiveValue::Dynamic(std::rc::Rc::new(move || __ts_btn.get().text_primary))".into());
                     let _ = writeln!(
                         out,
                         "{indent}    {{ let __ts_btn = __theme_sig; {tr}.set_button_foreground(__btn, {fg_code}); if let Some(mut bs) = {tr}.nodes.get(__btn).map(|n| n.box_style.clone()) {{ bs.radius = CornerRadii::all(20.0); bs.background = Some(ReactiveValue::Dynamic(std::rc::Rc::new(move || Brush::Solid(__ts_btn.get().surface_variant)))); {tr}.set_box_style(__btn, bs); }} if let Some(mut ls) = {tr}.nodes.get(__btn).map(|n| n.layout.clone()) {{ ls.padding = Insets::symmetric(24.0, 10.0); ls.min_height = Length::Dp(40.0); {tr}.set_layout(__btn, ls); }} }}"
@@ -709,7 +785,7 @@ fn emit_element(
                     );
                 }
                 "TonalIconButton" => {
-                    let fg_code = custom_fg.unwrap_or_else(|| "ReactiveValue::Dynamic(std::rc::Rc::new(move || __ts_btn.get().on_surface))".into());
+                    let fg_code = custom_fg.unwrap_or_else(|| "ReactiveValue::Dynamic(std::rc::Rc::new(move || __ts_btn.get().text_primary))".into());
                     let _ = writeln!(
                         out,
                         "{indent}    {{ let __ts_btn = __theme_sig; {tr}.set_button_foreground(__btn, {fg_code}); if let Some(mut bs) = {tr}.nodes.get(__btn).map(|n| n.box_style.clone()) {{ bs.radius = CornerRadii::all(20.0); bs.background = Some(ReactiveValue::Dynamic(std::rc::Rc::new(move || Brush::Solid(__ts_btn.get().surface_variant)))); {tr}.set_box_style(__btn, bs); }} if let Some(mut ls) = {tr}.nodes.get(__btn).map(|n| n.layout.clone()) {{ ls.padding = Insets::all(8.0); ls.min_width = Length::Dp(40.0); ls.min_height = Length::Dp(40.0); {tr}.set_layout(__btn, ls); }} }}"
@@ -1124,6 +1200,347 @@ fn emit_element(
                 "{indent}let {var} = {tr}.radio_group({cx}, {opts_rv}, {idx_sig}, {axis});"
             );
             emit_index_change_handler(out, &var, el, indent, ctx);
+        }
+        "DatePicker" => {
+            let val_sig = emit_string_signal_adapter(
+                find_prop(el, &["value"]),
+                cx,
+                ctx,
+                "\"2026-01-15\".to_string()",
+            );
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.date_picker({cx}, {val_sig}, None::<fn(String)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_change"]) {
+                let mut h_locals = ctx.locals.clone();
+                let bind_val = can_bind_handler_local("value", ctx);
+                let bind_txt = can_bind_handler_local("text", ctx);
+                let mut alias_stmts = String::new();
+                if bind_val {
+                    h_locals.insert("value".into(), "String".into());
+                    if bind_txt {
+                        alias_stmts.push_str("let value = __val.clone(); ");
+                    } else {
+                        alias_stmts.push_str("let value = __val; ");
+                    }
+                }
+                if bind_txt {
+                    h_locals.insert("text".into(), "String".into());
+                    alias_stmts.push_str("let text = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_change({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
+        "TimePicker" => {
+            let val_sig = emit_string_signal_adapter(
+                find_prop(el, &["value"]),
+                cx,
+                ctx,
+                "\"09:30\".to_string()",
+            );
+            let use_24h = find_prop(el, &["use_24h"])
+                .map(|p| expr_to_typed_rust(&p.value, "bool", ctx))
+                .unwrap_or_else(|| "true".into());
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.time_picker({cx}, {val_sig}, {use_24h}, None::<fn(String)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_change"]) {
+                let mut h_locals = ctx.locals.clone();
+                let bind_val = can_bind_handler_local("value", ctx);
+                let bind_txt = can_bind_handler_local("text", ctx);
+                let mut alias_stmts = String::new();
+                if bind_val {
+                    h_locals.insert("value".into(), "String".into());
+                    if bind_txt {
+                        alias_stmts.push_str("let value = __val.clone(); ");
+                    } else {
+                        alias_stmts.push_str("let value = __val; ");
+                    }
+                }
+                if bind_txt {
+                    h_locals.insert("text".into(), "String".into());
+                    alias_stmts.push_str("let text = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_change({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
+        "TreeView" => {
+            let items_rv = find_prop(el, &["items", "options"])
+                .map(|p| expr_to_reactive_string_list(&p.value, ctx))
+                .unwrap_or_else(|| "ReactiveValue::Static(Vec::<String>::new())".into());
+            let idx_sig = emit_usize_signal_adapter(find_prop(el, &["selected", "value"]), cx, ctx);
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.tree_view({cx}, {items_rv}, {idx_sig}, None::<fn(usize)>);"
+            );
+            if let Some(rh) = find_prop(el, &["row_height"]) {
+                let rh_expr = expr_to_typed_rust(&rh.value, "f32", ctx);
+                let _ = writeln!(out, "{indent}{tr}.set_row_height({var}, {rh_expr});");
+            }
+            emit_index_change_handler(out, &var, el, indent, ctx);
+        }
+        "ReorderableList" => {
+            let items_prop = find_prop(el, &["items", "options"]);
+            let items_sig = emit_string_list_signal_adapter(items_prop, cx, ctx);
+            let idx_sig = emit_usize_signal_adapter(find_prop(el, &["selected", "value"]), cx, ctx);
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.reorderable_list({cx}, {items_sig}, {idx_sig}, None::<fn(usize, usize)>);"
+            );
+            if let Some(rh) = find_prop(el, &["row_height"]) {
+                let rh_expr = expr_to_typed_rust(&rh.value, "f32", ctx);
+                let _ = writeln!(out, "{indent}{tr}.set_row_height({var}, {rh_expr});");
+            }
+            if let Some(h) = find_handler(el, &["on_reorder"]) {
+                let mut h_locals = ctx.locals.clone();
+                let mut alias_stmts = String::new();
+                if can_bind_handler_local("from", ctx) {
+                    h_locals.insert("from".into(), "i32".into());
+                    alias_stmts.push_str("let from = __from as i32; ");
+                }
+                if can_bind_handler_local("to", ctx) {
+                    h_locals.insert("to".into(), "i32".into());
+                    alias_stmts.push_str("let to = __to as i32; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_reorder({var}, move |__from, __to| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+            emit_index_change_handler(out, &var, el, indent, ctx);
+        }
+        "MenuBar" => {
+            let menus_rv = find_prop(el, &["menus", "items"])
+                .map(|p| expr_to_reactive_string_list(&p.value, ctx))
+                .unwrap_or_else(|| "ReactiveValue::Static(Vec::<String>::new())".into());
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.menu_bar({cx}, {menus_rv}, None::<fn(String)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_select", "on_change"]) {
+                let mut h_locals = ctx.locals.clone();
+                let mut alias_stmts = String::new();
+                let bind_val = can_bind_handler_local("value", ctx);
+                let bind_item = can_bind_handler_local("item", ctx);
+                if bind_val {
+                    h_locals.insert("value".into(), "String".into());
+                    if bind_item {
+                        alias_stmts.push_str("let value = __val.clone(); ");
+                    } else {
+                        alias_stmts.push_str("let value = __val; ");
+                    }
+                }
+                if bind_item {
+                    h_locals.insert("item".into(), "String".into());
+                    alias_stmts.push_str("let item = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_menu_select({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
+        "Draggable" => {
+            let payload_rv = find_prop(el, &["payload", "value"])
+                .map(|p| expr_to_reactive_string(&p.value, ctx))
+                .unwrap_or_else(|| "ReactiveValue::Static(String::new())".into());
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.draggable({cx}, {payload_rv});"
+            );
+        }
+        "DropTarget" => {
+            let prefix = find_prop(el, &["accept_prefix", "accept"])
+                .map(|p| expr_to_typed_rust(&p.value, "String", ctx))
+                .unwrap_or_else(|| "String::new()".into());
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.drop_target({cx}, {prefix}, None::<fn(String)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_drop"]) {
+                let mut h_locals = ctx.locals.clone();
+                let mut alias_stmts = String::new();
+                let bind_p = can_bind_handler_local("payload", ctx);
+                let bind_v = can_bind_handler_local("value", ctx);
+                if bind_p {
+                    h_locals.insert("payload".into(), "String".into());
+                    if bind_v {
+                        alias_stmts.push_str("let payload = __val.clone(); ");
+                    } else {
+                        alias_stmts.push_str("let payload = __val; ");
+                    }
+                }
+                if bind_v {
+                    h_locals.insert("value".into(), "String".into());
+                    alias_stmts.push_str("let value = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_drop({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
+        "VideoPlayer" | "AudioPlayer" | "MediaPlayer" => {
+            let kind_expr = if el.kind == "AudioPlayer" {
+                "MediaKind::Audio"
+            } else {
+                "MediaKind::Video"
+            };
+            let src_rv = find_prop(el, &["source", "src"])
+                .map(|p| expr_to_reactive_string(&p.value, ctx))
+                .unwrap_or_else(|| "ReactiveValue::Static(String::new())".into());
+            let autoplay = find_prop(el, &["autoplay"])
+                .map(|p| expr_to_typed_rust(&p.value, "bool", ctx))
+                .unwrap_or_else(|| "false".into());
+            let show_controls = find_prop(el, &["show_controls", "controls"])
+                .map(|p| expr_to_typed_rust(&p.value, "bool", ctx))
+                .unwrap_or_else(|| "true".into());
+            let dur = find_prop(el, &["duration"])
+                .map(|p| expr_to_typed_rust(&p.value, "f32", ctx))
+                .unwrap_or_else(|| "120.0".into());
+            let ctrl_var = format!("__media_ctrl_{var}");
+            let _ = writeln!(
+                out,
+                "{indent}let {ctrl_var} = {cx}.signal(MediaController::new({dur}));"
+            );
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.media_player({cx}, {kind_expr}, {src_rv}, {ctrl_var}, {autoplay}, {show_controls}, None::<fn(bool)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_toggle_play", "on_change"]) {
+                let mut h_locals = ctx.locals.clone();
+                let mut alias_stmts = String::new();
+                let bind_p = can_bind_handler_local("playing", ctx);
+                let bind_v = can_bind_handler_local("value", ctx);
+                if bind_p {
+                    h_locals.insert("playing".into(), "bool".into());
+                    alias_stmts.push_str("let playing = __val; ");
+                }
+                if bind_v {
+                    h_locals.insert("value".into(), "bool".into());
+                    alias_stmts.push_str("let value = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_bool_change({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
+        }
+        "RichTextEditor" => {
+            let text_prop = find_prop(el, &["text", "value"]);
+            let init_txt = text_prop
+                .map(|p| expr_to_typed_rust(&p.value, "String", ctx))
+                .unwrap_or_else(|| "String::new()".into());
+            let ph = find_prop(el, &["placeholder"])
+                .map(|p| expr_to_typed_rust(&p.value, "String", ctx))
+                .unwrap_or_else(|| "\"Write rich text...\".to_string()".into());
+            let ctrl_var = format!("__rich_ctrl_{var}");
+            let st_var = format!("__rich_st_{var}");
+            let _ = writeln!(out, "{indent}let mut {st_var} = TextStyle::default();");
+            if let Some(fs) = find_prop(el, &["font_size"]) {
+                let fs_expr = expr_to_typed_rust(&fs.value, "f32", ctx);
+                let _ = writeln!(out, "{indent}{st_var}.font_size = {fs_expr};");
+            }
+            if let Some(col) = find_prop(el, &["color"]) {
+                let col_expr = expr_to_typed_rust(&col.value, "Color", ctx);
+                let _ = writeln!(out, "{indent}{st_var}.color = {col_expr};");
+            }
+            let _ = writeln!(
+                out,
+                "{indent}let {ctrl_var} = {cx}.signal(RichEditorController::with_text({init_txt}));"
+            );
+            if let Some(tp) = text_prop
+                && expr_has_reactive_props(&tp.value, ctx)
+            {
+                let rv = expr_to_reactive_string(&tp.value, ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ let __rv = {rv}; let __c = {ctrl_var}; {cx}.effect(move || {{ let __nv = __rv.get(); __c.update(|c| {{ if c.editor.text != __nv {{ c.editor.sync_external(&__nv); c.sync_span_bounds(); }} }}); }}); }}"
+                );
+            }
+            let _ = writeln!(
+                out,
+                "{indent}let {var} = {tr}.rich_text_editor({cx}, {ctrl_var}, {ph}, {st_var}, None::<fn(String)>);"
+            );
+            if let Some(h) = find_handler(el, &["on_change"]) {
+                let mut h_locals = ctx.locals.clone();
+                let mut alias_stmts = String::new();
+                let bind_v = can_bind_handler_local("value", ctx);
+                let bind_t = can_bind_handler_local("text", ctx);
+                if bind_v {
+                    h_locals.insert("value".into(), "String".into());
+                    if bind_t {
+                        alias_stmts.push_str("let value = __val.clone(); ");
+                    } else {
+                        alias_stmts.push_str("let value = __val; ");
+                    }
+                }
+                if bind_t {
+                    h_locals.insert("text".into(), "String".into());
+                    alias_stmts.push_str("let text = __val; ");
+                }
+                let h_ctx = EmitCtx {
+                    locals: &h_locals,
+                    use_self: false,
+                    ..*ctx
+                };
+                let captures = emit_signal_captures(ctx, &[]);
+                let body = emit_handler_body(&h.body, &h_ctx);
+                let _ = writeln!(
+                    out,
+                    "{indent}{{ {captures} {tr}.set_on_change({var}, move |__val| {{ {alias_stmts}{body} }}); }}"
+                );
+            }
         }
         "PopupMenu" => {
             let open_prop = find_prop(el, &["open", "visible"]);
@@ -2838,6 +3255,9 @@ fn emit_children(
                     let _ = writeln!(out, "{indent}{tr}.append_child({var}, {cvar});");
                 }
             }
+            ChildItem::ChildrenSlot { .. } => {
+                let _ = writeln!(out, "{indent}__slot_children({cx}, {tr}, {var});");
+            }
         }
     }
 }
@@ -3024,6 +3444,69 @@ fn emit_usize_signal_adapter(prop: Option<&PropBinding>, cx: &str, ctx: &EmitCtx
             }
         }
         None => format!("{cx}.signal(0usize)"),
+    }
+}
+
+fn emit_string_signal_adapter(
+    prop: Option<&PropBinding>,
+    cx: &str,
+    ctx: &EmitCtx<'_>,
+    default_expr: &str,
+) -> String {
+    match prop {
+        Some(p)
+            if p.two_way
+                && matches!(&p.value, Expr::Ident(id) if ctx.signal_type(id.as_str()) == Some("String")) =>
+        {
+            let Expr::Ident(id) = &p.value else {
+                unreachable!()
+            };
+            ctx.prop_access(id)
+        }
+        Some(p) => {
+            let init_s = expr_to_typed_rust(&p.value, "String", ctx);
+            if expr_has_reactive_props(&p.value, ctx) {
+                let captures = emit_signal_captures(ctx, &[]);
+                let dyn_s = expr_to_typed_rust_captured(&p.value, "String", ctx);
+                format!(
+                    "{{ {captures} let __ss = {cx}.signal({init_s}); {cx}.effect(move || {{ let v = {dyn_s}; if __ss.get_untracked() != v {{ __ss.set(v); }} }}); __ss }}"
+                )
+            } else {
+                format!("{cx}.signal({init_s})")
+            }
+        }
+        None => format!("{cx}.signal({default_expr})"),
+    }
+}
+
+fn emit_string_list_signal_adapter(
+    prop: Option<&PropBinding>,
+    cx: &str,
+    ctx: &EmitCtx<'_>,
+) -> String {
+    match prop {
+        Some(p)
+            if p.two_way
+                && matches!(&p.value, Expr::Ident(id) if ctx.signal_type(id.as_str()) == Some("Vec<String>")) =>
+        {
+            let Expr::Ident(id) = &p.value else {
+                unreachable!()
+            };
+            ctx.prop_access(id)
+        }
+        Some(p) => {
+            let init_v = expr_to_typed_rust(&p.value, "Vec<String>", ctx);
+            if expr_has_reactive_props(&p.value, ctx) {
+                let captures = emit_signal_captures(ctx, &[]);
+                let dyn_v = expr_to_typed_rust_captured(&p.value, "Vec<String>", ctx);
+                format!(
+                    "{{ {captures} let __ls = {cx}.signal({init_v}); {cx}.effect(move || {{ let v = {dyn_v}; if __ls.get_untracked() != v {{ __ls.set(v); }} }}); __ls }}"
+                )
+            } else {
+                format!("{cx}.signal({init_v})")
+            }
+        }
+        None => format!("{cx}.signal(Vec::<String>::new())"),
     }
 }
 

@@ -25,6 +25,28 @@ impl WidgetTree {
                     return Some(id);
                 }
             }
+            if let Some(node) = self.nodes.get(id)
+                && !node.layout.hidden
+                && let WidgetKind::MenuBar {
+                    menus,
+                    open_menu: Some(idx),
+                    ..
+                } = &node.kind
+            {
+                let bar_r = self
+                    .node_world_transform(id)
+                    .transform_rect_bounds(self.node_visual_rect(id));
+                let parsed = crate::pickers::parse_menubar_specs(&menus.get());
+                let hrs = crate::pickers::menubar_header_rects(bar_r, &parsed);
+                if let (Some(hr), Some((_, items))) = (hrs.get(*idx), parsed.get(*idx))
+                    && !items.is_empty()
+                {
+                    let dr = crate::pickers::menubar_dropdown_rect(*hr, items.len());
+                    if dr.contains(point) {
+                        return Some(id);
+                    }
+                }
+            }
         }
 
         self.hit_test_recursive(root, point, Point::ZERO)
@@ -181,6 +203,15 @@ impl WidgetTree {
                     | WidgetKind::SplitPane { .. }
                     | WidgetKind::ToastHost { .. }
                     | WidgetKind::Overlay { .. }
+                    | WidgetKind::DatePicker { .. }
+                    | WidgetKind::TimePicker { .. }
+                    | WidgetKind::TreeView { .. }
+                    | WidgetKind::ReorderableList { .. }
+                    | WidgetKind::MenuBar { .. }
+                    | WidgetKind::Draggable { .. }
+                    | WidgetKind::DropTarget { .. }
+                    | WidgetKind::MediaPlayer { .. }
+                    | WidgetKind::RichTextEditor { .. }
                     | WidgetKind::Custom(_)
             )
     }
@@ -255,6 +286,111 @@ impl WidgetTree {
                     changed = true;
                 }
             }
+
+            let open_menus: Vec<NodeId> = self
+                .nodes
+                .iter()
+                .filter_map(|(id, n)| {
+                    if matches!(
+                        n.kind,
+                        WidgetKind::MenuBar {
+                            open_menu: Some(_),
+                            ..
+                        }
+                    ) && hit != Some(id)
+                    {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            for mid in open_menus {
+                if let Some(n) = self.nodes.get_mut(mid)
+                    && let WidgetKind::MenuBar { open_menu, .. } = &mut n.kind
+                {
+                    *open_menu = None;
+                    n.dirty |= DirtyFlags::PAINT;
+                    changed = true;
+                }
+            }
+
+            // Clear stale drag session if its source node was removed from the tree
+            if let Some((drag_id, _, _, _, _)) = self.active_drag
+                && !self.nodes.contains_key(drag_id)
+            {
+                self.active_drag = None;
+            }
+            // Start cross-widget Draggable session if pointer hits inside a Draggable ancestor
+            if self.active_drag.is_none() {
+                let mut drag_cursor = hit;
+                while let Some(cid) = drag_cursor {
+                    if let Some(n) = self.nodes.get_mut(cid)
+                        && !n.is_disabled()
+                        && let WidgetKind::Draggable { payload, dragging } = &mut n.kind
+                    {
+                        *dragging = true;
+                        let val = payload.get();
+                        n.dirty |= DirtyFlags::PAINT;
+                        self.active_drag = Some((cid, val, pe.position, false, pe.id));
+                        changed = true;
+                        break;
+                    }
+                    drag_cursor = self.nodes.get(cid).and_then(|n| n.parent);
+                }
+            }
+        }
+
+        // Track active cross-widget Draggable hover over DropTarget for the initiating pointer
+        if matches!(pe.phase, PointerPhase::Move)
+            && let Some((drag_id, payload, orig_pos, moved, ptr_id)) = self.active_drag.clone()
+            && ptr_id == pe.id
+        {
+            if !self.nodes.contains_key(drag_id) {
+                self.active_drag = None;
+                for (_, node) in &mut self.nodes {
+                    if let WidgetKind::DropTarget { hovered_drag, .. } = &mut node.kind
+                        && *hovered_drag
+                    {
+                        *hovered_drag = false;
+                        node.dirty |= DirtyFlags::PAINT;
+                    }
+                }
+                return true;
+            }
+            let now_moved = moved || pe.position.distance_to(orig_pos) > 2.0;
+            self.active_drag = Some((
+                drag_id,
+                payload.clone(),
+                if now_moved { pe.position } else { orig_pos },
+                now_moved,
+                ptr_id,
+            ));
+            if now_moved {
+                let mut matched_drop: Option<NodeId> = None;
+                let mut dcur = hit;
+                while let Some(cid) = dcur {
+                    if let Some(n) = self.nodes.get(cid)
+                        && !n.is_disabled()
+                        && let WidgetKind::DropTarget { accept_prefix, .. } = &n.kind
+                        && payload.starts_with(accept_prefix.as_str())
+                    {
+                        matched_drop = Some(cid);
+                        break;
+                    }
+                    dcur = self.nodes.get(cid).and_then(|n| n.parent);
+                }
+                for (nid, node) in &mut self.nodes {
+                    if let WidgetKind::DropTarget { hovered_drag, .. } = &mut node.kind {
+                        let want = matched_drop == Some(nid);
+                        if *hovered_drag != want {
+                            *hovered_drag = want;
+                            node.dirty |= DirtyFlags::PAINT;
+                        }
+                    }
+                }
+            }
+            changed = true;
         }
 
         // Update hovered state, hover control animations, and fire on_hover callbacks
@@ -398,6 +534,15 @@ impl WidgetTree {
         {
             let h_rect = self.node_visual_rect(h);
             let h_local = self.screen_to_node_local_point(h, pe.position);
+            if self
+                .reorder_drag_owner
+                .as_ref()
+                .is_some_and(|(id, _, _)| !self.nodes.contains_key(*id))
+            {
+                self.reorder_drag_owner = None;
+            }
+            let can_start_reorder = self.reorder_drag_owner.is_none();
+            let mut started_reorder_item: Option<Option<String>> = None;
             if let Some(n) = self.nodes.get_mut(h) {
                 match &mut n.kind {
                     WidgetKind::Button { pressed, .. }
@@ -431,8 +576,33 @@ impl WidgetTree {
                             changed = true;
                         }
                     }
+                    WidgetKind::ReorderableList {
+                        items,
+                        dragging_index,
+                        target_index,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } if can_start_reorder => {
+                        let rh = row_height.max(24.0);
+                        let list_snap = items.get_untracked();
+                        let len = list_snap.len();
+                        let idx =
+                            ((h_local.y - (h_rect.y + 4.0) + *scroll_offset) / rh).floor() as isize;
+                        if idx >= 0 && (idx as usize) < len && h_local.x <= h_rect.x + 40.0 {
+                            let u = idx as usize;
+                            *dragging_index = Some(u);
+                            *target_index = Some(u);
+                            started_reorder_item = Some(list_snap.get(u).cloned());
+                            n.dirty |= DirtyFlags::PAINT;
+                            changed = true;
+                        }
+                    }
                     _ => {}
                 }
+            }
+            if let Some(item_opt) = started_reorder_item {
+                self.reorder_drag_owner = Some((h, pe.id, item_opt));
             }
             if let Some(ControlVisualAnim::Slider {
                 dragging, drag_t, ..
@@ -448,7 +618,9 @@ impl WidgetTree {
             self.sync_control_anim_target(h);
         }
         if matches!(pe.phase, PointerPhase::Up | PointerPhase::Cancel) {
+            let is_cancel = matches!(pe.phase, PointerPhase::Cancel);
             let mut released = Vec::new();
+            let mut reorder_cbs: Vec<(crate::ReorderCallback, usize, usize)> = Vec::new();
             for (nid, node) in &mut self.nodes {
                 match &mut node.kind {
                     WidgetKind::Button { pressed, .. }
@@ -466,8 +638,102 @@ impl WidgetTree {
                         node.dirty |= DirtyFlags::PAINT;
                         changed = true;
                     }
+                    WidgetKind::ReorderableList {
+                        items,
+                        selected,
+                        dragging_index,
+                        target_index,
+                        on_reorder,
+                        ..
+                    } if dragging_index.is_some()
+                        && self
+                            .reorder_drag_owner
+                            .as_ref()
+                            .is_some_and(|(id, pid, _)| *id == nid && *pid == pe.id) =>
+                    {
+                        let grabbed = self.reorder_drag_owner.take().and_then(|(_, _, item)| item);
+                        let from = dragging_index.take();
+                        let to = target_index.take();
+                        if !is_cancel
+                            && let (Some(f), Some(t)) = (from, to)
+                            && f != t
+                        {
+                            let mut moved = false;
+                            items.update(|list| {
+                                if f < list.len()
+                                    && t < list.len()
+                                    && grabbed.as_ref().is_none_or(|exp| list.get(f) == Some(exp))
+                                {
+                                    let el = list.remove(f);
+                                    list.insert(t, el);
+                                    moved = true;
+                                }
+                            });
+                            if moved {
+                                selected.set(t);
+                                node.a11y.numeric_value = Some(t as f64);
+                                if let Some(cb) = on_reorder.clone() {
+                                    reorder_cbs.push((cb, f, t));
+                                }
+                            }
+                        }
+                        node.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y;
+                        changed = true;
+                    }
                     _ => {}
                 }
+            }
+            for (cb, f, t) in reorder_cbs {
+                if let Ok(mut func) = cb.try_borrow_mut() {
+                    func(f, t);
+                }
+            }
+
+            if let Some((_, _, _, _, ptr_id)) = self.active_drag
+                && ptr_id == pe.id
+            {
+                let (drag_id, payload, _, moved, _) = self.active_drag.take().unwrap();
+                if let Some(dn) = self.nodes.get_mut(drag_id)
+                    && let WidgetKind::Draggable { dragging, .. } = &mut dn.kind
+                {
+                    *dragging = false;
+                    dn.dirty |= DirtyFlags::PAINT;
+                }
+                let mut drop_cb: Option<(crate::TextCallback, String)> = None;
+                if !is_cancel && moved && self.nodes.contains_key(drag_id) {
+                    let mut dcur = hit;
+                    while let Some(cid) = dcur {
+                        if let Some(n) = self.nodes.get(cid)
+                            && !n.is_disabled()
+                            && let WidgetKind::DropTarget {
+                                accept_prefix,
+                                on_drop,
+                                ..
+                            } = &n.kind
+                            && payload.starts_with(accept_prefix.as_str())
+                        {
+                            if let Some(cb) = on_drop.clone() {
+                                drop_cb = Some((cb, payload.clone()));
+                            }
+                            break;
+                        }
+                        dcur = self.nodes.get(cid).and_then(|n| n.parent);
+                    }
+                }
+                for (_, node) in &mut self.nodes {
+                    if let WidgetKind::DropTarget { hovered_drag, .. } = &mut node.kind
+                        && *hovered_drag
+                    {
+                        *hovered_drag = false;
+                        node.dirty |= DirtyFlags::PAINT;
+                    }
+                }
+                if let Some((cb, p)) = drop_cb
+                    && let Ok(mut func) = cb.try_borrow_mut()
+                {
+                    func(p);
+                }
+                changed = true;
             }
             for nid in released {
                 self.sync_control_anim_target(nid);
@@ -577,6 +843,7 @@ impl WidgetTree {
 
     pub(crate) fn activate_tap(&mut self, node_id: NodeId, pos: Point, is_screen_pos: bool) {
         let rect = self.node_visual_rect(node_id);
+        let node_xform = self.node_world_transform(node_id);
 
         if self.nodes.get(node_id).is_some_and(WidgetNode::is_disabled) {
             return;
@@ -669,7 +936,14 @@ impl WidgetTree {
                     content,
                     on_link: Some(callback),
                 } => {
-                    let rich = content.get();
+                    let mut rich = content.get();
+                    if self.direction == Direction::Rtl {
+                        rich.align = match rich.align {
+                            craftui_text::TextAlign::Start => craftui_text::TextAlign::End,
+                            craftui_text::TextAlign::End => craftui_text::TextAlign::Start,
+                            other => other,
+                        };
+                    }
                     let layout = self
                         .text_engine
                         .build_rich_layout(&rich, Some(rect.width.max(1.0)));
@@ -702,9 +976,19 @@ impl WidgetTree {
                     let wrap = if *multiline { Some(inner_w) } else { None };
                     let inner_x = local_pos.x - (rect.x + 12.0);
                     let inner_y = local_pos.y - (rect.y + pad_top);
-                    let layout =
-                        self.text_engine
-                            .build_layout_cached(&editor.display_text(), style, wrap);
+                    let mut hit_style = style.clone();
+                    if self.direction == Direction::Rtl {
+                        hit_style.align = match hit_style.align {
+                            craftui_text::TextAlign::Start => craftui_text::TextAlign::End,
+                            craftui_text::TextAlign::End => craftui_text::TextAlign::Start,
+                            other => other,
+                        };
+                    }
+                    let layout = self.text_engine.build_layout_cached(
+                        &editor.display_text(),
+                        &hit_style,
+                        wrap,
+                    );
                     let byte_idx = self.text_engine.hit_test_point(&layout, inner_x, inner_y);
                     editor.set_cursor_at(byte_idx, false);
                     reset_caret = true;
@@ -963,6 +1247,250 @@ impl WidgetTree {
                 WidgetKind::Overlay { on_close, .. } => {
                     action = on_close.clone();
                 }
+                WidgetKind::DatePicker {
+                    value,
+                    view_year,
+                    view_month,
+                    on_change,
+                } => {
+                    let prev_r = Rect::new(rect.x + 8.0, rect.y + 8.0, 28.0, 28.0);
+                    let next_r = Rect::new(rect.max_x() - 36.0, rect.y + 8.0, 28.0, 28.0);
+                    if prev_r.contains(local_pos) {
+                        let (ny, nm) = crate::pickers::shift_month(*view_year, *view_month, -1);
+                        *view_year = ny;
+                        *view_month = nm;
+                        node.dirty |= DirtyFlags::PAINT;
+                    } else if next_r.contains(local_pos) {
+                        let (ny, nm) = crate::pickers::shift_month(*view_year, *view_month, 1);
+                        *view_year = ny;
+                        *view_month = nm;
+                        node.dirty |= DirtyFlags::PAINT;
+                    } else {
+                        let cell_w = ((rect.width - 16.0) / 7.0).max(20.0);
+                        let cell_h = ((rect.height - 74.0) / 6.0).max(22.0);
+                        let first_wd = crate::pickers::weekday_sunday0(*view_year, *view_month, 1);
+                        let total_days = crate::pickers::days_in_month(*view_year, *view_month);
+                        for day in 1..=total_days {
+                            let slot = first_wd + (day - 1);
+                            let r = slot / 7;
+                            let c = slot % 7;
+                            let cell = Rect::new(
+                                rect.x + 8.0 + c as f32 * cell_w,
+                                rect.y + 66.0 + r as f32 * cell_h,
+                                cell_w,
+                                cell_h,
+                            );
+                            if cell.contains(local_pos) {
+                                let formatted =
+                                    crate::pickers::format_iso_date(*view_year, *view_month, day);
+                                value.set(formatted.clone());
+                                node.a11y.value = Some(formatted.clone());
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_change.clone() {
+                                    link_cb = Some((cb, formatted));
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                WidgetKind::TimePicker {
+                    value,
+                    use_24h,
+                    on_change,
+                } => {
+                    let (mut h, mut m) = crate::pickers::parse_time_hm(&value.get_untracked());
+                    let h_plus = Rect::new(rect.x + 12.0, rect.y + 10.0, 58.0, 28.0);
+                    let h_minus = Rect::new(rect.x + 12.0, rect.y + 92.0, 58.0, 28.0);
+                    let m_plus = Rect::new(rect.x + 92.0, rect.y + 10.0, 58.0, 28.0);
+                    let m_minus = Rect::new(rect.x + 92.0, rect.y + 92.0, 58.0, 28.0);
+                    let am_pm_r = Rect::new(rect.x + 162.0, rect.y + 42.0, 54.0, 46.0);
+                    let mut changed = true;
+                    if h_plus.contains(local_pos) {
+                        h = (h + 1) % 24;
+                    } else if h_minus.contains(local_pos) {
+                        h = (h + 23) % 24;
+                    } else if m_plus.contains(local_pos) {
+                        m = (m + 1) % 60;
+                    } else if m_minus.contains(local_pos) {
+                        m = (m + 59) % 60;
+                    } else if !*use_24h && am_pm_r.contains(local_pos) {
+                        h = (h + 12) % 24;
+                    } else {
+                        changed = false;
+                    }
+                    if changed {
+                        let formatted = crate::pickers::format_time_hm(h, m);
+                        value.set(formatted.clone());
+                        node.a11y.value = Some(formatted.clone());
+                        node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                        if let Some(cb) = on_change.clone() {
+                            link_cb = Some((cb, formatted));
+                        }
+                    }
+                }
+                WidgetKind::TreeView {
+                    items,
+                    selected,
+                    collapsed,
+                    row_height,
+                    scroll_offset,
+                    on_select,
+                } => {
+                    let rh = (*row_height).max(22.0);
+                    let list = items.get();
+                    let vis_idx =
+                        ((local_pos.y - (rect.y + 4.0) + *scroll_offset) / rh).floor() as isize;
+                    if vis_idx >= 0 {
+                        let mut col = collapsed.borrow_mut();
+                        let vis = crate::pickers::derive_visible_tree_rows(&list, &col);
+                        if let Some(row) = vis.get(vis_idx as usize) {
+                            let indent = row.depth as f32 * 16.0;
+                            let chev_x = rect.x + 12.0 + indent;
+                            if row.has_children && local_pos.x <= chev_x + 16.0 {
+                                if !col.remove(&row.path) {
+                                    col.insert(row.path.clone());
+                                }
+                                relayout_node = true;
+                                node.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
+                            } else {
+                                selected.set(row.raw_index);
+                                node.a11y.numeric_value = Some(row.raw_index as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_select.clone() {
+                                    idx_cb = Some((cb, row.raw_index));
+                                }
+                            }
+                        }
+                    }
+                }
+                WidgetKind::ReorderableList {
+                    items,
+                    selected,
+                    row_height,
+                    scroll_offset,
+                    on_select,
+                    ..
+                } => {
+                    let rh = (*row_height).max(24.0);
+                    let len = items.get_untracked().len();
+                    let idx =
+                        ((local_pos.y - (rect.y + 4.0) + *scroll_offset) / rh).floor() as isize;
+                    if idx >= 0 && (idx as usize) < len {
+                        let u = idx as usize;
+                        selected.set(u);
+                        node.a11y.numeric_value = Some(u as f64);
+                        node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                        if let Some(cb) = on_select.clone() {
+                            idx_cb = Some((cb, u));
+                        }
+                    }
+                }
+                WidgetKind::MenuBar {
+                    menus,
+                    open_menu,
+                    on_select,
+                } => {
+                    let parsed = crate::pickers::parse_menubar_specs(&menus.get());
+                    let hrs = crate::pickers::menubar_header_rects(rect, &parsed);
+                    let mut handled_drop = false;
+                    if let Some(oidx) = *open_menu
+                        && let (Some(hr), Some((menu_title, items))) =
+                            (hrs.get(oidx), parsed.get(oidx))
+                        && !items.is_empty()
+                    {
+                        let screen_pos = node_xform.transform_point(local_pos);
+                        let dr = crate::pickers::menubar_dropdown_rect(
+                            node_xform.transform_rect_bounds(*hr),
+                            items.len(),
+                        );
+                        if dr.contains(screen_pos) {
+                            let item_idx = ((screen_pos.y - (dr.y + 4.0)) / 30.0).floor() as isize;
+                            if item_idx >= 0 && (item_idx as usize) < items.len() {
+                                let chosen = format!("{}/{}", menu_title, items[item_idx as usize]);
+                                if let Some(cb) = on_select.clone() {
+                                    link_cb = Some((cb, chosen));
+                                }
+                            }
+                            *open_menu = None;
+                            node.dirty |= DirtyFlags::PAINT;
+                            handled_drop = true;
+                        }
+                    }
+                    if !handled_drop {
+                        let clicked_hdr = hrs.iter().position(|hr| hr.contains(local_pos));
+                        *open_menu = match (clicked_hdr, *open_menu) {
+                            (Some(i), Some(cur)) if i == cur => None,
+                            (Some(i), _) => Some(i),
+                            (None, _) => None,
+                        };
+                        node.dirty |= DirtyFlags::PAINT;
+                    }
+                }
+                WidgetKind::MediaPlayer {
+                    kind,
+                    controller,
+                    show_controls,
+                    on_toggle_play,
+                    ..
+                } if *show_controls => {
+                    let (_, play_r, scrub_r, mute_r, _) =
+                        crate::media_editor::media_control_rects(rect, *kind);
+                    if play_r.contains(local_pos) {
+                        let mut playing_now = false;
+                        controller.update(|c| {
+                            c.toggle_play();
+                            playing_now = c.playing;
+                        });
+                        if let Some(cb) = on_toggle_play.clone() {
+                            bool_cb = Some((cb, playing_now));
+                        }
+                        node.dirty |= DirtyFlags::PAINT;
+                    } else if mute_r.contains(local_pos) {
+                        controller.update(|c| c.toggle_mute());
+                        node.dirty |= DirtyFlags::PAINT;
+                    } else if scrub_r.contains(local_pos) && scrub_r.width > 0.0 {
+                        let frac = ((local_pos.x - scrub_r.x) / scrub_r.width).clamp(0.0, 1.0);
+                        controller.update(|c| c.seek_fraction(frac));
+                        node.dirty |= DirtyFlags::PAINT;
+                    }
+                }
+                WidgetKind::RichTextEditor {
+                    controller, style, ..
+                } => {
+                    if let Some(btn_idx) =
+                        crate::media_editor::rich_editor_hit_toolbar(rect, local_pos)
+                    {
+                        controller.update(|c| match btn_idx {
+                            0 => c.toggle_bold(),
+                            1 => c.toggle_italic(),
+                            _ => c.toggle_underline(),
+                        });
+                    } else {
+                        let (_, text_r) = crate::media_editor::rich_editor_layout(rect);
+                        let mut eff_st = style.clone();
+                        if self.direction == Direction::Rtl {
+                            eff_st.align = match eff_st.align {
+                                craftui_text::TextAlign::Start => craftui_text::TextAlign::End,
+                                craftui_text::TextAlign::End => craftui_text::TextAlign::Start,
+                                other => other,
+                            };
+                        }
+                        let snap = controller.get_untracked();
+                        let rich = snap.to_rich_text(&eff_st);
+                        let layout = self
+                            .text_engine
+                            .build_rich_layout(&rich, Some(text_r.width));
+                        let cr = self.text_engine.cursor_rect(&layout, snap.editor.cursor);
+                        let scroll_y = (cr.max_y() - text_r.height).max(0.0);
+                        let inner_x = local_pos.x - text_r.x;
+                        let inner_y = local_pos.y - (text_r.y - scroll_y);
+                        let byte_idx = self.text_engine.hit_test_point(&layout, inner_x, inner_y);
+                        controller.update(|c| c.editor.set_cursor_at(byte_idx, false));
+                    }
+                    node.dirty |= DirtyFlags::PAINT;
+                    reset_caret = true;
+                }
                 _ => {}
             }
         }
@@ -1100,6 +1628,27 @@ impl WidgetTree {
                             ));
                             matched = true;
                         }
+                    }
+                    WidgetKind::ReorderableList {
+                        items,
+                        dragging_index: Some(_from),
+                        target_index,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let len = items.get_untracked().len();
+                        if len > 0 {
+                            let rh = (*row_height).max(24.0);
+                            let raw_to = ((local_pos.y - (r.y + 4.0) + *scroll_offset) / rh).floor()
+                                as isize;
+                            let to = raw_to.clamp(0, len as isize - 1) as usize;
+                            if *target_index != Some(to) {
+                                *target_index = Some(to);
+                                node.dirty |= DirtyFlags::PAINT;
+                            }
+                        }
+                        matched = true;
                     }
                     WidgetKind::ScrollView {
                         axis,
@@ -1262,6 +1811,45 @@ impl WidgetTree {
             let parent = self.nodes.get(cursor).and_then(|n| n.parent);
             if let Some(node) = self.nodes.get_mut(cursor) {
                 match &mut node.kind {
+                    WidgetKind::TreeView {
+                        items,
+                        collapsed,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let rh = (*row_height).max(22.0);
+                        let list = items.get();
+                        let vis_len =
+                            crate::pickers::derive_visible_tree_rows(&list, &collapsed.borrow())
+                                .len();
+                        let total_h = vis_len as f32 * rh + 8.0;
+                        let max_off = (total_h - rect.height).max(0.0);
+                        let prev_off = *scroll_offset;
+                        let next_off = (*scroll_offset - dy).clamp(0.0, max_off);
+                        if max_off > 0.0 && (next_off - prev_off).abs() > f32::EPSILON {
+                            *scroll_offset = next_off;
+                            node.dirty |= DirtyFlags::PAINT;
+                            return true;
+                        }
+                    }
+                    WidgetKind::ReorderableList {
+                        items,
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => {
+                        let rh = (*row_height).max(24.0);
+                        let total_h = items.get_untracked().len() as f32 * rh + 8.0;
+                        let max_off = (total_h - rect.height).max(0.0);
+                        let prev_off = *scroll_offset;
+                        let next_off = (*scroll_offset - dy).clamp(0.0, max_off);
+                        if max_off > 0.0 && (next_off - prev_off).abs() > f32::EPSILON {
+                            *scroll_offset = next_off;
+                            node.dirty |= DirtyFlags::PAINT;
+                            return true;
+                        }
+                    }
                     WidgetKind::ScrollView {
                         axis,
                         offset,
@@ -1356,6 +1944,15 @@ impl WidgetTree {
                     WidgetKind::Select { open: true, .. } => {
                         if let WidgetKind::Select { open, .. } = &mut node.kind {
                             *open = false;
+                            node.dirty |= DirtyFlags::PAINT;
+                        }
+                        return true;
+                    }
+                    WidgetKind::MenuBar {
+                        open_menu: Some(_), ..
+                    } => {
+                        if let WidgetKind::MenuBar { open_menu, .. } = &mut node.kind {
+                            *open_menu = None;
                             node.dirty |= DirtyFlags::PAINT;
                         }
                         return true;
@@ -1546,9 +2143,7 @@ impl WidgetTree {
             }
             false
         });
-        if !focus_is_visible
-            && let Some(scope_root) = self.active_focus_root()
-        {
+        if !focus_is_visible && let Some(scope_root) = self.active_focus_root() {
             let mut order = Vec::new();
             self.collect_preorder(scope_root, &mut order);
             if let Some(auto_id) = order.into_iter().find(|&id| {
@@ -1582,6 +2177,7 @@ impl WidgetTree {
         let mut reset_caret = false;
         let mut idx_cb: Option<(IndexCallback, usize)> = None;
         let mut float_cb: Option<(FloatCallback, f32)> = None;
+        let mut reorder_cb: Option<(crate::ReorderCallback, usize, usize)> = None;
 
         // Read clipboard outside node borrow
         let paste_clip = if ke.modifiers.command() && ke.code.matches_ascii_letter('V') {
@@ -1692,6 +2288,78 @@ impl WidgetTree {
                     }
                     node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
                     reset_caret = true;
+                }
+                WidgetKind::RichTextEditor { controller, .. } => {
+                    let mut next_text: Option<String> = None;
+                    controller.update(|ctrl| {
+                        let prev = ctrl.editor.text.clone();
+                        match &ke.code {
+                            KeyCode::Backspace => ctrl.backspace(),
+                            KeyCode::Delete => ctrl.delete_forward(),
+                            KeyCode::ArrowLeft => ctrl.editor.move_left(ke.modifiers.shift),
+                            KeyCode::ArrowRight => ctrl.editor.move_right(ke.modifiers.shift),
+                            KeyCode::ArrowUp => ctrl.editor.move_up(ke.modifiers.shift),
+                            KeyCode::ArrowDown => ctrl.editor.move_down(ke.modifiers.shift),
+                            KeyCode::Home => ctrl.editor.move_home(ke.modifiers.shift),
+                            KeyCode::End => ctrl.editor.move_end(ke.modifiers.shift),
+                            code if ke.modifiers.command() && code.matches_ascii_letter('A') => {
+                                ctrl.editor.select_all();
+                            }
+                            code if ke.modifiers.command() && code.matches_ascii_letter('B') => {
+                                ctrl.toggle_bold();
+                            }
+                            code if ke.modifiers.command() && code.matches_ascii_letter('I') => {
+                                ctrl.toggle_italic();
+                            }
+                            code if ke.modifiers.command() && code.matches_ascii_letter('U') => {
+                                ctrl.toggle_underline();
+                            }
+                            code if ke.modifiers.command() && code.matches_ascii_letter('V') => {
+                                if let Some(ref clip) = paste_clip {
+                                    ctrl.insert_str(clip);
+                                }
+                            }
+                            KeyCode::Enter => ctrl.insert_str("\n"),
+                            _ => {
+                                if let Some(ref txt) = ke.text
+                                    && !ke.modifiers.command()
+                                    && !ke.modifiers.ctrl
+                                    && !ke.modifiers.alt
+                                    && !txt.chars().all(|c| c.is_control())
+                                {
+                                    ctrl.insert_str(txt);
+                                }
+                            }
+                        }
+                        if ctrl.editor.text != prev {
+                            next_text = Some(ctrl.editor.text.clone());
+                        }
+                    });
+                    if let Some(txt) = next_text {
+                        node.a11y.value = Some(txt.clone());
+                        text_changed = Some(txt);
+                    }
+                    node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                    reset_caret = true;
+                }
+                WidgetKind::MediaPlayer {
+                    controller,
+                    on_toggle_play,
+                    ..
+                } => {
+                    if matches!(ke.code, KeyCode::Space | KeyCode::Enter) {
+                        let mut playing_now = false;
+                        controller.update(|c| {
+                            c.toggle_play();
+                            playing_now = c.playing;
+                        });
+                        if let Some(cb) = on_toggle_play.clone() {
+                            if let Ok(mut f) = cb.try_borrow_mut() {
+                                f(playing_now);
+                            }
+                        }
+                        node.dirty |= DirtyFlags::PAINT;
+                    }
                 }
                 WidgetKind::Button { .. }
                 | WidgetKind::Checkbox { .. }
@@ -1934,6 +2602,206 @@ impl WidgetTree {
                         _ => {}
                     }
                 }
+                WidgetKind::DatePicker {
+                    value,
+                    view_year,
+                    view_month,
+                    ..
+                } => {
+                    let (mut y, mut m, mut d) =
+                        crate::pickers::parse_iso_date(&value.get_untracked());
+                    let delta: i32 = match ke.code {
+                        KeyCode::ArrowRight => 1,
+                        KeyCode::ArrowLeft => -1,
+                        KeyCode::ArrowDown => 7,
+                        KeyCode::ArrowUp => -7,
+                        _ => 0,
+                    };
+                    if delta != 0 {
+                        let mut nd = d as i32 + delta;
+                        while nd < 1 {
+                            if y <= 1900 && m <= 1 {
+                                nd = 1;
+                                break;
+                            }
+                            let (py, pm) = crate::pickers::shift_month(y, m, -1);
+                            y = py;
+                            m = pm;
+                            nd += crate::pickers::days_in_month(y, m) as i32;
+                        }
+                        while nd > crate::pickers::days_in_month(y, m) as i32 {
+                            let dim = crate::pickers::days_in_month(y, m) as i32;
+                            if y >= 2200 && m >= 12 {
+                                nd = dim;
+                                break;
+                            }
+                            nd -= dim;
+                            let (ny, nm) = crate::pickers::shift_month(y, m, 1);
+                            y = ny;
+                            m = nm;
+                        }
+                        d = (nd as u32).clamp(1, crate::pickers::days_in_month(y, m));
+                        *view_year = y;
+                        *view_month = m;
+                        let formatted = crate::pickers::format_iso_date(y, m, d);
+                        value.set(formatted.clone());
+                        node.a11y.value = Some(formatted.clone());
+                        node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                        text_changed = Some(formatted);
+                    }
+                }
+                WidgetKind::TimePicker { value, .. } => {
+                    let (mut h, mut m) = crate::pickers::parse_time_hm(&value.get_untracked());
+                    let mut changed = true;
+                    match ke.code {
+                        KeyCode::ArrowUp => h = (h + 1) % 24,
+                        KeyCode::ArrowDown => h = (h + 23) % 24,
+                        KeyCode::ArrowRight => m = (m + 1) % 60,
+                        KeyCode::ArrowLeft => m = (m + 59) % 60,
+                        _ => changed = false,
+                    }
+                    if changed {
+                        let formatted = crate::pickers::format_time_hm(h, m);
+                        value.set(formatted.clone());
+                        node.a11y.value = Some(formatted.clone());
+                        node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                        text_changed = Some(formatted);
+                    }
+                }
+                WidgetKind::TreeView {
+                    items,
+                    selected,
+                    collapsed,
+                    row_height,
+                    scroll_offset,
+                    on_select,
+                } => {
+                    let rh = (*row_height).max(22.0);
+                    let list = items.get();
+                    let mut col = collapsed.borrow_mut();
+                    let vis = crate::pickers::derive_visible_tree_rows(&list, &col);
+                    if !vis.is_empty() {
+                        let cur_raw = selected.get_untracked();
+                        let cur_pos = vis.iter().position(|r| r.raw_index == cur_raw).unwrap_or(0);
+                        let mut reveal_pos: Option<usize> = None;
+                        match ke.code {
+                            KeyCode::ArrowDown => {
+                                let next_pos = (cur_pos + 1).min(vis.len() - 1);
+                                reveal_pos = Some(next_pos);
+                                let raw_idx = vis[next_pos].raw_index;
+                                selected.set(raw_idx);
+                                node.a11y.numeric_value = Some(raw_idx as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_select.clone() {
+                                    idx_cb = Some((cb, raw_idx));
+                                }
+                            }
+                            KeyCode::ArrowUp => {
+                                let next_pos = cur_pos.saturating_sub(1);
+                                reveal_pos = Some(next_pos);
+                                let raw_idx = vis[next_pos].raw_index;
+                                selected.set(raw_idx);
+                                node.a11y.numeric_value = Some(raw_idx as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_select.clone() {
+                                    idx_cb = Some((cb, raw_idx));
+                                }
+                            }
+                            KeyCode::ArrowRight
+                                if vis[cur_pos].has_children && !vis[cur_pos].expanded =>
+                            {
+                                col.remove(&vis[cur_pos].path);
+                                node.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
+                            }
+                            KeyCode::ArrowLeft
+                                if vis[cur_pos].has_children && vis[cur_pos].expanded =>
+                            {
+                                col.insert(vis[cur_pos].path.clone());
+                                node.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT;
+                            }
+                            _ => {}
+                        }
+                        if let Some(pos) = reveal_pos {
+                            let view_h = (focused_rect.height - 8.0).max(rh);
+                            let row_top = pos as f32 * rh;
+                            if row_top < *scroll_offset {
+                                *scroll_offset = row_top;
+                            } else if row_top + rh > *scroll_offset + view_h {
+                                *scroll_offset = (row_top + rh - view_h).max(0.0);
+                            }
+                        }
+                    }
+                }
+                WidgetKind::ReorderableList {
+                    items,
+                    selected,
+                    row_height,
+                    scroll_offset,
+                    on_reorder,
+                    on_select,
+                    ..
+                } => {
+                    let rh = (*row_height).max(24.0);
+                    let len = items.get_untracked().len();
+                    if len > 0 {
+                        let cur = selected.get_untracked().min(len - 1);
+                        let mut reveal_pos: Option<usize> = None;
+                        match ke.code {
+                            KeyCode::ArrowDown if ke.modifiers.alt && cur + 1 < len => {
+                                let next = cur + 1;
+                                reveal_pos = Some(next);
+                                items.update(|list| list.swap(cur, next));
+                                selected.set(next);
+                                node.a11y.numeric_value = Some(next as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_reorder.clone() {
+                                    reorder_cb = Some((cb, cur, next));
+                                }
+                            }
+                            KeyCode::ArrowUp if ke.modifiers.alt && cur > 0 => {
+                                let next = cur - 1;
+                                reveal_pos = Some(next);
+                                items.update(|list| list.swap(cur, next));
+                                selected.set(next);
+                                node.a11y.numeric_value = Some(next as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_reorder.clone() {
+                                    reorder_cb = Some((cb, cur, next));
+                                }
+                            }
+                            KeyCode::ArrowDown => {
+                                let next = (cur + 1).min(len - 1);
+                                reveal_pos = Some(next);
+                                selected.set(next);
+                                node.a11y.numeric_value = Some(next as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_select.clone() {
+                                    idx_cb = Some((cb, next));
+                                }
+                            }
+                            KeyCode::ArrowUp => {
+                                let next = cur.saturating_sub(1);
+                                reveal_pos = Some(next);
+                                selected.set(next);
+                                node.a11y.numeric_value = Some(next as f64);
+                                node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
+                                if let Some(cb) = on_select.clone() {
+                                    idx_cb = Some((cb, next));
+                                }
+                            }
+                            _ => {}
+                        }
+                        if let Some(pos) = reveal_pos {
+                            let view_h = (focused_rect.height - 8.0).max(rh);
+                            let row_top = pos as f32 * rh;
+                            if row_top < *scroll_offset {
+                                *scroll_offset = row_top;
+                            } else if row_top + rh > *scroll_offset + view_h {
+                                *scroll_offset = (row_top + rh - view_h).max(0.0);
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -1964,10 +2832,18 @@ impl WidgetTree {
         {
             f(v);
         }
+        if let Some((cb, from, to)) = reorder_cb
+            && let Ok(mut f) = cb.try_borrow_mut()
+        {
+            f(from, to);
+        }
 
         if let Some(txt) = text_changed {
             let cb = self.nodes.get(focused).and_then(|n| match &n.kind {
-                WidgetKind::TextInput { on_change, .. } => on_change.clone(),
+                WidgetKind::TextInput { on_change, .. }
+                | WidgetKind::DatePicker { on_change, .. }
+                | WidgetKind::TimePicker { on_change, .. }
+                | WidgetKind::RichTextEditor { on_change, .. } => on_change.clone(),
                 _ => None,
             });
             if let Some(func) = cb
@@ -1999,38 +2875,72 @@ impl WidgetTree {
         let Some(node) = self.nodes.get_mut(focused) else {
             return false;
         };
-        let mut changed_cb: Option<(crate::widgets::TextCallback, String)> = None;
-        let WidgetKind::TextInput {
-            editor,
-            bound_signal,
-            on_change,
-            ..
-        } = &mut node.kind
-        else {
+        if node.is_disabled() {
             return false;
-        };
-        match ime {
-            craftui_core::ImeEvent::Preedit(s, cur) => {
-                editor.preedit = if s.is_empty() { None } else { Some(s.clone()) };
-                editor.preedit_cursor = *cur;
-            }
-            craftui_core::ImeEvent::Commit(s) => {
-                editor.preedit = None;
-                editor.preedit_cursor = None;
-                editor.insert_str(s);
-                node.a11y.value = Some(editor.text.clone());
-                if let Some(sig) = bound_signal {
-                    sig.set(editor.text.clone());
+        }
+        let mut changed_cb: Option<(crate::widgets::TextCallback, String)> = None;
+        match &mut node.kind {
+            WidgetKind::TextInput {
+                editor,
+                bound_signal,
+                on_change,
+                ..
+            } => match ime {
+                craftui_core::ImeEvent::Preedit(s, cur) => {
+                    editor.preedit = if s.is_empty() { None } else { Some(s.clone()) };
+                    editor.preedit_cursor = *cur;
                 }
-                if let Some(cb) = on_change.clone() {
-                    changed_cb = Some((cb, editor.text.clone()));
+                craftui_core::ImeEvent::Commit(s) => {
+                    editor.preedit = None;
+                    editor.preedit_cursor = None;
+                    editor.insert_str(s);
+                    node.a11y.value = Some(editor.text.clone());
+                    if let Some(sig) = bound_signal {
+                        sig.set(editor.text.clone());
+                    }
+                    if let Some(cb) = on_change.clone() {
+                        changed_cb = Some((cb, editor.text.clone()));
+                    }
                 }
-            }
-            craftui_core::ImeEvent::Disabled => {
-                editor.preedit = None;
-                editor.preedit_cursor = None;
-            }
-            craftui_core::ImeEvent::Enabled => {}
+                craftui_core::ImeEvent::Disabled => {
+                    editor.preedit = None;
+                    editor.preedit_cursor = None;
+                }
+                craftui_core::ImeEvent::Enabled => {}
+            },
+            WidgetKind::RichTextEditor {
+                controller,
+                on_change,
+                ..
+            } => match ime {
+                craftui_core::ImeEvent::Preedit(s, cur) => {
+                    controller.update(|c| {
+                        c.editor.preedit = if s.is_empty() { None } else { Some(s.clone()) };
+                        c.editor.preedit_cursor = *cur;
+                    });
+                }
+                craftui_core::ImeEvent::Commit(s) => {
+                    let mut updated = String::new();
+                    controller.update(|c| {
+                        c.editor.preedit = None;
+                        c.editor.preedit_cursor = None;
+                        c.insert_str(s);
+                        updated = c.editor.text.clone();
+                    });
+                    node.a11y.value = Some(updated.clone());
+                    if let Some(cb) = on_change.clone() {
+                        changed_cb = Some((cb, updated));
+                    }
+                }
+                craftui_core::ImeEvent::Disabled => {
+                    controller.update(|c| {
+                        c.editor.preedit = None;
+                        c.editor.preedit_cursor = None;
+                    });
+                }
+                craftui_core::ImeEvent::Enabled => {}
+            },
+            _ => return false,
         }
         node.dirty |= DirtyFlags::PAINT | DirtyFlags::A11Y;
         if let Some((cb, txt)) = changed_cb

@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "iOS C-ABI host, Metal surface hook, permissions, and MethodChannel backend for CraftUI"
 
 [features]
 default = ["gpu-sdf", "gpu-vello", "cpu-vello", "cpu-tiny-skia"]
@@ -23,6 +24,7 @@ craftui-layout.workspace = true
 craftui-reactive.workspace = true
 craftui-render.workspace = true
 craftui-widgets.workspace = true
+serde_json.workspace = true
 wgpu = { workspace = true, optional = true }
 tracing.workspace = true
 

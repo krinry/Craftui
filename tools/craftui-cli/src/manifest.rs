@@ -10,6 +10,8 @@ pub struct AppManifest {
     pub android: AndroidSection,
     pub ios: IosSection,
     pub permissions: BTreeMap<String, PermissionDeclaration>,
+    pub dependencies: BTreeMap<String, String>,
+    pub plugins: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,6 +193,14 @@ impl AppManifest {
                             reason,
                         },
                     );
+                }
+                "dependencies" => {
+                    let spec = parse_toml_string(val, line_no)?;
+                    manifest.dependencies.insert(key, spec);
+                }
+                "plugins" => {
+                    let spec = parse_toml_string(val, line_no)?;
+                    manifest.plugins.insert(key, spec);
                 }
                 other => {
                     return Err(CraftError::Platform(format!(
@@ -454,6 +464,20 @@ impl AppManifest {
                 } else {
                     let _ = writeln!(out, "{} = true", decl.key);
                 }
+            }
+        }
+        if !self.dependencies.is_empty() {
+            let _ = writeln!(out);
+            let _ = writeln!(out, "[dependencies]");
+            for (k, v) in &self.dependencies {
+                let _ = writeln!(out, "{} = {}", k, toml_quote(v));
+            }
+        }
+        if !self.plugins.is_empty() {
+            let _ = writeln!(out);
+            let _ = writeln!(out, "[plugins]");
+            for (k, v) in &self.plugins {
+                let _ = writeln!(out, "{} = {}", k, toml_quote(v));
             }
         }
         out

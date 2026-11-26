@@ -2332,7 +2332,9 @@ fn custom_widget_focus_wants_tab_and_key_up_plus_dom_code_roundtrip() {
 
         fn handle_event(&mut self, _rect: craftui_core::Rect, event: &UiEvent) -> bool {
             if let UiEvent::Key(ke) = event {
-                self.events.borrow_mut().push((ke.code.dom_code(), ke.pressed));
+                self.events
+                    .borrow_mut()
+                    .push((ke.code.dom_code(), ke.pressed));
                 return true;
             }
             false
@@ -2378,7 +2380,10 @@ fn custom_widget_focus_wants_tab_and_key_up_plus_dom_code_roundtrip() {
         events.borrow().as_slice(),
         &[(Some("Tab"), true), (Some("KeyF"), false)]
     );
-    assert_eq!(KeyCode::from_dom_code("Semicolon"), Some(KeyCode::Semicolon));
+    assert_eq!(
+        KeyCode::from_dom_code("Semicolon"),
+        Some(KeyCode::Semicolon)
+    );
     assert_eq!(KeyCode::Semicolon.dom_code(), Some("Semicolon"));
 }
 
@@ -2468,4 +2473,474 @@ fn autofocus_custom_widget_recovers_focus_when_previous_focus_is_hidden() {
     })));
     assert_eq!(tree.focused(), Some(stage));
     assert_eq!(received.borrow().as_slice(), &[KeyCode::KeyA]);
+}
+
+#[test]
+fn date_picker_time_picker_and_tree_view_interactions_and_paint() {
+    reset_runtime();
+    let scope = Scope::root();
+    let mut tree = WidgetTree::new(scope);
+
+    let date_sig = scope.signal("2026-11-25".to_string());
+    let time_sig = scope.signal("09:30".to_string());
+    let tree_sel = scope.signal(0usize);
+
+    let last_date = Rc::new(RefCell::new(String::new()));
+    let ld = Rc::clone(&last_date);
+    let dp = tree.date_picker(
+        scope,
+        date_sig,
+        Some(move |v: String| {
+            *ld.borrow_mut() = v;
+        }),
+    );
+
+    let last_time = Rc::new(RefCell::new(String::new()));
+    let lt = Rc::clone(&last_time);
+    let tp = tree.time_picker(
+        scope,
+        time_sig,
+        false,
+        Some(move |v: String| {
+            *lt.borrow_mut() = v;
+        }),
+    );
+
+    let tv = tree.tree_view(
+        scope,
+        vec![
+            "src".to_string(),
+            "src/main.rs".to_string(),
+            "Cargo.toml".to_string(),
+        ],
+        tree_sel,
+        None::<fn(usize)>,
+    );
+
+    let root = tree.column(scope);
+    tree.append_child(root, dp);
+    tree.append_child(root, tp);
+    tree.append_child(root, tv);
+    tree.set_root(root);
+
+    let metrics = WindowMetrics::default();
+    tree.layout(metrics);
+
+    // DatePicker keyboard ArrowRight advances 1 day
+    tree.set_focus(Some(dp), true);
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowRight,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert_eq!(date_sig.get_untracked(), "2026-11-26");
+    assert_eq!(&*last_date.borrow(), "2026-11-26");
+
+    // TimePicker keyboard ArrowUp increments hour, ArrowRight increments minute
+    tree.set_focus(Some(tp), true);
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowUp,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowRight,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert_eq!(time_sig.get_untracked(), "10:31");
+    assert_eq!(&*last_time.borrow(), "10:31");
+
+    // TreeView ArrowDown moves selection, ArrowLeft collapses "src"
+    tree.set_focus(Some(tv), true);
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowDown,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert_eq!(tree_sel.get_untracked(), 1);
+
+    tree.set_focus(Some(tv), true);
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowUp,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowLeft,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::default(),
+    })));
+
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    assert!(!scene.commands.is_empty());
+}
+
+#[test]
+fn reorderable_list_drag_and_keyboard_reorder() {
+    reset_runtime();
+    let scope = Scope::root();
+    let mut tree = WidgetTree::new(scope);
+
+    let items_sig = scope.signal(vec![
+        "Alpha".to_string(),
+        "Beta".to_string(),
+        "Gamma".to_string(),
+    ]);
+    let sel_sig = scope.signal(0usize);
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let log_c = Rc::clone(&log);
+
+    let rl = tree.reorderable_list(
+        scope,
+        items_sig,
+        sel_sig,
+        Some(move |from: usize, to: usize| {
+            log_c.borrow_mut().push((from, to));
+        }),
+    );
+    tree.set_root(rl);
+    tree.layout(WindowMetrics::default());
+
+    // 1. Keyboard Alt+ArrowDown moves item 0 -> 1
+    tree.set_focus(Some(rl), true);
+    assert!(tree.handle_event(&UiEvent::Key(KeyEvent {
+        code: KeyCode::ArrowDown,
+        text: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers {
+            alt: true,
+            ..Default::default()
+        },
+    })));
+    assert_eq!(
+        items_sig.get_untracked(),
+        vec!["Beta".to_string(), "Alpha".to_string(), "Gamma".to_string()]
+    );
+    assert_eq!(sel_sig.get_untracked(), 1);
+    assert_eq!(log.borrow().as_slice(), &[(0, 1)]);
+
+    // 2. Pointer drag on left grip moves row 1 ("Alpha") down to row 2
+    let rect = tree.layout_engine.rect(rl);
+    let grip_x = rect.x + 16.0;
+    let start_y = rect.y + 4.0 + 38.0 + 18.0; // row 1
+    let end_y = rect.y + 4.0 + 2.0 * 38.0 + 18.0; // row 2
+
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: Point::new(grip_x, start_y),
+        phase: PointerPhase::Down,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 100,
+    }));
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: Point::new(grip_x, end_y),
+        phase: PointerPhase::Move,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 120,
+    }));
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: Point::new(grip_x, end_y),
+        phase: PointerPhase::Up,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 140,
+    }));
+
+    assert_eq!(
+        items_sig.get_untracked(),
+        vec!["Beta".to_string(), "Gamma".to_string(), "Alpha".to_string()]
+    );
+    assert_eq!(sel_sig.get_untracked(), 2);
+    assert_eq!(log.borrow().as_slice(), &[(0, 1), (1, 2)]);
+
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    assert!(!scene.commands.is_empty());
+}
+
+#[test]
+fn menu_bar_and_cross_widget_drag_drop_work() {
+    reset_runtime();
+    let scope = Scope::root();
+    let mut tree = WidgetTree::new(scope);
+
+    let chosen_menu = Rc::new(RefCell::new(String::new()));
+    let cm = Rc::clone(&chosen_menu);
+    let mb = tree.menu_bar(
+        scope,
+        vec![
+            "File:New,Open,Exit".to_string(),
+            "Edit:Cut,Copy".to_string(),
+        ],
+        Some(move |item: String| {
+            *cm.borrow_mut() = item;
+        }),
+    );
+
+    let dropped_payload = Rc::new(RefCell::new(String::new()));
+    let dp = Rc::clone(&dropped_payload);
+    let drag_src = tree.draggable(scope, "task:42");
+    let drag_lbl = tree.text(scope, "Task 42", TextStyle::default());
+    tree.append_child(drag_src, drag_lbl);
+
+    let drop_zone = tree.drop_target(
+        scope,
+        "task:",
+        Some(move |p: String| {
+            *dp.borrow_mut() = p;
+        }),
+    );
+    let drop_lbl = tree.text(scope, "Done Column", TextStyle::default());
+    tree.append_child(drop_zone, drop_lbl);
+
+    let row = tree.row(scope);
+    tree.append_child(row, drag_src);
+    tree.append_child(row, drop_zone);
+
+    let root = tree.column(scope);
+    tree.append_child(root, mb);
+    tree.append_child(root, row);
+    tree.set_root(root);
+    tree.layout(WindowMetrics::default());
+
+    let mb_rect = tree.layout_engine.rect(mb);
+    let parsed = crate::pickers::parse_menubar_specs(&[
+        "File:New,Open,Exit".to_string(),
+        "Edit:Cut,Copy".to_string(),
+    ]);
+    let hrs = crate::pickers::menubar_header_rects(mb_rect, &parsed);
+    let file_pt = hrs[0].center();
+    for (phase, ts) in [(PointerPhase::Down, 10), (PointerPhase::Up, 20)] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            position: file_pt,
+            phase,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: ts,
+        }));
+    }
+    let dr = crate::pickers::menubar_dropdown_rect(hrs[0], 3);
+    let open_pt = Point::new(dr.center().x, dr.y + 4.0 + 30.0 + 14.0);
+    for (phase, ts) in [(PointerPhase::Down, 100), (PointerPhase::Up, 110)] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            position: open_pt,
+            phase,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: ts,
+        }));
+    }
+    assert_eq!(&*chosen_menu.borrow(), "File/Open");
+
+    let src_pt = tree.layout_engine.rect(drag_src).center();
+    let dst_pt = tree.layout_engine.rect(drop_zone).center();
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: src_pt,
+        phase: PointerPhase::Down,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 200,
+    }));
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: dst_pt,
+        phase: PointerPhase::Move,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 220,
+    }));
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: dst_pt,
+        phase: PointerPhase::Up,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 240,
+    }));
+    assert_eq!(&*dropped_payload.borrow(), "task:42");
+
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    assert!(!scene.commands.is_empty());
+}
+
+#[test]
+fn rtl_locale_adaptive_presets_media_player_and_rich_editor_work() {
+    reset_runtime();
+    let cx = Scope::root();
+    let mut tree = WidgetTree::new(cx);
+
+    // 1) DesignSystem presets (Cupertino & WinUI)
+    tree.set_design_preset(craftui_core::DesignSystem::Cupertino, ThemeMode::Light);
+    tree.tick_animations(1.0);
+    let _ = tree.theme();
+    let cupertino = craftui_core::ThemeTokens::cupertino_light();
+    let winui = craftui_core::ThemeTokens::winui_dark();
+    assert_eq!(cupertino.primary, craftui_core::Color::rgb(0, 122, 255));
+    assert_eq!(winui.primary, craftui_core::Color::rgb(96, 205, 255));
+
+    // 2) Localization + RTL layout mirroring
+    let mut catalog = craftui_core::LocalizationCatalog::new("en");
+    catalog
+        .load_locale_json("ar", r#"{"send": "إرسال"}"#)
+        .unwrap();
+    assert_eq!(catalog.translate("ar-EG", "send"), "إرسال");
+
+    let row = tree.row(cx);
+    let a = tree.text(cx, "A", TextStyle::default());
+    let b = tree.text(cx, "B", TextStyle::default());
+    tree.append_child(row, a);
+    tree.append_child(row, b);
+
+    let media_ctrl = cx.signal(
+        crate::MediaController::new(90.0)
+            .with_platform_view(craftui_core::PlatformViewId::from_raw(7)),
+    );
+    let played = Rc::new(Cell::new(false));
+    let played_c = played.clone();
+    let player = tree.media_player(
+        cx,
+        crate::MediaKind::Video,
+        "demo.mp4",
+        media_ctrl,
+        false,
+        true,
+        Some(move |is_playing| played_c.set(is_playing)),
+    );
+    tree.append_child(row, player);
+
+    let rich_ctrl = cx.signal(crate::RichEditorController::with_text("Hi "));
+    let rich_ed = tree.rich_text_editor(
+        cx,
+        rich_ctrl,
+        "Placeholder",
+        TextStyle::default(),
+        None::<fn(String)>,
+    );
+    tree.append_child(row, rich_ed);
+
+    tree.set_root(row);
+    let metrics = WindowMetrics {
+        logical_size: Size::new(800.0, 400.0),
+        ..Default::default()
+    };
+
+    tree.layout(metrics);
+    let ax_ltr = tree.layout_engine.rect(a).x;
+    let bx_ltr = tree.layout_engine.rect(b).x;
+    assert!(
+        ax_ltr < bx_ltr,
+        "LTR expects a.x < b.x ({ax_ltr} vs {bx_ltr})"
+    );
+
+    tree.set_locale("ar-SA");
+    assert_eq!(tree.direction(), craftui_core::Direction::Rtl);
+    tree.layout(metrics);
+    let ax_rtl = tree.layout_engine.rect(a).x;
+    let bx_rtl = tree.layout_engine.rect(b).x;
+    assert!(
+        ax_rtl > bx_rtl,
+        "RTL expects a.x > b.x ({ax_rtl} vs {bx_rtl})"
+    );
+
+    // 3) MediaPlayer play button click + PlatformViewHole paint command
+    let player_rect = tree.layout_engine.rect(player);
+    let (_, play_r, scrub_r, _, _) =
+        crate::media_editor::media_control_rects(player_rect, crate::MediaKind::Video);
+    for (phase, ts) in [(PointerPhase::Down, 10), (PointerPhase::Up, 20)] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            position: play_r.center(),
+            phase,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: ts,
+        }));
+    }
+    assert!(
+        played.get(),
+        "clicking MediaPlayer play button toggles playback"
+    );
+    for (phase, ts) in [(PointerPhase::Down, 30), (PointerPhase::Up, 35)] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            position: scrub_r.center(),
+            phase,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: ts,
+        }));
+    }
+    assert!((media_ctrl.get_untracked().position_secs - 45.0).abs() < 2.0);
+
+    // 4) RichTextEditor toolbar Bold click + typing + Paint check
+    let rich_rect = tree.layout_engine.rect(rich_ed);
+    let (btns, text_r) = crate::media_editor::rich_editor_layout(rich_rect);
+    for (phase, ts) in [(PointerPhase::Down, 40), (PointerPhase::Up, 50)] {
+        tree.handle_event(&UiEvent::Pointer(PointerEvent {
+            id: PointerId(1),
+            position: btns[0].center(),
+            phase,
+            button: Some(PointerButton::Primary),
+            modifiers: Modifiers::default(),
+            is_touch: false,
+            timestamp_ms: ts,
+        }));
+    }
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: text_r.center(),
+        phase: PointerPhase::Down,
+        button: Some(PointerButton::Primary),
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 60,
+    }));
+    tree.handle_event(&UiEvent::Ime(craftui_core::ImeEvent::Commit(
+        "Bold!".into(),
+    )));
+    assert!(rich_ctrl.get_untracked().editor.text.contains("Bold!"));
+    assert!(rich_ctrl.get_untracked().active_bold);
+
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    assert!(
+        scene
+            .commands
+            .iter()
+            .any(|c| matches!(c, craftui_render::PaintCommand::PlatformViewHole { .. })),
+        "VideoPlayer with PlatformViewId must emit PlatformViewHole"
+    );
 }

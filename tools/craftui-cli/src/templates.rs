@@ -8,6 +8,7 @@ pub fn template_label(template: ProjectTemplate) -> &'static str {
         ProjectTemplate::Counter => "counter",
         ProjectTemplate::Dashboard => "dashboard",
         ProjectTemplate::Mobile => "mobile",
+        ProjectTemplate::Plugin => "plugin",
     }
 }
 
@@ -42,6 +43,124 @@ pub fn scaffold_project_with_template(
     let pkg_name = sanitize_pkg_name(name);
     let manifest = manifest_for_template(name, template);
 
+    if template == ProjectTemplate::Plugin {
+        let android_dir = root.join("android");
+        let ios_dir = root.join("ios");
+        std::fs::create_dir_all(&android_dir)
+            .and_then(|_| std::fs::create_dir_all(&ios_dir))
+            .map_err(|e| CraftError::Platform(format!("failed creating plugin dirs: {e}")))?;
+
+        let channel_name = format!("dev.craftui.plugin.{pkg_name}");
+        let plugin_cargo = format!(
+            r#"[package]
+name = "{pkg_name}"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "CraftUI MethodChannel plugin crate for {name}"
+
+[dependencies]
+craftui-core = "0.1.0"
+serde_json = "1.0"
+"#
+        );
+        let plugin_lib_rs = format!(
+            r#"use craftui_core::{{CraftError, CraftPlugin, MethodCall, PluginRegistry, Result}};
+use serde_json::{{Value, json}};
+
+pub const CHANNEL_NAME: &str = "{channel_name}";
+
+/// First/third-party `MethodChannel` plugin implementation for `{pkg_name}`.
+pub struct Plugin;
+
+impl CraftPlugin for Plugin {{
+    fn name(&self) -> &str {{
+        CHANNEL_NAME
+    }}
+
+    fn handle(&self, call: &MethodCall) -> Result<Value> {{
+        match call.method.as_str() {{
+            "ping" => Ok(json!({{ "pong": true, "channel": CHANNEL_NAME }})),
+            other => Err(CraftError::Platform(format!(
+                "unknown method `{{other}}` on channel `{{CHANNEL_NAME}}`"
+            ))),
+        }}
+    }}
+}}
+
+pub fn register(registry: &PluginRegistry) {{
+    registry.register(Plugin);
+}}
+
+#[cfg(test)]
+mod tests {{
+    use super::*;
+
+    #[test]
+    fn ping_roundtrip_works() {{
+        let reg = PluginRegistry::new();
+        register(&reg);
+        let out = reg.invoke(CHANNEL_NAME, "ping", json!({{}})).unwrap();
+        assert_eq!(out["pong"], true);
+    }}
+}}
+"#
+        );
+        let kotlin_pkg: String = pkg_name
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c.to_ascii_lowercase()
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let plugin_kotlin = format!(
+            r#"package dev.craftui.plugins.{kotlin_pkg}
+
+import org.json.JSONObject
+
+object PluginHandler {{
+    const val CHANNEL = "{channel_name}"
+
+    fun handle(method: String, argsJson: String): JSONObject {{
+        return when (method) {{
+            "ping" -> JSONObject().put("pong", true).put("channel", CHANNEL)
+            else -> JSONObject().put("error", "unhandled method: $method")
+        }}
+    }}
+}}
+"#
+        );
+        let plugin_swift = format!(
+            r#"import Foundation
+
+enum PluginHandler {{
+    static let channel = "{channel_name}"
+
+    static func handle(method: String, args: [String: Any]) -> [String: Any] {{
+        switch method {{
+        case "ping":
+            return ["pong": true, "channel": channel]
+        default:
+            return ["error": "unhandled method: \(method)"]
+        }}
+    }}
+}}
+"#
+        );
+        let demo_cui = "export component PluginPreview {\n    Column {\n        padding: 16;\n        Text { text: \"CraftUI Plugin Package\"; }\n    }\n}\n";
+        std::fs::write(root.join("Cargo.toml"), plugin_cargo)
+            .and_then(|_| std::fs::write(root.join("craftui.toml"), manifest.to_toml()))
+            .and_then(|_| std::fs::write(src_dir.join("lib.rs"), plugin_lib_rs))
+            .and_then(|_| std::fs::write(ui_dir.join("main.cui"), demo_cui))
+            .and_then(|_| std::fs::write(android_dir.join("PluginHandler.kt"), plugin_kotlin))
+            .and_then(|_| std::fs::write(ios_dir.join("PluginHandler.swift"), plugin_swift))
+            .map_err(|e| CraftError::Platform(format!("failed writing plugin template: {e}")))?;
+        return Ok(());
+    }
+
     let cargo_toml = format!(
         r#"[package]
 name = "{pkg_name}"
@@ -68,6 +187,7 @@ craftui-dsl = "0.1.0"
         ProjectTemplate::Counter => (counter_template_cui(), counter_template_rs()),
         ProjectTemplate::Dashboard => (dashboard_template_cui(), dashboard_template_rs()),
         ProjectTemplate::Mobile => (mobile_template_cui(), mobile_template_rs()),
+        ProjectTemplate::Plugin => unreachable!("handled cleanly by early return above"),
     };
 
     std::fs::write(root.join("Cargo.toml"), cargo_toml)
@@ -147,6 +267,14 @@ pub fn manifest_for_template(name: &str, template: ProjectTemplate) -> AppManife
                     },
                 );
             }
+            m
+        }
+        ProjectTemplate::Plugin => {
+            let mut m = AppManifest::with_app(name, app_id);
+            m.plugins.insert(
+                sanitize_pkg_name(name),
+                format!("dev.craftui.plugin.{}", sanitize_pkg_name(name)),
+            );
             m
         }
     }

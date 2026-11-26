@@ -79,12 +79,26 @@ fn json_escape(s: &str) -> String {
 /// Platform command emitted toward Swift `CraftUIViewController` / `CraftUIPermissions.swift`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IosPlatformCommand {
-    RequestPermission { request_id: u64, key: String },
+    RequestPermission {
+        request_id: u64,
+        key: String,
+    },
     OpenAppSettings,
     TriggerHaptic(HapticStyle),
     Share(SharePayload),
-    SyncSecureKey { key: String, value: String },
-    DeleteSecureKey { key: String },
+    SyncSecureKey {
+        key: String,
+        value: String,
+    },
+    DeleteSecureKey {
+        key: String,
+    },
+    InvokeMethodChannel {
+        request_id: u64,
+        channel: String,
+        method: String,
+        args_json: String,
+    },
 }
 
 impl IosPlatformCommand {
@@ -144,6 +158,16 @@ impl IosPlatformCommand {
                     json_escape(key)
                 )
             }
+            Self::InvokeMethodChannel {
+                request_id,
+                channel,
+                method,
+                args_json,
+            } => format!(
+                "{{\"type\":\"method_channel\",\"request_id\":{request_id},\"channel\":{},\"method\":{},\"args\":{args_json}}}",
+                json_escape(channel),
+                json_escape(method)
+            ),
         }
     }
 }
@@ -157,6 +181,8 @@ pub struct IosBridgeState {
     pub(crate) commands: Mutex<VecDeque<IosPlatformCommand>>,
     pending_perms: Mutex<HashMap<u64, Option<PermissionOutcome>>>,
     perm_cv: Condvar,
+    pending_plugins: Mutex<HashMap<u64, Option<std::result::Result<serde_json::Value, String>>>>,
+    plugin_cv: Condvar,
     request_timeout: Mutex<Duration>,
     secure_entries: Mutex<HashMap<String, String>>,
     pub(crate) device_info: Mutex<DeviceInfo>,
@@ -180,6 +206,8 @@ impl IosBridgeState {
             commands: Mutex::new(VecDeque::new()),
             pending_perms: Mutex::new(HashMap::new()),
             perm_cv: Condvar::new(),
+            pending_plugins: Mutex::new(HashMap::new()),
+            plugin_cv: Condvar::new(),
             request_timeout: Mutex::new(Duration::from_millis(if cfg!(target_os = "ios") {
                 30_000
             } else {
@@ -202,6 +230,79 @@ impl IosBridgeState {
     pub fn set_request_timeout(&self, timeout: Duration) {
         if let Ok(mut guard) = self.request_timeout.lock() {
             *guard = timeout;
+        }
+    }
+
+    /// Queue an asynchronous native Swift `MethodChannel` invocation and await its JSON response.
+    pub fn invoke_method_channel(
+        &self,
+        channel: &str,
+        method: &str,
+        args: serde_json::Value,
+    ) -> craftui_core::Result<serde_json::Value> {
+        let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
+        let args_json = args.to_string();
+        if let Ok(mut pending) = self.pending_plugins.lock() {
+            pending.insert(request_id, None);
+        }
+        self.push_command(IosPlatformCommand::InvokeMethodChannel {
+            request_id,
+            channel: channel.to_string(),
+            method: method.to_string(),
+            args_json,
+        });
+
+        let timeout = self
+            .request_timeout
+            .lock()
+            .map(|g| *g)
+            .unwrap_or(Duration::from_millis(2_000));
+        let deadline = Instant::now() + timeout;
+        let mut guard = self
+            .pending_plugins
+            .lock()
+            .map_err(|_| craftui_core::CraftError::Platform("ios plugin waiter poisoned".into()))?;
+        loop {
+            if let Some(Some(res)) = guard.get(&request_id).cloned() {
+                guard.remove(&request_id);
+                return res.map_err(craftui_core::CraftError::Platform);
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                guard.remove(&request_id);
+                return Err(craftui_core::CraftError::Platform(format!(
+                    "ios method channel `{channel}.{method}` timed out"
+                )));
+            }
+            let (next_guard, wait_res) =
+                self.plugin_cv.wait_timeout(guard, remaining).map_err(|_| {
+                    craftui_core::CraftError::Platform("ios plugin condvar poisoned".into())
+                })?;
+            guard = next_guard;
+            if wait_res.timed_out() {
+                if let Some(Some(res)) = guard.remove(&request_id) {
+                    return res.map_err(craftui_core::CraftError::Platform);
+                }
+                return Err(craftui_core::CraftError::Platform(format!(
+                    "ios method channel `{channel}.{method}` timed out"
+                )));
+            }
+        }
+    }
+
+    /// Resolve a queued `InvokeMethodChannel` request from Swift C-FFI.
+    pub fn deliver_method_channel_result(&self, request_id: u64, ok: bool, payload_json: &str) {
+        let parsed = if ok {
+            serde_json::from_str::<serde_json::Value>(payload_json)
+                .map_err(|e| format!("invalid method channel JSON payload: {e}"))
+        } else {
+            Err(payload_json.to_string())
+        };
+        if let Ok(mut pending) = self.pending_plugins.lock()
+            && let Some(slot) = pending.get_mut(&request_id)
+        {
+            *slot = Some(parsed);
+            self.plugin_cv.notify_all();
         }
     }
 

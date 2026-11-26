@@ -93,17 +93,17 @@ pub mod prelude {
     pub use craftui_core::{
         Alignment, AndroidPermissionSpec, AppLifecycleEvent, Axis, BatteryState, BlendMode, Border,
         BoxShadow, Breakpoint, Brush, CRAFTUI_TAURI_IPC_SCRIPT, ClipboardBackend, Color,
-        Constraints, CornerRadii, CursorIcon, DeviceCapabilitiesBackend, DeviceInfo, Direction,
-        DirtyFlags, FileDialogBackend, FileDialogRequest, FileFilter, Fit, HapticStyle,
+        Constraints, CornerRadii, CursorIcon, DesignSystem, DeviceCapabilitiesBackend, DeviceInfo,
+        Direction, DirtyFlags, FileDialogBackend, FileDialogRequest, FileFilter, Fit, HapticStyle,
         HapticsBackend, ImeEvent, Insets, IpcMessage, IpcResponse, IpcRouter, Justify, KeyCode,
-        KeyEvent, Length, M3Elevation, Material3Tokens, MemorySecureStorage,
+        KeyEvent, Length, LocalizationCatalog, M3Elevation, Material3Tokens, MemorySecureStorage,
         MockDeviceCapabilities, MockHaptics, MockPermissionBackend, MockShare, Modifiers,
         NetworkStatus, NodeId, NoopHaptics, NoopPermissionBackend, NoopShare, Permission,
         PermissionBackend, PermissionOutcome, PermissionStatus, PlatformServices, PlatformViewId,
         Point, PointerButton, PointerEvent, PointerId, PointerPhase, Rect, ScreenKind, ScrollDelta,
         SecureStorageBackend, ShareBackend, SharePayload, Size, TailwindTokens, TextureId,
         ThemeMode, ThemeOverride, ThemeTokens, Transform2D, UiDispatcher, UiEvent, WebViewSource,
-        WindowMetrics, monotonic_ms,
+        WindowMetrics, is_rtl_locale, locale_direction, monotonic_ms,
     };
     pub use craftui_layout::{LayoutMode, LayoutStyle};
     pub use craftui_macros::{component, cui};
@@ -121,10 +121,11 @@ pub mod prelude {
     pub use craftui_widgets::{
         AnimatableProp, AnimatedColor, AnimatedFloat, BoolCallback, BoxStyle, CanvasPaintFn,
         CanvasPointerFn, CustomWidget, Easing, FloatCallback, GestureArena, HoverCallback,
-        IndexCallback, InspectorState, PinchRotateCallback, ReactiveValue, RecognizedGesture,
-        Router, RouterTransition, ScrollPhysics, Spring, TapHandler, TextCallback,
-        ToastDismissCallback, ToastItem, ToastManager, ToastSeverity, TransitionCurve, Tween, View,
-        ViewFn, VirtualItemFactory, WidgetKind, WidgetTree,
+        IndexCallback, InspectorState, MediaController, MediaKind, PinchRotateCallback,
+        ReactiveValue, RecognizedGesture, RichEditorController, Router, RouterTransition,
+        ScrollPhysics, Spring, StyledSpanRange, TapHandler, TextCallback, ToastDismissCallback,
+        ToastItem, ToastManager, ToastSeverity, TransitionCurve, Tween, View, ViewFn,
+        VirtualItemFactory, WidgetKind, WidgetTree,
     };
 
     #[cfg(all(feature = "desktop", feature = "hot-reload"))]

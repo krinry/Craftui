@@ -1404,6 +1404,256 @@ impl WidgetTree {
         root
     }
 
+    /// Build an interactive calendar `DatePicker` bound to an ISO `"YYYY-MM-DD"` signal.
+    pub fn date_picker(
+        &mut self,
+        scope: Scope,
+        value: Signal<String>,
+        on_change: Option<impl FnMut(String) + 'static>,
+    ) -> NodeId {
+        let (view_year, view_month, _) = crate::pickers::parse_iso_date(&value.get_untracked());
+        let id = self.spawn_node(
+            "DatePicker",
+            WidgetKind::DatePicker {
+                value,
+                view_year,
+                view_month,
+                on_change: on_change.map(|f| Rc::new(RefCell::new(f)) as crate::TextCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Container;
+            n.a11y.focusable = true;
+            n.a11y.label = Some("DatePicker".into());
+        }
+        id
+    }
+
+    /// Build an interactive `TimePicker` bound to an `"HH:MM"` signal.
+    pub fn time_picker(
+        &mut self,
+        scope: Scope,
+        value: Signal<String>,
+        use_24h: bool,
+        on_change: Option<impl FnMut(String) + 'static>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "TimePicker",
+            WidgetKind::TimePicker {
+                value,
+                use_24h,
+                on_change: on_change.map(|f| Rc::new(RefCell::new(f)) as crate::TextCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Container;
+            n.a11y.focusable = true;
+            n.a11y.label = Some("TimePicker".into());
+        }
+        id
+    }
+
+    /// Build a collapsible `TreeView` from slash-delimited item paths (e.g. `"src/main.rs"`).
+    pub fn tree_view(
+        &mut self,
+        scope: Scope,
+        items: impl Into<ReactiveValue<Vec<String>>>,
+        selected: Signal<usize>,
+        on_select: Option<impl FnMut(usize) + 'static>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "TreeView",
+            WidgetKind::TreeView {
+                items: items.into(),
+                selected,
+                collapsed: Rc::new(RefCell::new(std::collections::HashSet::new())),
+                row_height: 30.0,
+                scroll_offset: 0.0,
+                on_select: on_select.map(|f| Rc::new(RefCell::new(f)) as IndexCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::List;
+            n.a11y.focusable = true;
+            n.a11y.label = Some("TreeView".into());
+        }
+        id
+    }
+
+    /// Build an interactive drag-to-reorder `ReorderableList` bound to a `Signal<Vec<String>>`.
+    pub fn reorderable_list(
+        &mut self,
+        scope: Scope,
+        items: Signal<Vec<String>>,
+        selected: Signal<usize>,
+        on_reorder: Option<impl FnMut(usize, usize) + 'static>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "ReorderableList",
+            WidgetKind::ReorderableList {
+                items,
+                selected,
+                dragging_index: None,
+                target_index: None,
+                row_height: 38.0,
+                scroll_offset: 0.0,
+                on_reorder: on_reorder.map(|f| Rc::new(RefCell::new(f)) as crate::ReorderCallback),
+                on_select: None,
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::List;
+            n.a11y.focusable = true;
+            n.a11y.label = Some("ReorderableList".into());
+        }
+        id
+    }
+
+    /// Build a top application `MenuBar` from `"Menu:Item1,Item2"` specifications.
+    pub fn menu_bar(
+        &mut self,
+        scope: Scope,
+        menus: impl Into<ReactiveValue<Vec<String>>>,
+        on_select: Option<impl FnMut(String) + 'static>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "MenuBar",
+            WidgetKind::MenuBar {
+                menus: menus.into(),
+                open_menu: None,
+                on_select: on_select.map(|f| Rc::new(RefCell::new(f)) as crate::TextCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Menu;
+            n.a11y.focusable = true;
+            n.a11y.label = Some("MenuBar".into());
+        }
+        id
+    }
+
+    /// Build a `Draggable` container carrying a string payload for [`WidgetTree::drop_target`].
+    pub fn draggable(&mut self, scope: Scope, payload: impl Into<ReactiveValue<String>>) -> NodeId {
+        let id = self.spawn_node(
+            "Draggable",
+            WidgetKind::Draggable {
+                payload: payload.into(),
+                dragging: false,
+            },
+            LayoutStyle::column(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Container;
+        }
+        id
+    }
+
+    /// Build a `DropTarget` container accepting [`WidgetTree::draggable`] payloads matching `accept_prefix`.
+    pub fn drop_target(
+        &mut self,
+        scope: Scope,
+        accept_prefix: impl Into<String>,
+        on_drop: Option<impl FnMut(String) + 'static>,
+    ) -> NodeId {
+        let id = self.spawn_node(
+            "DropTarget",
+            WidgetKind::DropTarget {
+                accept_prefix: accept_prefix.into(),
+                hovered_drag: false,
+                on_drop: on_drop.map(|f| Rc::new(RefCell::new(f)) as crate::TextCallback),
+            },
+            LayoutStyle::column(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Container;
+        }
+        id
+    }
+
+    /// Build an Audio or Video `MediaPlayer` backed by a reactive [`MediaController`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn media_player(
+        &mut self,
+        scope: Scope,
+        kind: crate::MediaKind,
+        source: impl Into<ReactiveValue<String>>,
+        controller: Signal<crate::MediaController>,
+        autoplay: bool,
+        show_controls: bool,
+        on_toggle_play: Option<impl FnMut(bool) + 'static>,
+    ) -> NodeId {
+        if autoplay {
+            controller.update(|c| c.playing = true);
+        }
+        let id = self.spawn_node(
+            match kind {
+                crate::MediaKind::Video => "VideoPlayer",
+                crate::MediaKind::Audio => "AudioPlayer",
+            },
+            WidgetKind::MediaPlayer {
+                kind,
+                source: source.into(),
+                controller,
+                autoplay,
+                show_controls,
+                on_toggle_play: on_toggle_play.map(|f| Rc::new(RefCell::new(f)) as BoolCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::Container;
+            n.a11y.focusable = true;
+            n.a11y.label = Some(match kind {
+                crate::MediaKind::Video => "VideoPlayer".into(),
+                crate::MediaKind::Audio => "AudioPlayer".into(),
+            });
+        }
+        id
+    }
+
+    /// Build an interactive `RichTextEditor` with `B`/`I`/`U` formatting toolbar and styled spans.
+    pub fn rich_text_editor(
+        &mut self,
+        scope: Scope,
+        controller: Signal<crate::RichEditorController>,
+        placeholder: impl Into<String>,
+        style: TextStyle,
+        on_change: Option<impl FnMut(String) + 'static>,
+    ) -> NodeId {
+        let ph = placeholder.into();
+        let id = self.spawn_node(
+            "RichTextEditor",
+            WidgetKind::RichTextEditor {
+                controller,
+                placeholder: ph,
+                style,
+                on_change: on_change.map(|f| Rc::new(RefCell::new(f)) as crate::TextCallback),
+            },
+            LayoutStyle::default(),
+            scope,
+        );
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.a11y.role = craftui_a11y::A11yRole::TextInput;
+            n.a11y.focusable = true;
+            n.a11y.value = Some(controller.get_untracked().editor.text);
+            n.a11y.label = Some("RichTextEditor".into());
+        }
+        id
+    }
+
     /// Mount any custom user-defined widget implementing [`CustomWidget`].
     pub fn custom_widget<W: CustomWidget + 'static>(
         &mut self,

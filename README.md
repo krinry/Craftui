@@ -21,8 +21,9 @@ export component Counter {
 ```
 
 > **Status: early.** Version 0.1.0, not published on crates.io, and the API
-> will change. Read the [status table](#status) before choosing it for a
-> project.
+> will change. Read the [status table](#status) and the
+> [Parity & Roadmap](docs/src/roadmap/parity-and-roadmap.md) before choosing it
+> for a project.
 
 ## Try the example app
 
@@ -59,12 +60,12 @@ Known gaps:
 
 - Some widget names are accepted by the language but not implemented yet; see
   the end of the [widget catalog](docs/src/widgets/catalog.md).
-- A component cannot take child elements from the place it is used.
-- Editing `.cui` files while the app runs uses a separate interpreter from the
-  build-time compiler, and the two can differ.
+- Editing `.cui` files while the app runs uses an interpreter (`craftui-runtime`)
+  separate from the build-time compiler (`craftui-dsl`); all built-in widgets
+  and Material 3 variants are aligned, though subtle expression edge cases can still differ.
 - The Android project template declares `INTERNET` and biometric permissions
   even when the app asks for none.
-- The WebAssembly file for the notes app is about 6.2 MB before compression.
+- The lean WebAssembly file for the notes app is about 4.1 MB before compression (~1.21 MB gzipped).
 
 ## What is in the box
 

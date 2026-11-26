@@ -79,6 +79,17 @@ pub const BUILTIN_WIDGETS: &[&str] = &[
     "AppBar",
     "Drawer",
     "Scaffold",
+    "DatePicker",
+    "TimePicker",
+    "TreeView",
+    "ReorderableList",
+    "MenuBar",
+    "Draggable",
+    "DropTarget",
+    "VideoPlayer",
+    "AudioPlayer",
+    "MediaPlayer",
+    "RichTextEditor",
     "div",
     "span",
     "p",
@@ -317,6 +328,8 @@ pub fn widget_allows_children(kind: &str) -> bool {
             | "Dialog"
             | "Drawer"
             | "Scaffold"
+            | "Draggable"
+            | "DropTarget"
     )
 }
 
@@ -542,6 +555,42 @@ pub fn props_for_widget(kind: &str) -> Vec<&'static str> {
         "Scaffold" => {
             out.extend_from_slice(CONTAINER_PROPS);
         }
+        "DatePicker" => {
+            out.extend_from_slice(&["value"]);
+        }
+        "TimePicker" => {
+            out.extend_from_slice(&["value", "use_24h"]);
+        }
+        "TreeView" => {
+            out.extend_from_slice(&["items", "options", "selected", "row_height"]);
+        }
+        "ReorderableList" => {
+            out.extend_from_slice(&["items", "options", "selected", "row_height"]);
+        }
+        "MenuBar" => {
+            out.extend_from_slice(&["menus", "items"]);
+        }
+        "Draggable" => {
+            out.extend_from_slice(CONTAINER_PROPS);
+            out.extend_from_slice(&["payload", "value"]);
+        }
+        "DropTarget" => {
+            out.extend_from_slice(CONTAINER_PROPS);
+            out.extend_from_slice(&["accept_prefix", "accept"]);
+        }
+        "VideoPlayer" | "AudioPlayer" | "MediaPlayer" => {
+            out.extend_from_slice(&[
+                "source",
+                "src",
+                "autoplay",
+                "show_controls",
+                "controls",
+                "duration",
+            ]);
+        }
+        "RichTextEditor" => {
+            out.extend_from_slice(&["text", "value", "placeholder", "font_size", "color"]);
+        }
         "div" | "section" | "nav" | "header" | "footer" | "main" | "article" | "aside" => {
             out.extend_from_slice(CONTAINER_PROPS);
         }
@@ -559,11 +608,28 @@ pub fn props_for_widget(kind: &str) -> Vec<&'static str> {
 pub fn events_for_widget(kind: &str) -> Vec<&'static str> {
     let mut out = COMMON_EVENTS.to_vec();
     match kind {
-        "Slider" | "Checkbox" | "Switch" | "SplitPane" => out.push("on_change"),
+        "Slider" | "Checkbox" | "Switch" | "SplitPane" | "DatePicker" | "TimePicker" => {
+            out.push("on_change")
+        }
         "TextInput" | "TextArea" | "input" => out.extend_from_slice(&["on_change", "on_submit"]),
         "Tabs" | "TabBar" | "SegmentedControl" | "BottomNavBar" | "Select" | "Dropdown"
-        | "RadioGroup" => {
+        | "RadioGroup" | "TreeView" => {
             out.extend_from_slice(&["on_change", "on_select"]);
+        }
+        "ReorderableList" => {
+            out.extend_from_slice(&["on_reorder", "on_select", "on_change"]);
+        }
+        "MenuBar" => {
+            out.extend_from_slice(&["on_select", "on_change"]);
+        }
+        "DropTarget" => {
+            out.push("on_drop");
+        }
+        "VideoPlayer" | "AudioPlayer" | "MediaPlayer" => {
+            out.extend_from_slice(&["on_toggle_play", "on_change"]);
+        }
+        "RichTextEditor" => {
+            out.push("on_change");
         }
         "Accordion" => out.extend_from_slice(&["on_change", "on_toggle"]),
         "DataTable" => out.extend_from_slice(&["on_select", "on_change", "on_sort"]),
@@ -586,7 +652,9 @@ fn widget_supports_two_way(kind: &str, prop: &str) -> bool {
             matches!(prop, "active" | "selected" | "value")
         }
         "Accordion" => matches!(prop, "expanded" | "open"),
-        "DataTable" => prop == "selected",
+        "DataTable" | "TreeView" => prop == "selected",
+        "ReorderableList" => matches!(prop, "items" | "selected"),
+        "DatePicker" | "TimePicker" => prop == "value",
         "Select" | "Dropdown" | "RadioGroup" => matches!(prop, "selected" | "value"),
         "Modal" | "BottomSheet" | "PopupMenu" | "Drawer" => matches!(prop, "open" | "visible"),
         "Chip" | "FilterChip" | "ActionChip" | "ChoiceChip" | "InputChip" => {
@@ -896,6 +964,18 @@ fn validate_element(el: &ElementNode, ctx: &ScopeCtx<'_>, diags: &mut Vec<Diagno
                         prop.name, el.kind
                     ),
                 });
+            } else if is_builtin
+                && el.kind == "ReorderableList"
+                && matches!(prop.name.as_str(), "items" | "options")
+                && let Some(TypeExpr::List(inner)) = infer_expr_type(&prop.value, ctx)
+                && !matches!(inner.as_ref(), TypeExpr::Named(n) if n == "string")
+            {
+                diags.push(Diagnostic {
+                    span: prop.span,
+                    severity: Severity::Error,
+                    message: "two-way binding '<=>' on ReorderableList.items requires [string]"
+                        .into(),
+                });
             } else if let Some(sub) = ctx.comp_map.get(el.kind.as_str())
                 && let Some(sp) = sub.properties.iter().find(|sp| sp.name == prop.name)
                 && sp.dir == PropertyDir::In
@@ -1010,13 +1090,13 @@ fn populate_handler_locals(
             locals.insert("checked".into(), TypeExpr::Named("bool".into()));
             locals.insert("value".into(), TypeExpr::Named("bool".into()));
         }
-        ("TextInput" | "TextArea", "on_change" | "on_submit") => {
+        ("TextInput" | "TextArea" | "DatePicker" | "TimePicker", "on_change" | "on_submit") => {
             locals.insert("value".into(), TypeExpr::Named("string".into()));
             locals.insert("text".into(), TypeExpr::Named("string".into()));
         }
         (
             "Tabs" | "TabBar" | "SegmentedControl" | "BottomNavBar" | "Select" | "Dropdown"
-            | "RadioGroup" | "PopupMenu",
+            | "RadioGroup" | "PopupMenu" | "TreeView" | "ReorderableList",
             "on_change" | "on_select",
         ) => {
             locals.insert("index".into(), TypeExpr::Named("int".into()));
@@ -1024,6 +1104,26 @@ fn populate_handler_locals(
             locals.insert("selected".into(), TypeExpr::Named("int".into()));
             locals.insert("active".into(), TypeExpr::Named("int".into()));
             locals.insert("value".into(), TypeExpr::Named("int".into()));
+        }
+        ("ReorderableList", "on_reorder") => {
+            locals.insert("from".into(), TypeExpr::Named("int".into()));
+            locals.insert("to".into(), TypeExpr::Named("int".into()));
+        }
+        ("MenuBar", "on_select" | "on_change") => {
+            locals.insert("value".into(), TypeExpr::Named("string".into()));
+            locals.insert("item".into(), TypeExpr::Named("string".into()));
+        }
+        ("DropTarget", "on_drop") => {
+            locals.insert("payload".into(), TypeExpr::Named("string".into()));
+            locals.insert("value".into(), TypeExpr::Named("string".into()));
+        }
+        ("VideoPlayer" | "AudioPlayer" | "MediaPlayer", "on_toggle_play" | "on_change") => {
+            locals.insert("playing".into(), TypeExpr::Named("bool".into()));
+            locals.insert("value".into(), TypeExpr::Named("bool".into()));
+        }
+        ("RichTextEditor", "on_change") => {
+            locals.insert("value".into(), TypeExpr::Named("string".into()));
+            locals.insert("text".into(), TypeExpr::Named("string".into()));
         }
         ("Accordion", "on_change" | "on_toggle") => {
             locals.insert("expanded".into(), TypeExpr::Named("bool".into()));
@@ -1225,6 +1325,7 @@ fn validate_child(child: &ChildItem, ctx: &ScopeCtx<'_>, diags: &mut Vec<Diagnos
                 validate_element(eb, ctx, diags);
             }
         }
+        ChildItem::ChildrenSlot { .. } => {}
     }
 }
 

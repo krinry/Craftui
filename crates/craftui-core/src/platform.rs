@@ -1328,6 +1328,7 @@ pub struct PlatformServices {
     share: Arc<dyn ShareBackend>,
     secure_storage: Arc<dyn SecureStorageBackend>,
     device_capabilities: Arc<dyn DeviceCapabilitiesBackend>,
+    plugins: crate::PluginRegistry,
 }
 
 impl fmt::Debug for PlatformServices {
@@ -1352,6 +1353,7 @@ impl PlatformServices {
             share: Arc::new(NoopShare),
             secure_storage: Arc::new(MemorySecureStorage::default()),
             device_capabilities: Arc::new(MockDeviceCapabilities::default()),
+            plugins: crate::PluginRegistry::new(),
         }
     }
 
@@ -1367,6 +1369,7 @@ impl PlatformServices {
             share: Arc::new(NoopShare),
             secure_storage: Arc::new(MemorySecureStorage::default()),
             device_capabilities: Arc::new(MockDeviceCapabilities::default()),
+            plugins: crate::PluginRegistry::new(),
         }
     }
 
@@ -1409,6 +1412,15 @@ impl PlatformServices {
     ) -> Self {
         self.device_capabilities = Arc::new(device_capabilities);
         self
+    }
+
+    pub fn with_plugins(mut self, plugins: crate::PluginRegistry) -> Self {
+        self.plugins = plugins;
+        self
+    }
+
+    pub fn plugins(&self) -> &crate::PluginRegistry {
+        &self.plugins
     }
 
     pub fn read_clipboard(&self) -> Option<String> {

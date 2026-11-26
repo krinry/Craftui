@@ -27,6 +27,7 @@ fn lower_states_in_element(el: &mut ElementNode) {
                     lower_states_in_element(else_b);
                 }
             }
+            ChildItem::ChildrenSlot { .. } => {}
         }
     }
 

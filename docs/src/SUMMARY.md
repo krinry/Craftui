@@ -30,6 +30,10 @@
 
 # Native Capabilities
 - [Permissions](guides/permissions.md)
+- [Packages & Plugins](guides/packages-and-plugins.md)
+
+# Project Status
+- [Parity & Roadmap](roadmap/parity-and-roadmap.md)
 
 # Other Examples
 - [ScanCraft](guides/scancraft-architecture.md)

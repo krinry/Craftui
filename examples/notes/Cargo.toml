@@ -23,9 +23,9 @@ required-features = ["desktop"]
 
 [features]
 default = ["desktop"]
-# Desktop window (winit). Turned off for Android and Web builds, which the CLI
-# compiles with `--no-default-features`.
-desktop = ["craftui/desktop"]
+# Desktop window (winit) + full GPU/CPU vello backends. Turned off for Android and Web builds,
+# which the CLI compiles with `--no-default-features` for lean WASM/APK bundles.
+desktop = ["craftui/desktop", "craftui/gpu-vello", "craftui/cpu-vello"]
 
 [lints]
 workspace = true
@@ -35,8 +35,6 @@ craftui = { workspace = true, default-features = false, features = [
     "dsl",
     "embedded-fallback-font",
     "gpu-sdf",
-    "gpu-vello",
-    "cpu-vello",
     "cpu-tiny-skia",
 ] }
 serde = { workspace = true, features = ["derive"] }

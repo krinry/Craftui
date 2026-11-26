@@ -342,6 +342,28 @@ pub unsafe extern "C" fn craftui_ios_app_deliver_permission_result(
     host.request_redraw();
 }
 
+/// Deliver an asynchronous native Swift `MethodChannel` JSON response back into Rust waiters.
+///
+/// # Safety
+/// `app` must be a valid non-null [`IosAppHost`] pointer and `payload_ptr..payload_ptr+payload_len`
+/// must point to valid UTF-8 JSON (or an error string when `ok == false`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn craftui_ios_app_deliver_method_channel_result(
+    app: *mut IosAppHost,
+    request_id: u64,
+    ok: bool,
+    payload_ptr: *const u8,
+    payload_len: usize,
+) {
+    let Some(host) = (unsafe { app.as_mut() }) else {
+        return;
+    };
+    let Some(payload) = (unsafe { read_utf8_key(payload_ptr, payload_len) }) else {
+        return;
+    };
+    host.deliver_method_channel_result(request_id, ok, payload);
+}
+
 /// Poll the next pending [`IosPlatformCommand`] serialized as UTF-8 JSON for Swift `CraftUIViewController`.
 /// Returns:
 /// - `0` when the command queue is empty

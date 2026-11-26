@@ -24,6 +24,7 @@ fn scaffolds_all_templates_init_permissions_and_cross_platform_bundles() {
         (ProjectTemplate::Counter, "counter_demo"),
         (ProjectTemplate::Dashboard, "dash_demo"),
         (ProjectTemplate::Mobile, "mobile_demo"),
+        (ProjectTemplate::Plugin, "plugin_demo"),
     ] {
         let dir = base_tmp.join(sub);
         scaffold_project_with_template(sub, &dir, tmpl).unwrap();
@@ -177,6 +178,59 @@ name = 'single-quoted-pkg'   # trailing comment
         crate::templates::detect_cargo_package_name(&cargo_file).as_deref(),
         Some("single-quoted-pkg")
     );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn test_mobile_bridges_emit_method_channel_dispatchers_for_builtin_plugins() {
+    let tmp = std::env::temp_dir().join(format!(
+        "craftui_mobile_channel_bridge_test_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let android_out = tmp.join("android");
+    let ios_out = tmp.join("ios");
+    let manifest = crate::manifest::AppManifest::with_app("ChannelDemo", "dev.craftui.demo");
+
+    crate::platform::android::emit_android_template_with_manifest(
+        &android_out,
+        "ChannelDemo",
+        "channel_demo",
+        None,
+        Some(&manifest),
+    )
+    .unwrap();
+    let kt = std::fs::read_to_string(
+        android_out.join("app/src/main/kotlin/dev/craftui/app/MainActivity.kt"),
+    )
+    .unwrap();
+    assert!(kt.contains("dispatchCraftUiMethodChannel"));
+    assert!(kt.contains("dev.craftui.camera"));
+    assert!(kt.contains("dev.craftui.biometrics"));
+    assert!(kt.contains("dev.craftui.notifications"));
+    assert!(kt.contains("dev.craftui.url_launcher"));
+    assert!(kt.contains("onNativeMethodChannelResult"));
+
+    crate::platform::ios::emit_ios_template_with_manifest(
+        &ios_out,
+        "ChannelDemo",
+        "channel_demo",
+        Some(&manifest),
+    )
+    .unwrap();
+    let hdr = std::fs::read_to_string(ios_out.join("CraftUI.h")).unwrap();
+    let perms_swift = std::fs::read_to_string(ios_out.join("CraftUIPermissions.swift")).unwrap();
+    let vc_swift = std::fs::read_to_string(ios_out.join("CraftUIViewController.swift")).unwrap();
+    assert!(hdr.contains("craftui_ios_app_deliver_method_channel_result"));
+    assert!(perms_swift.contains("CraftUIMethodChannelRouter"));
+    assert!(perms_swift.contains("dev.craftui.camera"));
+    assert!(perms_swift.contains("dev.craftui.biometrics"));
+    assert!(perms_swift.contains("dev.craftui.notifications"));
+    assert!(perms_swift.contains("dev.craftui.url_launcher"));
+    assert!(vc_swift.contains("case \"method_channel\":"));
 
     let _ = std::fs::remove_dir_all(&tmp);
 }

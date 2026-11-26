@@ -1,8 +1,11 @@
 //! Retained widget tree, standard widget primitives, gestures, animations, router, and inspector.
 
 pub mod anim;
+pub mod form;
 pub mod gesture;
 pub mod inspector;
+pub mod media_editor;
+pub mod pickers;
 pub mod router;
 pub mod toast;
 pub mod tree;
@@ -11,15 +14,17 @@ pub mod widgets;
 pub use anim::{
     AnimatableProp, AnimatedColor, AnimatedFloat, Easing, Spring, TransitionCurve, Tween,
 };
+pub use form::{FieldValidator, FormGroup, ValidationRule};
 pub use gesture::{GestureArena, RecognizedGesture, ScrollPhysics, VelocityTracker};
 pub use inspector::InspectorState;
+pub use media_editor::{MediaController, MediaKind, RichEditorController, StyledSpanRange};
 pub use router::{Router, RouterTransition};
 pub use toast::{ToastItem, ToastManager, ToastSeverity};
 pub use tree::{TreeUiSnapshot, VirtualItemFactory, WidgetNode, WidgetTree};
 pub use widgets::{
     BoolCallback, BoxStyle, CanvasPaintFn, CanvasPointerFn, CardVariant, CustomWidget,
-    FloatCallback, HoverCallback, IndexCallback, PinchRotateCallback, ReactiveValue, TapHandler,
-    TextCallback, ToastDismissCallback, WidgetKind,
+    FloatCallback, HoverCallback, IndexCallback, PinchRotateCallback, ReactiveValue,
+    ReorderCallback, TapHandler, TextCallback, ToastDismissCallback, WidgetKind,
 };
 
 /// Composable declarative view mountable onto a [`WidgetTree`].

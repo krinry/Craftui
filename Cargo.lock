@@ -987,6 +987,7 @@ dependencies = [
  "craftui-render",
  "craftui-text",
  "craftui-widgets",
+ "serde_json",
  "tracing",
  "wgpu",
 ]

@@ -6,9 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "WebAssembly (wasm-bindgen) Canvas/WebGPU/Canvas2D runner and DOM event bridge for CraftUI"
 
 [features]
-default = ["gpu-sdf", "gpu-vello", "cpu-vello", "cpu-tiny-skia"]
+default = ["gpu-sdf", "cpu-tiny-skia"]
+full-renderers = ["gpu-sdf", "gpu-vello", "cpu-vello", "cpu-tiny-skia"]
 gpu-sdf = ["craftui-render/gpu-sdf"]
 gpu-vello = ["craftui-render/gpu-vello"]
 cpu-vello = ["craftui-render/cpu-vello"]

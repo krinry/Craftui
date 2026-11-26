@@ -26,6 +26,7 @@ fn prune_element(el: &mut ElementNode) {
                     prune_element(else_b);
                 }
             }
+            ChildItem::ChildrenSlot { .. } => {}
         }
     }
 
@@ -34,7 +35,10 @@ fn prune_element(el: &mut ElementNode) {
     for child in el.children.drain(..) {
         match child {
             ChildItem::Element(mut inner) => {
-                if is_useless_container(&inner) && inner.children.len() == 1 {
+                if is_useless_container(&inner)
+                    && inner.children.len() == 1
+                    && !matches!(inner.children.first(), Some(ChildItem::ChildrenSlot { .. }))
+                {
                     let single_grandchild = inner.children.pop().unwrap();
                     new_children.push(single_grandchild);
                 } else {

@@ -308,6 +308,7 @@ pub struct WidgetTree {
     pub root_scope: Scope,
     pub theme_signal: Signal<ThemeTokens>,
     pub theme_override_signal: Signal<ThemeOverride>,
+    design_preset: craftui_core::DesignSystem,
     pub metrics_signal: Signal<WindowMetrics>,
     pub services: PlatformServices,
     pub direction: Direction,
@@ -315,6 +316,8 @@ pub struct WidgetTree {
     pub focus_visible: bool,
     pub hovered: Option<NodeId>,
     last_pointer_pos: Option<Point>,
+    pub(crate) active_drag: Option<(NodeId, String, Point, bool, craftui_core::PointerId)>,
+    pub(crate) reorder_drag_owner: Option<(NodeId, craftui_core::PointerId, Option<String>)>,
     pub metrics: WindowMetrics,
     pub clipboard_text: String,
     virtual_hosts: SecondaryMap<NodeId, VirtualListHost>,
@@ -355,6 +358,7 @@ impl WidgetTree {
             root_scope,
             theme_signal,
             theme_override_signal,
+            design_preset: craftui_core::DesignSystem::Material3,
             metrics_signal,
             services,
             direction: Direction::Ltr,
@@ -362,6 +366,8 @@ impl WidgetTree {
             focus_visible: false,
             hovered: None,
             last_pointer_pos: None,
+            active_drag: None,
+            reorder_drag_owner: None,
             metrics: WindowMetrics::default(),
             clipboard_text: String::new(),
             virtual_hosts: SecondaryMap::new(),
@@ -403,7 +409,8 @@ impl WidgetTree {
     /// Apply a custom brand palette override immediately onto the active theme.
     pub fn set_theme_override(&mut self, override_spec: ThemeOverride) {
         self.theme_override_signal.set(override_spec.clone());
-        let base = ThemeTokens::from_mode(self.theme_signal.get_untracked().mode);
+        let base =
+            ThemeTokens::from_preset(self.design_preset, self.theme_signal.get_untracked().mode);
         self.theme_signal.set(base.applied(&override_spec));
     }
 
@@ -416,10 +423,49 @@ impl WidgetTree {
     pub fn set_theme_mode(&mut self, mode: ThemeMode) {
         let from = self.theme_signal.get();
         let ov = self.theme_override_signal.get_untracked();
-        let to = ThemeTokens::from_mode(mode).applied(&ov);
+        let to = ThemeTokens::from_preset(self.design_preset, mode).applied(&ov);
         let mut spring = Spring::new(0.0, 260.0, 28.0);
         spring.set_target(1.0);
         self.theme_spring = Some((from, to, spring));
+    }
+
+    /// Apply a native adaptive [`DesignSystem`](craftui_core::DesignSystem) preset (`Material3`, `Cupertino`, `WinUi`).
+    pub fn set_design_preset(&mut self, preset: craftui_core::DesignSystem, mode: ThemeMode) {
+        self.design_preset = preset;
+        let from = self.theme_signal.get();
+        let ov = self.theme_override_signal.get_untracked();
+        let to = ThemeTokens::from_preset(preset, mode).applied(&ov);
+        let mut spring = Spring::new(0.0, 260.0, 28.0);
+        spring.set_target(1.0);
+        self.theme_spring = Some((from, to, spring));
+    }
+
+    /// Current layout writing direction (`Ltr` or `Rtl`).
+    pub fn direction(&self) -> Direction {
+        self.direction
+    }
+
+    /// Switch layout and text alignment direction (`Direction::Ltr` / `Direction::Rtl`), triggering re-layout.
+    pub fn set_direction(&mut self, direction: Direction) {
+        if self.direction == direction {
+            return;
+        }
+        self.direction = direction;
+        if let Some(root) = self.root {
+            self.layout_engine.mark_dirty(root);
+        }
+        let ids: Vec<NodeId> = self.nodes.keys().collect();
+        for id in ids {
+            self.layout_engine.mark_dirty(id);
+            if let Some(n) = self.nodes.get_mut(id) {
+                n.dirty |= DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y;
+            }
+        }
+    }
+
+    /// Apply locale-appropriate layout direction (`ar`/`he`/`fa`/`ur` -> `Rtl`, else `Ltr`).
+    pub fn set_locale(&mut self, locale: &str) {
+        self.set_direction(craftui_core::locale_direction(locale));
     }
 
     pub fn set_root(&mut self, root: NodeId) {
@@ -1127,6 +1173,69 @@ impl WidgetTree {
             WidgetKind::Drawer { open, .. } => {
                 open.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
             }
+            WidgetKind::DatePicker { value, .. } | WidgetKind::TimePicker { value, .. } => {
+                value.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+            }
+            WidgetKind::TreeView {
+                items, selected, ..
+            } => {
+                selected.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+                let items = items.clone();
+                if items.is_dynamic() {
+                    scope.effect(move || {
+                        let _ = items.get();
+                        mark_node_dirty(
+                            id,
+                            DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y,
+                        );
+                    });
+                }
+            }
+            WidgetKind::ReorderableList {
+                items, selected, ..
+            } => {
+                items.bind_node(
+                    id,
+                    DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y,
+                );
+                selected.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+            }
+            WidgetKind::MenuBar { menus, .. } => {
+                let menus = menus.clone();
+                if menus.is_dynamic() {
+                    scope.effect(move || {
+                        let _ = menus.get();
+                        mark_node_dirty(
+                            id,
+                            DirtyFlags::LAYOUT | DirtyFlags::PAINT | DirtyFlags::A11Y,
+                        );
+                    });
+                }
+            }
+            WidgetKind::Draggable { payload, .. } => {
+                let payload = payload.clone();
+                if payload.is_dynamic() {
+                    scope.effect(move || {
+                        let _ = payload.get();
+                        mark_node_dirty(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+                    });
+                }
+            }
+            WidgetKind::MediaPlayer {
+                source, controller, ..
+            } => {
+                let source = source.clone();
+                if source.is_dynamic() {
+                    scope.effect(move || {
+                        let _ = source.get();
+                        mark_node_dirty(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+                    });
+                }
+                controller.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y);
+            }
+            WidgetKind::RichTextEditor { controller, .. } => {
+                controller.bind_node(id, DirtyFlags::PAINT | DirtyFlags::A11Y | DirtyFlags::TEXT);
+            }
             _ => {}
         }
 
@@ -1254,7 +1363,13 @@ impl WidgetTree {
     pub fn focused_is_text_input(&self) -> bool {
         self.focused
             .and_then(|id| self.nodes.get(id))
-            .is_some_and(|n| !n.is_disabled() && matches!(n.kind, WidgetKind::TextInput { .. }))
+            .is_some_and(|n| {
+                !n.is_disabled()
+                    && matches!(
+                        n.kind,
+                        WidgetKind::TextInput { .. } | WidgetKind::RichTextEditor { .. }
+                    )
+            })
     }
 
     pub fn reset_caret_blink(&mut self, now_ms: u64) {

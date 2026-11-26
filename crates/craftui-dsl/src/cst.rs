@@ -89,6 +89,8 @@ pub enum SyntaxKind {
     ForLoop,
     IfCond,
     ExprNode,
+    AtChildren,
+    ChildrenSlot,
     ErrorNode,
 }
 
@@ -156,6 +158,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Ident => Self::Ident,
             TokenKind::AtLinearGradient => Self::AtLinearGradient,
             TokenKind::AtRadialGradient => Self::AtRadialGradient,
+            TokenKind::AtChildren => Self::AtChildren,
             TokenKind::At => Self::At,
             TokenKind::Error => Self::ErrorToken,
         }
@@ -258,7 +261,9 @@ impl Language for CuiLanguage {
             78 => SyntaxKind::ForLoop,
             79 => SyntaxKind::IfCond,
             80 => SyntaxKind::ExprNode,
-            81 => SyntaxKind::ErrorNode,
+            81 => SyntaxKind::AtChildren,
+            82 => SyntaxKind::ChildrenSlot,
+            83 => SyntaxKind::ErrorNode,
             _ => SyntaxKind::ErrorNode,
         }
     }

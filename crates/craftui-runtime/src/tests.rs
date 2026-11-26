@@ -1004,3 +1004,188 @@ fn test_runtime_window_responsive_breakpoints() {
     assert_eq!(mobile_sig.get(), DynValue::Bool(false));
     assert_eq!(desktop_sig.get(), DynValue::Bool(true));
 }
+
+#[test]
+fn hot_reload_supports_children_slot_and_pickers_tree_view() {
+    reset_runtime();
+    let state_scope = Scope::root();
+    let mut tree = WidgetTree::new(state_scope);
+    let mut session = HotReloadSession::new(state_scope);
+
+    let src = r#"
+        component CardWrapper {
+            in property <string> heading: "Section";
+            Column {
+                Text { text: root.heading; }
+                Row {
+                    @children;
+                }
+            }
+        }
+
+        component App {
+            in-out property <string> date_val: "2026-11-25";
+            in-out property <string> time_val: "14:15";
+            in-out property <int> tree_idx: 1;
+
+            CardWrapper {
+                heading: "Planner";
+                DatePicker { value <=> date_val; }
+                TimePicker { value <=> time_val; }
+                TreeView {
+                    items: ["src", "src/lib.rs"];
+                    selected <=> tree_idx;
+                }
+                ReorderableList {
+                    items: ["First", "Second"];
+                    selected <=> tree_idx;
+                }
+                MenuBar {
+                    menus: ["File:New,Save"];
+                }
+                Draggable {
+                    payload: "note:1";
+                    Text { text: "Card"; }
+                }
+                DropTarget {
+                    accept_prefix: "note:";
+                    Text { text: "Inbox"; }
+                }
+                VideoPlayer {
+                    source: "demo.mp4";
+                }
+                AudioPlayer {
+                    source: "audio.mp3";
+                }
+                RichTextEditor {
+                    text: "Notes";
+                }
+            }
+        }
+    "#;
+
+    let root = session.reload(src, Some("App"), &mut tree).unwrap();
+    tree.set_root(root);
+    tree.layout(WindowMetrics::default());
+
+    let root_node = tree.nodes.get(root).unwrap();
+    assert_eq!(root_node.children.len(), 2);
+    let row_slot = tree.nodes.get(root_node.children[1]).unwrap();
+    assert_eq!(row_slot.children.len(), 10);
+}
+
+#[test]
+fn interpreter_matches_every_builtin_widget_and_material_variant() {
+    reset_runtime();
+    let state_scope = Scope::root();
+    let mut tree = WidgetTree::new(state_scope);
+    let mut session = HotReloadSession::new(state_scope);
+
+    for widget in craftui_dsl::BUILTIN_WIDGETS {
+        let src = format!("component Host {{ Column {{ {widget} {{ }} }} }}");
+        let root = session
+            .reload(&src, Some("Host"), &mut tree)
+            .unwrap_or_else(|e| panic!("interpreter failed on `{widget}`: {e}"));
+        tree.set_root(root);
+        tree.layout(WindowMetrics::default());
+        let col = tree.nodes.get(root).unwrap();
+        assert_eq!(col.children.len(), 1, "missing child for `{widget}`");
+        let child_kind = &tree.nodes.get(col.children[0]).unwrap().kind;
+        match *widget {
+            "VideoPlayer" | "AudioPlayer" | "MediaPlayer" => assert!(
+                matches!(child_kind, craftui_widgets::WidgetKind::MediaPlayer { .. }),
+                "expected MediaPlayer for `{widget}`"
+            ),
+            "RichTextEditor" => assert!(
+                matches!(
+                    child_kind,
+                    craftui_widgets::WidgetKind::RichTextEditor { .. }
+                ),
+                "expected RichTextEditor"
+            ),
+            "MenuBar" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::MenuBar { .. }
+            )),
+            "Draggable" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::Draggable { .. }
+            )),
+            "DropTarget" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::DropTarget { .. }
+            )),
+            "DatePicker" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::DatePicker { .. }
+            )),
+            "TimePicker" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::TimePicker { .. }
+            )),
+            "TreeView" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::TreeView { .. }
+            )),
+            "ReorderableList" => assert!(matches!(
+                child_kind,
+                craftui_widgets::WidgetKind::ReorderableList { .. }
+            )),
+            _ => {}
+        }
+    }
+
+    // Verify specific Material & alias widget kinds match AOT codegen
+    let src = r#"
+        component FullSuite {
+            in-out property <bool> drawer_open: false;
+            in-out property <bool> chip_sel: true;
+            Column {
+                AppBar { title: "Title"; }
+                ElevatedCard { ListTile { title: "Row"; } }
+                FilledButton { text: "Go"; }
+                FilterChip { label: "Rust"; selected <=> chip_sel; }
+                VerticalDivider { }
+                LinearProgressIndicator { progress: 0.5; }
+                CircularProgressIndicator { size: 20.0; }
+                Drawer { open <=> drawer_open; }
+            }
+        }
+    "#;
+    let root = session.reload(src, Some("FullSuite"), &mut tree).unwrap();
+    let col = tree.nodes.get(root).unwrap();
+    assert_eq!(col.children.len(), 8);
+    assert!(matches!(
+        tree.nodes.get(col.children[0]).unwrap().kind,
+        craftui_widgets::WidgetKind::AppBar { .. }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[1]).unwrap().kind,
+        craftui_widgets::WidgetKind::Card {
+            variant: craftui_widgets::CardVariant::Elevated
+        }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[3]).unwrap().kind,
+        craftui_widgets::WidgetKind::Chip { .. }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[4]).unwrap().kind,
+        craftui_widgets::WidgetKind::Divider {
+            axis: craftui_core::Axis::Vertical,
+            ..
+        }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[5]).unwrap().kind,
+        craftui_widgets::WidgetKind::ProgressIndicator { .. }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[6]).unwrap().kind,
+        craftui_widgets::WidgetKind::Spinner { .. }
+    ));
+    assert!(matches!(
+        tree.nodes.get(col.children[7]).unwrap().kind,
+        craftui_widgets::WidgetKind::Drawer { .. }
+    ));
+}

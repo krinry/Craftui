@@ -15,8 +15,8 @@ use craftui_layout::LayoutStyle;
 use craftui_reactive::{Scope, Signal};
 use craftui_text::TextStyle;
 use craftui_widgets::{
-    AnimatableProp, Easing, IndexCallback, ReactiveValue, TapHandler, ToastItem, ToastSeverity,
-    TransitionCurve, VirtualItemFactory, WidgetTree,
+    AnimatableProp, CardVariant, Easing, IndexCallback, ReactiveValue, TapHandler, ToastItem,
+    ToastSeverity, TransitionCurve, VirtualItemFactory, WidgetTree,
 };
 
 use crate::dyn_value::{DynCallback, DynValue};
@@ -31,11 +31,15 @@ pub(crate) struct DynEnv {
     pub(crate) theme_sig: Signal<ThemeTokens>,
     pub(crate) theme_ov_sig: Signal<ThemeOverride>,
     pub(crate) metrics_sig: Signal<WindowMetrics>,
+    pub(crate) children_slot: Option<Rc<dyn Fn(Scope, &mut WidgetTree, NodeId)>>,
 }
 
 impl DynEnv {
     fn find_prop_signal(&self, expr: &Expr) -> Option<Signal<DynValue>> {
         if let Expr::Ident(name) = expr {
+            if self.locals.contains_key(name) {
+                return None;
+            }
             self.signal_locals
                 .get(name)
                 .copied()
@@ -113,10 +117,16 @@ pub(crate) fn build_element(
             tree.grid(scope, cols, gap)
         }
         "Stack" => tree.stack(scope),
-        "Divider" => {
+        "Divider" | "HorizontalDivider" | "VerticalDivider" => {
+            let default_axis = if el.kind == "VerticalDivider" {
+                Axis::Vertical
+            } else {
+                Axis::Horizontal
+            };
             let axis = match find_prop(el, &["direction"]).map(|p| &p.value) {
                 Some(Expr::Ident(s)) if s == "Vertical" => Axis::Vertical,
-                _ => Axis::Horizontal,
+                Some(Expr::Ident(s)) if s == "Horizontal" => Axis::Horizontal,
+                _ => default_axis,
             };
             let thickness = eval_prop("thickness").map(|v| v.as_f32()).unwrap_or(1.0);
             let n = tree.divider(scope, axis, thickness);
@@ -152,17 +162,24 @@ pub(crate) fn build_element(
             let style_rv = emit_reactive_text_style(size_prop, weight_prop, &color_expr, env);
             tree.text(scope, text_rv, style_rv)
         }
-        "Button" => {
-            let text_rv = find_prop(el, &["text", "title", "label"])
+        "Button" | "button" | "FilledButton" | "ElevatedButton" | "TonalButton"
+        | "FilledTonalButton" | "OutlinedButton" | "TextButton" | "IconButton"
+        | "FilledIconButton" | "TonalIconButton" | "OutlinedIconButton" => {
+            let is_icon = matches!(
+                el.kind.as_str(),
+                "IconButton" | "FilledIconButton" | "TonalIconButton" | "OutlinedIconButton"
+            );
+            let text_rv = find_prop(el, &["text", "title", "label", "icon", "name"])
                 .map(|p| expr_to_reactive_string(&p.value, env))
                 .unwrap_or_else(|| {
-                    if el.children.is_empty() {
-                        ReactiveValue::Static("Button".to_string())
-                    } else {
+                    if is_icon || !el.children.is_empty() {
                         ReactiveValue::Static(String::new())
+                    } else {
+                        ReactiveValue::Static("Button".to_string())
                     }
                 });
-            let tap_handler = make_handler_opt(el, &["on_tap", "on_click"], env, None);
+            let tap_handler =
+                make_handler_opt(el, &["on_tap", "on_click", "onTap", "onClick"], env, None);
             let n = tree.button(scope, text_rv, move || {
                 if let Some(ref h) = tap_handler
                     && let Ok(mut cb) = h.try_borrow_mut()
@@ -170,13 +187,184 @@ pub(crate) fn build_element(
                     cb();
                 }
             });
-            if let Some(fg) = find_prop(el, &["foreground", "color"]) {
-                let rv = expr_to_reactive_color(
-                    &fg.value,
-                    env,
-                    env.theme_sig.get_untracked().on_primary,
-                );
-                tree.set_button_foreground(n, rv);
+            let custom_fg = find_prop(el, &["foreground", "color"]).map(|fg| {
+                expr_to_reactive_color(&fg.value, env, env.theme_sig.get_untracked().on_primary)
+            });
+            let theme_sig = env.theme_sig;
+            let set_btn_style = |tree: &mut WidgetTree,
+                                 fg: ReactiveValue<Color>,
+                                 bg: Option<ReactiveValue<Brush>>,
+                                 border: Option<Border>,
+                                 border_col: Option<ReactiveValue<Color>>,
+                                 shadow: Option<BoxShadow>,
+                                 pad: Insets,
+                                 min_w: Option<f32>| {
+                tree.set_button_foreground(n, fg);
+                if let Some(mut bs) = tree.nodes.get(n).map(|nd| nd.box_style.clone()) {
+                    bs.radius = CornerRadii::all(20.0);
+                    bs.background = bg;
+                    if let Some(b) = border {
+                        bs.border = Some(b);
+                    }
+                    if let Some(bc) = border_col {
+                        bs.border_color = Some(bc);
+                    }
+                    if let Some(sh) = shadow {
+                        bs.shadow = Some(sh);
+                    }
+                    tree.set_box_style(n, bs);
+                }
+                if let Some(mut ls) = tree.nodes.get(n).map(|nd| nd.layout.clone()) {
+                    ls.padding = pad;
+                    ls.min_height = Length::Dp(40.0);
+                    if let Some(mw) = min_w {
+                        ls.min_width = Length::Dp(mw);
+                    }
+                    tree.set_layout(n, ls);
+                }
+            };
+            match el.kind.as_str() {
+                "FilledButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| {
+                        ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().on_primary))
+                    }),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || {
+                        Brush::Solid(theme_sig.get().primary)
+                    }))),
+                    None,
+                    None,
+                    None,
+                    Insets::symmetric(24.0, 10.0),
+                    None,
+                ),
+                "ElevatedButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| {
+                        ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().primary))
+                    }),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || {
+                        Brush::Solid(theme_sig.get().surface)
+                    }))),
+                    None,
+                    None,
+                    Some(BoxShadow::drop(
+                        0.0,
+                        1.0,
+                        3.0,
+                        0.0,
+                        Color::rgba(0, 0, 0, 38),
+                    )),
+                    Insets::symmetric(24.0, 10.0),
+                    None,
+                ),
+                "TonalButton" | "FilledTonalButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| {
+                        ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().text_primary))
+                    }),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || {
+                        Brush::Solid(theme_sig.get().surface_variant)
+                    }))),
+                    None,
+                    None,
+                    None,
+                    Insets::symmetric(24.0, 10.0),
+                    None,
+                ),
+                "OutlinedButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| {
+                        ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().primary))
+                    }),
+                    Some(ReactiveValue::Static(Brush::Solid(Color::TRANSPARENT))),
+                    Some(Border {
+                        width: 1.0,
+                        color: Color::TRANSPARENT,
+                        radius: CornerRadii::all(20.0),
+                    }),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || {
+                        theme_sig.get().border
+                    }))),
+                    None,
+                    Insets::symmetric(24.0, 10.0),
+                    None,
+                ),
+                "TextButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| {
+                        ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().primary))
+                    }),
+                    Some(ReactiveValue::Static(Brush::Solid(Color::TRANSPARENT))),
+                    None,
+                    None,
+                    None,
+                    Insets::symmetric(12.0, 10.0),
+                    None,
+                ),
+                "IconButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| {
+                        ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().text_primary))
+                    }),
+                    Some(ReactiveValue::Static(Brush::Solid(Color::TRANSPARENT))),
+                    None,
+                    None,
+                    None,
+                    Insets::all(8.0),
+                    Some(40.0),
+                ),
+                "FilledIconButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| {
+                        ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().on_primary))
+                    }),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || {
+                        Brush::Solid(theme_sig.get().primary)
+                    }))),
+                    None,
+                    None,
+                    None,
+                    Insets::all(8.0),
+                    Some(40.0),
+                ),
+                "TonalIconButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| {
+                        ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().text_primary))
+                    }),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || {
+                        Brush::Solid(theme_sig.get().surface_variant)
+                    }))),
+                    None,
+                    None,
+                    None,
+                    Insets::all(8.0),
+                    Some(40.0),
+                ),
+                "OutlinedIconButton" => set_btn_style(
+                    tree,
+                    custom_fg.unwrap_or_else(|| {
+                        ReactiveValue::Dynamic(Rc::new(move || theme_sig.get().primary))
+                    }),
+                    Some(ReactiveValue::Static(Brush::Solid(Color::TRANSPARENT))),
+                    Some(Border {
+                        width: 1.0,
+                        color: Color::TRANSPARENT,
+                        radius: CornerRadii::all(20.0),
+                    }),
+                    Some(ReactiveValue::Dynamic(Rc::new(move || {
+                        theme_sig.get().border
+                    }))),
+                    None,
+                    Insets::all(8.0),
+                    Some(40.0),
+                ),
+                _ => {
+                    if let Some(fg) = custom_fg {
+                        tree.set_button_foreground(n, fg);
+                    }
+                }
             }
             n
         }
@@ -573,6 +761,220 @@ pub(crate) fn build_element(
             wire_index_change(n, el, env, tree);
             n
         }
+        "DatePicker" => {
+            let val_prop = find_prop(el, &["value"]);
+            let (init_s, sig_opt) = bind_string_signal(scope, val_prop, env);
+            let val_sig = sig_opt.unwrap_or_else(|| {
+                let initial = if init_s.trim().is_empty() {
+                    "2026-01-15".to_string()
+                } else {
+                    init_s
+                };
+                scope.signal(initial)
+            });
+            let n = tree.date_picker(scope, val_sig, None::<fn(String)>);
+            if let Some(h) = el.handlers.iter().find(|h| h.event == "on_change") {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_change(n, move |value| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("value".into(), DynValue::String(value.clone()));
+                    h_env.locals.insert("text".into(), DynValue::String(value));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
+        "TimePicker" => {
+            let val_prop = find_prop(el, &["value"]);
+            let (init_s, sig_opt) = bind_string_signal(scope, val_prop, env);
+            let val_sig = sig_opt.unwrap_or_else(|| {
+                let initial = if init_s.trim().is_empty() {
+                    "09:30".to_string()
+                } else {
+                    init_s
+                };
+                scope.signal(initial)
+            });
+            let use_24h = eval_prop("use_24h").map(|v| v.as_bool()).unwrap_or(true);
+            let n = tree.time_picker(scope, val_sig, use_24h, None::<fn(String)>);
+            if let Some(h) = el.handlers.iter().find(|h| h.event == "on_change") {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_change(n, move |value| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("value".into(), DynValue::String(value.clone()));
+                    h_env.locals.insert("text".into(), DynValue::String(value));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
+        "TreeView" => {
+            let items_rv = find_prop(el, &["items", "options"])
+                .map(|p| expr_to_reactive_string_list(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(Vec::new()));
+            let idx_prop = find_prop(el, &["selected", "value"]);
+            let idx_sig = bind_usize_signal(scope, idx_prop, env, 0);
+            let n = tree.tree_view(scope, items_rv, idx_sig, None::<fn(usize)>);
+            if let Some(rh) = eval_prop("row_height").map(|v| v.as_f32()) {
+                tree.set_row_height(n, rh);
+            }
+            wire_index_change(n, el, env, tree);
+            n
+        }
+        "ReorderableList" => {
+            let items_prop = find_prop(el, &["items", "options"]);
+            let items_sig = bind_string_list_signal(scope, items_prop, env);
+            let idx_prop = find_prop(el, &["selected", "value"]);
+            let idx_sig = bind_usize_signal(scope, idx_prop, env, 0);
+            let n = tree.reorderable_list(scope, items_sig, idx_sig, None::<fn(usize, usize)>);
+            if let Some(rh) = eval_prop("row_height").map(|v| v.as_f32()) {
+                tree.set_row_height(n, rh);
+            }
+            if let Some(h) = el.handlers.iter().find(|h| h.event == "on_reorder") {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_reorder(n, move |from, to| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("from".into(), DynValue::Int(from as i64));
+                    h_env.locals.insert("to".into(), DynValue::Int(to as i64));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            wire_index_change(n, el, env, tree);
+            n
+        }
+        "MenuBar" => {
+            let menus_rv = find_prop(el, &["menus", "items"])
+                .map(|p| expr_to_reactive_string_list(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(Vec::new()));
+            let n = tree.menu_bar(scope, menus_rv, None::<fn(String)>);
+            if let Some(h) = el
+                .handlers
+                .iter()
+                .find(|h| h.event == "on_select" || h.event == "on_change")
+            {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_menu_select(n, move |item| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("value".into(), DynValue::String(item.clone()));
+                    h_env.locals.insert("item".into(), DynValue::String(item));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
+        "Draggable" => {
+            let payload_rv = find_prop(el, &["payload", "value"])
+                .map(|p| expr_to_reactive_string(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(String::new()));
+            tree.draggable(scope, payload_rv)
+        }
+        "DropTarget" => {
+            let prefix = eval_prop("accept_prefix")
+                .or_else(|| eval_prop("accept"))
+                .map(|v| v.as_str())
+                .unwrap_or_default();
+            let n = tree.drop_target(scope, prefix, None::<fn(String)>);
+            if let Some(h) = el.handlers.iter().find(|h| h.event == "on_drop") {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_drop(n, move |payload| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("payload".into(), DynValue::String(payload.clone()));
+                    h_env
+                        .locals
+                        .insert("value".into(), DynValue::String(payload));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
+        "VideoPlayer" | "AudioPlayer" | "MediaPlayer" => {
+            let kind = if el.kind == "AudioPlayer" {
+                craftui_widgets::MediaKind::Audio
+            } else {
+                craftui_widgets::MediaKind::Video
+            };
+            let src_rv = find_prop(el, &["source", "src"])
+                .map(|p| expr_to_reactive_string(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(String::new()));
+            let autoplay = eval_prop("autoplay").map(|v| v.as_bool()).unwrap_or(false);
+            let show_controls = eval_prop("show_controls")
+                .or_else(|| eval_prop("controls"))
+                .map(|v| v.as_bool())
+                .unwrap_or(true);
+            let dur = eval_prop("duration").map(|v| v.as_f32()).unwrap_or(120.0);
+            let ctrl = scope.signal(craftui_widgets::MediaController::new(dur));
+            let n = tree.media_player(
+                scope,
+                kind,
+                src_rv,
+                ctrl,
+                autoplay,
+                show_controls,
+                None::<fn(bool)>,
+            );
+            if let Some(h) = el
+                .handlers
+                .iter()
+                .find(|h| h.event == "on_toggle_play" || h.event == "on_change")
+            {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_bool_change(n, move |playing| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("playing".into(), DynValue::Bool(playing));
+                    h_env.locals.insert("value".into(), DynValue::Bool(playing));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
+        "RichTextEditor" => {
+            let init = eval_prop("text")
+                .or_else(|| eval_prop("value"))
+                .map(|v| v.as_str())
+                .unwrap_or_default();
+            let ph = eval_prop("placeholder")
+                .map(|v| v.as_str())
+                .unwrap_or_else(|| "Write rich text...".into());
+            let ctrl = scope.signal(craftui_widgets::RichEditorController::with_text(init));
+            let n = tree.rich_text_editor(
+                scope,
+                ctrl,
+                ph,
+                craftui_text::TextStyle::default(),
+                None::<fn(String)>,
+            );
+            if let Some(h) = el.handlers.iter().find(|h| h.event == "on_change") {
+                let stmts = h.body.clone();
+                let env_c = env.clone();
+                tree.set_on_change(n, move |val| {
+                    let mut h_env = env_c.clone();
+                    h_env
+                        .locals
+                        .insert("value".into(), DynValue::String(val.clone()));
+                    h_env.locals.insert("text".into(), DynValue::String(val));
+                    run_stmts(&stmts, &h_env);
+                });
+            }
+            n
+        }
         "PopupMenu" => {
             let open_prop = find_prop(el, &["open", "visible"]);
             let open_rv = open_prop
@@ -606,7 +1008,7 @@ pub(crate) fn build_element(
                 .unwrap_or_else(|| ReactiveValue::Static(String::new()));
             tree.tooltip(scope, txt_rv)
         }
-        "ProgressIndicator" => {
+        "ProgressIndicator" | "LinearProgressIndicator" => {
             let prog_rv = match find_prop(el, &["progress", "value"]) {
                 Some(p) => {
                     let expr = p.value.clone();
@@ -629,7 +1031,7 @@ pub(crate) fn build_element(
             };
             tree.progress_indicator(scope, prog_rv)
         }
-        "Spinner" => {
+        "Spinner" | "CircularProgressIndicator" => {
             let sz_p = find_prop(el, &["size"]);
             let th_p = find_prop(el, &["thickness"]);
             let col_p = find_prop(el, &["color", "foreground"]);
@@ -784,7 +1186,85 @@ pub(crate) fn build_element(
                 .unwrap_or_else(|| ReactiveValue::Static(String::new()));
             tree.html_view(scope, src_rv, html_rv, None)
         }
-        "div" | "section" | "nav" => {
+        "Card" | "ElevatedCard" | "FilledCard" | "OutlinedCard" => {
+            let variant = match el.kind.as_str() {
+                "ElevatedCard" => CardVariant::Elevated,
+                "FilledCard" => CardVariant::Filled,
+                "OutlinedCard" => CardVariant::Outlined,
+                _ => match eval_prop("variant")
+                    .map(|v| v.as_str().to_lowercase())
+                    .as_deref()
+                {
+                    Some("filled") => CardVariant::Filled,
+                    Some("outlined") => CardVariant::Outlined,
+                    _ => CardVariant::Elevated,
+                },
+            };
+            tree.card(scope, variant)
+        }
+        "ListTile" => {
+            let title_rv = find_prop(el, &["title"])
+                .map(|p| expr_to_reactive_string(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(String::new()));
+            let sub_rv =
+                find_prop(el, &["subtitle"]).map(|p| expr_to_reactive_string(&p.value, env));
+            let lead_rv =
+                find_prop(el, &["leading"]).map(|p| expr_to_reactive_string(&p.value, env));
+            let trail_rv =
+                find_prop(el, &["trailing"]).map(|p| expr_to_reactive_string(&p.value, env));
+            // `apply_common_props_and_events` installs `node.on_tap`; pass `None` here so tap handlers run once.
+            tree.list_tile(scope, title_rv, sub_rv, lead_rv, trail_rv, None::<fn()>)
+        }
+        "Chip" | "FilterChip" | "ActionChip" | "ChoiceChip" | "InputChip" => {
+            let label_rv = find_prop(el, &["label", "text"])
+                .map(|p| expr_to_reactive_string(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(String::new()));
+            let sel_sig =
+                bind_bool_signal(scope, find_prop(el, &["selected", "value"]), env, false);
+            let icon_rv = find_prop(el, &["icon", "leading_icon"])
+                .map(|p| expr_to_reactive_string(&p.value, env));
+            tree.chip(scope, label_rv, sel_sig, icon_rv, None::<fn()>)
+        }
+        "AppBar" => {
+            let title_rv = find_prop(el, &["title"])
+                .map(|p| expr_to_reactive_string(&p.value, env))
+                .unwrap_or_else(|| ReactiveValue::Static(String::new()));
+            let lead_rv = find_prop(el, &["leading", "leading_icon"])
+                .map(|p| expr_to_reactive_string(&p.value, env));
+            let elev = eval_prop("elevation").map(|v| v.as_f32()).unwrap_or(4.0);
+            let lead_handler = make_handler_opt(el, &["on_leading_tap", "on_menu_tap"], env, None);
+            tree.app_bar(
+                scope,
+                title_rv,
+                lead_rv,
+                elev,
+                lead_handler.map(|h| {
+                    move || {
+                        if let Ok(mut cb) = h.try_borrow_mut() {
+                            cb();
+                        }
+                    }
+                }),
+            )
+        }
+        "Drawer" => {
+            let open_sig = bind_bool_signal(scope, find_prop(el, &["open"]), env, false);
+            let width = eval_prop("width").map(|v| v.as_f32()).unwrap_or(304.0);
+            let close_handler = make_handler_opt(el, &["on_close"], env, None);
+            tree.drawer(
+                scope,
+                open_sig,
+                width,
+                close_handler.map(|h| {
+                    move || {
+                        if let Ok(mut cb) = h.try_borrow_mut() {
+                            cb();
+                        }
+                    }
+                }),
+            )
+        }
+        "div" | "section" | "nav" | "header" | "footer" | "main" | "article" | "aside" => {
             let class_str = find_prop(el, &["class"])
                 .map(|p| match eval_expr(&p.value, env) {
                     DynValue::String(s) => s,
@@ -809,12 +1289,6 @@ pub(crate) fn build_element(
                 .unwrap_or_else(|| ReactiveValue::Static(String::new()));
             let st = TextStyle::default().with_size(sz).with_weight(wt);
             tree.text(scope, content_rv, st)
-        }
-        "button" => {
-            let text_rv = find_prop(el, &["text", "title", "label"])
-                .map(|p| expr_to_reactive_string(&p.value, env))
-                .unwrap_or_else(|| ReactiveValue::Static("Button".into()));
-            tree.button(scope, text_rv, || {})
         }
         "input" => {
             let text_prop = find_prop(el, &["text", "value"]);
@@ -1810,6 +2284,7 @@ fn build_children(
                     },
                     move |for_cx, item_sig, idx_sig, for_tree| {
                         let mut child_env = env_fac.clone();
+                        child_env.locals.remove(&item_name);
                         child_env.signal_locals.insert(item_name.clone(), item_sig);
                         if let Some(ref iv) = idx_name {
                             let idx_dyn =
@@ -1820,6 +2295,7 @@ fn build_children(
                                     idx_dyn.set(nv);
                                 }
                             });
+                            child_env.locals.remove(iv);
                             child_env.signal_locals.insert(iv.clone(), idx_dyn);
                         }
                         build_element(for_cx, &body_el, &child_env, for_tree)
@@ -1861,6 +2337,11 @@ fn build_children(
                         eval_expr_tracked(&cond_expr, &env_cond, true).as_bool()
                     });
                     tree.append_child(parent_node, cnode);
+                }
+            }
+            ChildItem::ChildrenSlot { .. } => {
+                if let Some(ref slot_fn) = env.children_slot {
+                    slot_fn(scope, tree, parent_node);
                 }
             }
         }
@@ -1949,16 +2430,65 @@ fn instantiate_subcomponent(
         theme_sig: outer_env.theme_sig,
         theme_ov_sig: outer_env.theme_ov_sig,
         metrics_sig: outer_env.metrics_sig,
+        children_slot: if component_has_children_slot(comp) {
+            let call_children = call_el.children.clone();
+            let slot_env = outer_env.clone();
+            Some(Rc::new(move |slot_scope, slot_tree, slot_parent| {
+                let parent_kind = slot_tree
+                    .nodes
+                    .get(slot_parent)
+                    .map(|n| n.debug_name.to_string())
+                    .unwrap_or_else(|| "Column".into());
+                let fake_el = ElementNode {
+                    kind: parent_kind,
+                    props: Vec::new(),
+                    handlers: Vec::new(),
+                    animations: Vec::new(),
+                    states: Vec::new(),
+                    transitions: Vec::new(),
+                    children: call_children.clone(),
+                    span: craftui_dsl::ast::Span::default(),
+                };
+                build_children(slot_scope, slot_parent, &fake_el, &slot_env, slot_tree);
+            }))
+        } else {
+            None
+        },
     };
 
+    let has_slot = component_has_children_slot(comp);
     let node = if let Some(ref root) = comp.root {
         build_element(scope, root, &sub_env, tree)
     } else {
         tree.column(scope)
     };
-    build_children(scope, node, call_el, outer_env, tree);
+    if !has_slot {
+        build_children(scope, node, call_el, outer_env, tree);
+    }
     apply_common_props_and_events(scope, node, call_el, outer_env, tree, true);
     node
+}
+
+fn element_has_children_slot(el: &ElementNode) -> bool {
+    el.children.iter().any(|c| match c {
+        ChildItem::ChildrenSlot { .. } => true,
+        ChildItem::Element(inner) => element_has_children_slot(inner),
+        ChildItem::For { body, .. } => element_has_children_slot(body),
+        ChildItem::If {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            element_has_children_slot(then_branch)
+                || else_branch
+                    .as_ref()
+                    .is_some_and(|eb| element_has_children_slot(eb))
+        }
+    })
+}
+
+fn component_has_children_slot(comp: &ComponentDecl) -> bool {
+    comp.root.as_ref().is_some_and(element_has_children_slot)
 }
 
 fn bind_f32_signal(
@@ -2124,6 +2654,54 @@ fn bind_string_signal(
         return (init, Some(str_sig));
     }
     (init, None)
+}
+
+fn bind_string_list_signal(
+    scope: Scope,
+    prop: Option<&PropBinding>,
+    env: &DynEnv,
+) -> Signal<Vec<String>> {
+    let to_vec = |dv: DynValue| -> Vec<String> {
+        match dv {
+            DynValue::List(items) => items.into_iter().map(|v| v.as_str()).collect(),
+            _ => Vec::new(),
+        }
+    };
+    let Some(p) = prop else {
+        return scope.signal(Vec::new());
+    };
+    let init = to_vec(eval_expr(&p.value, env));
+    let list_sig = scope.signal(init);
+    if let Some(dyn_sig) = env.find_prop_signal(&p.value) {
+        list_sig.set(to_vec(dyn_sig.get_untracked()));
+        scope.effect(move || {
+            let nv = to_vec(dyn_sig.get());
+            if list_sig.get_untracked() != nv {
+                list_sig.set(nv);
+            }
+        });
+        if p.two_way {
+            scope.effect(move || {
+                let nv = list_sig.get();
+                let cur = to_vec(dyn_sig.get_untracked());
+                if cur != nv {
+                    dyn_sig.set(DynValue::List(
+                        nv.into_iter().map(DynValue::String).collect(),
+                    ));
+                }
+            });
+        }
+    } else if expr_has_reactivity(&p.value, env) {
+        let expr = p.value.clone();
+        let env_c = env.clone();
+        scope.effect(move || {
+            let nv = to_vec(eval_expr_tracked(&expr, &env_c, true));
+            if list_sig.get_untracked() != nv {
+                list_sig.set(nv);
+            }
+        });
+    }
+    list_sig
 }
 
 fn wire_index_change(node: NodeId, el: &ElementNode, env: &DynEnv, tree: &mut WidgetTree) {
@@ -2627,14 +3205,14 @@ pub(crate) fn eval_expr_tracked(expr: &Expr, env: &DynEnv, track: bool) -> DynVa
             }
         }
         Expr::Ident(name) => {
-            if let Some(sig) = env.signal_locals.get(name).or_else(|| env.props.get(name)) {
+            if let Some(val) = env.locals.get(name) {
+                val.clone()
+            } else if let Some(sig) = env.signal_locals.get(name).or_else(|| env.props.get(name)) {
                 if track {
                     sig.get()
                 } else {
                     sig.get_untracked()
                 }
-            } else if let Some(val) = env.locals.get(name) {
-                val.clone()
             } else if name == "None" || name == "null" {
                 DynValue::Null
             } else {

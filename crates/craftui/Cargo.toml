@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Cross-platform declarative UI framework in Rust with fine-grained signals, .cui DSL, and GPU/CPU rendering"
 
 [features]
 default = [
@@ -22,6 +23,7 @@ desktop = ["dep:craftui-platform-desktop"]
 android = ["dep:craftui-platform-android"]
 ios = ["dep:craftui-platform-ios"]
 web = ["dep:craftui-platform-web"]
+web-lean = ["web", "dsl", "embedded-fallback-font", "gpu-sdf", "cpu-tiny-skia"]
 dsl = ["dep:craftui-dsl"]
 hot-reload = [
     "dsl",

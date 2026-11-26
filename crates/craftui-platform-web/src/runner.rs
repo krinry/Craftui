@@ -936,7 +936,8 @@ pub mod wasm_runner {
                 if pressed && mods.command() && !mods.alt && matches!(e.key().as_str(), "v" | "V") {
                     return;
                 }
-                let ke = dom_keyboard_event_to_craft(&e.code(), &e.key(), pressed, e.repeat(), mods);
+                let ke =
+                    dom_keyboard_event_to_craft(&e.code(), &e.key(), pressed, e.repeat(), mods);
                 if h_c.borrow_mut().handle_ui_event(&UiEvent::Key(ke)) {
                     e.prevent_default();
                     sched_k.request_frame();

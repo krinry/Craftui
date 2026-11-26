@@ -136,6 +136,7 @@ impl HotReloadSession {
             theme_sig: tree.theme_signal,
             theme_ov_sig: tree.theme_override_signal,
             metrics_sig: tree.metrics_signal,
+            children_slot: None,
         };
 
         // First pass: ensure all component properties exist in preserved DynamicStore
