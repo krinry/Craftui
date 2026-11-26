@@ -83,6 +83,7 @@ import Foundation
 import LocalAuthentication
 import Photos
 import Security
+import UIKit
 import UserNotifications
 
 enum CraftUIPermissionCode: UInt8 {
