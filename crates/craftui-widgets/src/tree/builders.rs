@@ -1312,7 +1312,8 @@ impl WidgetTree {
         let layout = LayoutStyle::row()
             .with_size(Length::Pct(100.0), Length::Dp(64.0))
             .with_padding(Insets::symmetric(16.0, 8.0))
-            .with_align(Alignment::Center);
+            .with_align(Alignment::Center)
+            .with_justify(craftui_core::Justify::End);
         let id = self.spawn_node(
             "AppBar",
             WidgetKind::AppBar {

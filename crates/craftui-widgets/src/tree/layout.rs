@@ -65,11 +65,57 @@ impl WidgetTree {
         }
         self.sync_dynamic_props(&drained_masks);
 
-        // Sync dynamic properties before layout
-        let all_ids: Vec<NodeId> = self.nodes.keys().collect();
-        for id in all_ids {
+        let metrics_changed = self.last_layout_metrics != Some(metrics);
+        let mut needs_layout = metrics_changed
+            || self
+                .nodes
+                .values()
+                .any(|n| n.dirty.intersects(DirtyFlags::LAYOUT | DirtyFlags::TEXT));
+
+        // Sync dynamic properties before layout: full walk only when layout is needed,
+        // otherwise O(dirty) pass over nodes touched in `drained_masks`.
+        let sync_ids: Vec<NodeId> = if needs_layout {
+            self.nodes.keys().collect()
+        } else {
+            drained_masks.keys().copied().collect()
+        };
+        for id in sync_ids {
+            let mut appbar_pad_left: Option<f32> = None;
+            if let Some(node) = self.nodes.get(id)
+                && let WidgetKind::AppBar {
+                    title,
+                    leading_icon,
+                    ..
+                } = &node.kind
+            {
+                let mut reserved = 16.0f32;
+                if let Some(lead) = leading_icon {
+                    let lead_str = lead.get();
+                    if !lead_str.is_empty() {
+                        let w = if craftui_render::builtin_icon_svg(&lead_str).is_some() {
+                            22.0
+                        } else {
+                            let st = TextStyle::default().with_size(22.0);
+                            self.text_engine.measure(&lead_str, &st, None).width
+                        };
+                        reserved += w + 16.0;
+                    }
+                }
+                let title_str = title.get();
+                if !title_str.is_empty() {
+                    let st = TextStyle::default().with_size(18.0).with_weight(600.0);
+                    reserved += self.text_engine.measure(&title_str, &st, None).width + 16.0;
+                }
+                appbar_pad_left = Some(reserved);
+            }
             if let Some(node) = self.nodes.get_mut(id) {
                 let mut layout_changed = false;
+                if let Some(reserved_left) = appbar_pad_left
+                    && (node.layout.padding.left - reserved_left).abs() > 0.5
+                {
+                    node.layout.padding.left = reserved_left;
+                    layout_changed = true;
+                }
                 if let Some(ref vis) = node.visible_when {
                     let hidden = !vis.get();
                     if node.layout.hidden != hidden {
@@ -197,6 +243,7 @@ impl WidgetTree {
                     _ => {}
                 }
                 if layout_changed {
+                    needs_layout = true;
                     let st = Self::effective_taffy_layout(node);
                     self.layout_engine.upsert_node(id, st);
                     self.layout_engine.mark_dirty(id);
@@ -205,6 +252,11 @@ impl WidgetTree {
             self.sync_control_anim_target(id);
             self.sync_node_anim_targets(id);
         }
+
+        if !needs_layout {
+            return dirty_count;
+        }
+        self.last_layout_metrics = Some(metrics);
 
         let Some(root) = self.root else {
             return dirty_count;
