@@ -2944,3 +2944,163 @@ fn rtl_locale_adaptive_presets_media_player_and_rich_editor_work() {
         "VideoPlayer with PlatformViewId must emit PlatformViewHole"
     );
 }
+
+#[test]
+fn tooltip_triggers_on_parent_hover_and_button_keeps_label() {
+    reset_runtime();
+    let cx = Scope::root();
+    let mut tree = WidgetTree::new(cx);
+    let root = tree.column(cx);
+    let btn = tree.button(cx, "Save", || {});
+    let tip = tree.tooltip(cx, "Save document");
+    tree.append_child(btn, tip);
+    tree.append_child(root, btn);
+    tree.set_root(root);
+
+    let metrics = WindowMetrics {
+        logical_size: Size::new(400.0, 200.0),
+        ..Default::default()
+    };
+    tree.layout(metrics);
+
+    let btn_rect = tree.rect(btn);
+    tree.handle_event(&UiEvent::Pointer(PointerEvent {
+        id: PointerId(1),
+        position: btn_rect.center(),
+        phase: PointerPhase::Move,
+        button: None,
+        modifiers: Modifiers::default(),
+        is_touch: false,
+        timestamp_ms: 10,
+    }));
+
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    let texts: Vec<&str> = scene
+        .commands
+        .iter()
+        .filter_map(|c| match c {
+            craftui_render::PaintCommand::DrawText { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        texts.contains(&"Save"),
+        "Button with Tooltip child must still paint its label: {texts:?}"
+    );
+    assert!(
+        texts.contains(&"Save document"),
+        "Hovering parent Button must display Tooltip: {texts:?}"
+    );
+}
+
+#[test]
+fn chip_and_app_bar_render_svg_icons_and_app_bar_avoids_overlap() {
+    reset_runtime();
+    let cx = Scope::root();
+    let mut tree = WidgetTree::new(cx);
+    let root = tree.column(cx);
+    let bar = tree.app_bar(cx, "CraftUI", Some("menu"), 2.0, None::<fn()>);
+    let action_btn = tree.button(cx, "Action", || {});
+    tree.append_child(bar, action_btn);
+    let chip = tree.chip(
+        cx,
+        "Verified",
+        cx.signal(false),
+        Some("check"),
+        None::<fn()>,
+    );
+    tree.append_child(root, bar);
+    tree.append_child(root, chip);
+    tree.set_root(root);
+
+    tree.layout(WindowMetrics {
+        logical_size: Size::new(600.0, 300.0),
+        ..Default::default()
+    });
+
+    let bar_rect = tree.rect(bar);
+    let action_rect = tree.rect(action_btn);
+    assert!(
+        action_rect.x > bar_rect.x + 120.0,
+        "AppBar child action ({}) must sit to the right of leading_icon + title ({})",
+        action_rect.x,
+        bar_rect.x
+    );
+
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    let path_count = scene
+        .commands
+        .iter()
+        .filter(|c| {
+            matches!(
+                c,
+                craftui_render::PaintCommand::FillPath { .. }
+                    | craftui_render::PaintCommand::StrokePath { .. }
+            )
+        })
+        .count();
+    assert!(
+        path_count >= 2,
+        "AppBar leading_icon and Chip icon should render as SVG path commands (got {path_count})"
+    );
+    let texts: Vec<&str> = scene
+        .commands
+        .iter()
+        .filter_map(|c| match c {
+            craftui_render::PaintCommand::DrawText { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !texts.contains(&"menu"),
+        "AppBar 'menu' must not draw as plain text"
+    );
+    assert!(
+        !texts.contains(&"check"),
+        "Chip 'check' must not draw as plain text"
+    );
+}
+
+#[test]
+fn layout_skips_full_walk_on_paint_only_redraw() {
+    reset_runtime();
+    let cx = Scope::root();
+    let mut tree = WidgetTree::new(cx);
+    let root = tree.column(cx);
+    let lbl = tree.text(cx, "Hello", TextStyle::default());
+    tree.append_child(root, lbl);
+    tree.set_root(root);
+
+    let metrics = WindowMetrics {
+        logical_size: Size::new(400.0, 200.0),
+        ..Default::default()
+    };
+    tree.layout(metrics);
+    assert_eq!(tree.last_layout_metrics, Some(metrics));
+
+    // Clear dirty flags via paint, then mark only PAINT dirty.
+    let mut scene = PaintScene::new();
+    tree.paint(&mut scene);
+    craftui_reactive::mark_node_dirty(lbl, craftui_core::DirtyFlags::PAINT);
+    let dirty_count = tree.layout(metrics);
+    assert_eq!(dirty_count, 1);
+    assert!(
+        tree.nodes
+            .get(lbl)
+            .unwrap()
+            .dirty
+            .contains(craftui_core::DirtyFlags::PAINT),
+        "PAINT flag must remain set for paint() after fast-path layout()"
+    );
+    assert!(
+        !tree
+            .nodes
+            .get(lbl)
+            .unwrap()
+            .dirty
+            .contains(craftui_core::DirtyFlags::LAYOUT),
+        "LAYOUT flag must not be set on PAINT-only redraw"
+    );
+}

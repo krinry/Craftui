@@ -611,7 +611,12 @@ impl WidgetTree {
                     );
                     scene.stroke_rect(rect.inflate(3.5, 3.5), theme.primary, 2.0, box_style.radius);
                 }
-                if children.is_empty() {
+                let has_visual_children = children.iter().any(|&cid| {
+                    self.nodes
+                        .get(cid)
+                        .is_some_and(|c| !matches!(c.kind, WidgetKind::Tooltip { .. }))
+                });
+                if !has_visual_children {
                     let txt = label.get();
                     if !txt.is_empty() {
                         let fg = if disabled_eff {
@@ -1714,8 +1719,14 @@ impl WidgetTree {
                 }
             }
             WidgetKind::Tooltip { text } => {
-                if self.hovered_has_ancestor(id) {
-                    let screen_r = node_xform.transform_rect_bounds(rect);
+                let target_id = node.parent.unwrap_or(id);
+                if self.hovered_has_ancestor(target_id) {
+                    let anchor_rect = if node.parent.is_some() {
+                        self.layout_engine.rect(target_id)
+                    } else {
+                        rect
+                    };
+                    let screen_r = node_xform.transform_rect_bounds(anchor_rect);
                     active_tooltips.push((screen_r, text.get()));
                 }
             }
@@ -2146,15 +2157,23 @@ impl WidgetTree {
                 } else if let Some(ic) = icon {
                     let ic_str = ic.get();
                     if !ic_str.is_empty() {
-                        let ic_st = TextStyle::default().with_size(14.0).with_color(if is_sel {
+                        let ic_col = if is_sel {
                             theme.primary
                         } else {
                             theme.text_secondary
-                        });
-                        let isz = self.text_engine.measure(&ic_str, &ic_st, None);
-                        let iy = rect.y + (rect.height - isz.height) * 0.5;
-                        scene.draw_text(Point::new(cur_x, iy), ic_str, ic_st, None);
-                        cur_x += isz.width + 6.0;
+                        };
+                        let icon_sz = 16.0;
+                        let iy = rect.y + (rect.height - icon_sz) * 0.5;
+                        let icon_rect = Rect::new(cur_x, iy, icon_sz, icon_sz);
+                        if paint_svg_icon(scene, icon_rect, &ic_str, ic_col) {
+                            cur_x += icon_sz + 6.0;
+                        } else {
+                            let ic_st = TextStyle::default().with_size(14.0).with_color(ic_col);
+                            let isz = self.text_engine.measure(&ic_str, &ic_st, None);
+                            let ty = rect.y + (rect.height - isz.height) * 0.5;
+                            scene.draw_text(Point::new(cur_x, ty), ic_str, ic_st, None);
+                            cur_x += isz.width + 6.0;
+                        }
                     }
                 }
 
@@ -2204,13 +2223,20 @@ impl WidgetTree {
                 if let Some(lead) = leading_icon {
                     let lead_str = lead.get();
                     if !lead_str.is_empty() {
-                        let lead_st = TextStyle::default()
-                            .with_size(22.0)
-                            .with_color(theme.text_primary);
-                        let lsz = self.text_engine.measure(&lead_str, &lead_st, None);
-                        let ly = rect.y + (rect.height - lsz.height) * 0.5;
-                        scene.draw_text(Point::new(cur_x, ly), lead_str, lead_st, None);
-                        cur_x += lsz.width + 16.0;
+                        let icon_sz = 22.0;
+                        let iy = rect.y + (rect.height - icon_sz) * 0.5;
+                        let icon_rect = Rect::new(cur_x, iy, icon_sz, icon_sz);
+                        if paint_svg_icon(scene, icon_rect, &lead_str, theme.text_primary) {
+                            cur_x += icon_sz + 16.0;
+                        } else {
+                            let lead_st = TextStyle::default()
+                                .with_size(22.0)
+                                .with_color(theme.text_primary);
+                            let lsz = self.text_engine.measure(&lead_str, &lead_st, None);
+                            let ly = rect.y + (rect.height - lsz.height) * 0.5;
+                            scene.draw_text(Point::new(cur_x, ly), lead_str, lead_st, None);
+                            cur_x += lsz.width + 16.0;
+                        }
                     }
                 }
 
@@ -2221,7 +2247,26 @@ impl WidgetTree {
                     .with_color(theme.text_primary);
                 let tsz = self.text_engine.measure(&title_str, &title_st, None);
                 let ty = rect.y + (rect.height - tsz.height) * 0.5;
-                scene.draw_text(Point::new(cur_x, ty), title_str, title_st, None);
+                let max_right = children
+                    .iter()
+                    .copied()
+                    .filter(|&cid| {
+                        self.nodes.get(cid).is_some_and(|c| {
+                            !c.layout.hidden && !matches!(c.kind, WidgetKind::Tooltip { .. })
+                        })
+                    })
+                    .map(|cid| self.layout_engine.rect(cid).x)
+                    .reduce(f32::min)
+                    .unwrap_or(rect.max_x() - 16.0);
+                let title_max_w = (max_right - cur_x - 8.0).max(0.0);
+                if title_max_w > 0.0 {
+                    scene.draw_text(
+                        Point::new(cur_x, ty),
+                        title_str,
+                        title_st,
+                        Some(title_max_w),
+                    );
+                }
             }
             WidgetKind::Drawer { open, width, .. } => {
                 if !open.get() {
