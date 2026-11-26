@@ -154,12 +154,15 @@ fn mount_showcase_app_inner(
     tree.set_platform_services(services.clone());
 
     let theme_idx = cx.signal(0usize);
+    let preset_idx = cx.signal(0usize);
+    let is_rtl = cx.signal(false);
     let swatch_hits = cx.signal(0usize);
     let notify_count = cx.signal(0usize);
     let router = Router::new(cx, ShowcaseRoute::Gallery);
     let toast_mgr = ToastManager::new(cx);
     let theme_sig = tree.theme_signal;
     let ov_sig = tree.theme_override_signal;
+    let dir_sig = tree.direction_signal;
 
     let screen = aot_ui::ShowcaseScreen::new(cx);
 
@@ -388,6 +391,86 @@ fn mount_showcase_app_inner(
                 ToastSeverity::Info,
                 3000,
             );
+        });
+    }
+
+    {
+        let scr_preset = screen.clone();
+        screen.set_on_cycle_preset(move || {
+            let presets = [
+                (craftui::core::DesignSystem::Material3, "Material3"),
+                (craftui::core::DesignSystem::Cupertino, "Cupertino"),
+                (craftui::core::DesignSystem::WinUi, "WinUI"),
+            ];
+            let next = (preset_idx.get_untracked() + 1) % presets.len();
+            preset_idx.set(next);
+            let (preset, label) = presets[next];
+            let mode = MODES[theme_idx.get_untracked()];
+            theme_sig.set(ThemeTokens::from_preset(preset, mode).applied(&ov_sig.get_untracked()));
+            scr_preset.design_preset_label.set(label.to_string());
+            scr_preset
+                .last_action
+                .set(format!("Design preset: {label}"));
+        });
+    }
+
+    {
+        let scr_rtl = screen.clone();
+        screen.set_on_toggle_locale(move || {
+            let next_rtl = !is_rtl.get_untracked();
+            is_rtl.set(next_rtl);
+            let locale = if next_rtl { "ar-SA" } else { "en-US" };
+            let dir = craftui::core::locale_direction(locale);
+            dir_sig.set(dir);
+            scr_rtl.locale_label.set(if next_rtl {
+                "ar-SA (RTL)".to_string()
+            } else {
+                "en-US (LTR)".to_string()
+            });
+            scr_rtl
+                .last_action
+                .set(format!("Locale switched to {locale} ({dir:?})"));
+        });
+    }
+
+    {
+        let scr_form = screen.clone();
+        screen.set_on_validate_form(move || {
+            let note_validator = craftui::widgets::form::FieldValidator::new(
+                cx,
+                scr_form.draft_note,
+                vec![
+                    craftui::widgets::form::ValidationRule::Required("Headline required".into()),
+                    craftui::widgets::form::ValidationRule::MinLength(
+                        4,
+                        "Headline too short".into(),
+                    ),
+                ],
+            );
+            let date_validator = craftui::widgets::form::FieldValidator::new(
+                cx,
+                scr_form.selected_date,
+                vec![craftui::widgets::form::ValidationRule::Contains(
+                    "-".into(),
+                    "Use YYYY-MM-DD".into(),
+                )],
+            );
+            let group = craftui::widgets::form::FormGroup::new(vec![
+                note_validator.clone(),
+                date_validator.clone(),
+            ]);
+            let valid = group.validate_all();
+            let status = if valid {
+                "Form Valid".to_string()
+            } else {
+                note_validator
+                    .error
+                    .get_untracked()
+                    .or_else(|| date_validator.error.get_untracked())
+                    .unwrap_or_else(|| "Invalid".into())
+            };
+            scr_form.form_status.set(status.clone());
+            scr_form.last_action.set(format!("Form check: {status}"));
         });
     }
 
@@ -900,7 +983,7 @@ mod tests {
         click_at(
             &mut tree,
             Point::new(
-                tabs_rect.x + tabs_rect.width * (2.5 / 5.0),
+                tabs_rect.x + tabs_rect.width * (2.5 / 6.0),
                 tabs_rect.center().y,
             ),
         );
@@ -1019,7 +1102,7 @@ mod tests {
         click_at(
             &mut tree,
             Point::new(
-                tabs_rect.x + tabs_rect.width * (3.5 / 5.0),
+                tabs_rect.x + tabs_rect.width * (3.5 / 6.0),
                 tabs_rect.center().y,
             ),
         );
@@ -1089,7 +1172,7 @@ mod tests {
         click_at(
             &mut tree,
             Point::new(
-                tabs_rect.x + tabs_rect.width * (4.5 / 5.0),
+                tabs_rect.x + tabs_rect.width * (4.5 / 6.0),
                 tabs_rect.center().y,
             ),
         );
@@ -1123,5 +1206,52 @@ mod tests {
         click_at(&mut tree, share_pt);
         tree.layout(metrics);
         assert!(screen.last_action.get().contains("Native share invoked"));
+
+        // Switch to Tab 5 ("Parity & Rich") & exercise MenuBar, Presets, RTL, FormGroup, DnD, Pickers, Media, RichTextEditor
+        click_at(
+            &mut tree,
+            Point::new(
+                tabs_rect.x + tabs_rect.width * (5.5 / 6.0),
+                tabs_rect.center().y,
+            ),
+        );
+        tree.layout(metrics);
+        assert_eq!(screen.active_tab.get(), 5);
+
+        for id in [
+            "parity_tab_panel",
+            "parity_menubar",
+            "parity_draggable",
+            "parity_drop_target",
+            "parity_date_picker",
+            "parity_time_picker",
+            "parity_media_player",
+            "parity_rich_editor",
+        ] {
+            assert!(tree.node_by_id(id).is_some(), "missing {id}");
+        }
+
+        let preset_btn = tree.node_by_id("preset_btn").expect("preset_btn missing");
+        let preset_pt = tree.rect(preset_btn).center();
+        click_at(&mut tree, preset_pt);
+        tree.layout(metrics);
+        assert_eq!(screen.design_preset_label.get(), "Cupertino");
+
+        let rtl_btn = tree
+            .node_by_id("rtl_toggle_btn")
+            .expect("rtl_toggle_btn missing");
+        let rtl_pt = tree.rect(rtl_btn).center();
+        click_at(&mut tree, rtl_pt);
+        tree.layout(metrics);
+        assert_eq!(tree.direction(), Direction::Rtl);
+        assert_eq!(screen.locale_label.get(), "ar-SA (RTL)");
+
+        let form_btn = tree
+            .node_by_id("validate_form_btn")
+            .expect("validate_form_btn missing");
+        let form_pt = tree.rect(form_btn).center();
+        click_at(&mut tree, form_pt);
+        tree.layout(metrics);
+        assert_eq!(screen.form_status.get(), "Form Valid");
     }
 }

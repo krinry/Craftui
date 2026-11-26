@@ -1505,7 +1505,7 @@ fn emit_element(
                 let rv = expr_to_reactive_string(&tp.value, ctx);
                 let _ = writeln!(
                     out,
-                    "{indent}{{ let __rv = {rv}; let __c = {ctrl_var}; {cx}.effect(move || {{ let __nv = __rv.get(); __c.update(|c| {{ if c.editor.text != __nv {{ c.editor.sync_external(&__nv); c.sync_span_bounds(); }} }}); }}); }}"
+                    "{indent}{{ let __rv: ReactiveValue<String> = {rv}; let __c = {ctrl_var}; {cx}.effect(move || {{ let __nv = __rv.get(); __c.update(|c| {{ if c.editor.text != __nv {{ c.editor.sync_external(&__nv); let max_len = c.editor.text.len(); c.span_styles.retain_mut(|r| {{ r.start = r.start.min(max_len); r.end = r.end.min(max_len); r.start < r.end }}); }} }}); }}); }}"
                 );
             }
             let _ = writeln!(
