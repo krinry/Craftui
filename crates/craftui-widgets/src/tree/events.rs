@@ -534,6 +534,14 @@ impl WidgetTree {
         {
             let h_rect = self.node_visual_rect(h);
             let h_local = self.screen_to_node_local_point(h, pe.position);
+            if self
+                .reorder_drag_owner
+                .as_ref()
+                .is_some_and(|(id, _, _)| !self.nodes.contains_key(*id))
+            {
+                self.reorder_drag_owner = None;
+            }
+            let can_start_reorder = self.reorder_drag_owner.is_none();
             let mut started_reorder_item: Option<Option<String>> = None;
             if let Some(n) = self.nodes.get_mut(h) {
                 match &mut n.kind {
@@ -575,7 +583,7 @@ impl WidgetTree {
                         row_height,
                         scroll_offset,
                         ..
-                    } => {
+                    } if can_start_reorder => {
                         let rh = row_height.max(24.0);
                         let list_snap = items.get_untracked();
                         let len = list_snap.len();

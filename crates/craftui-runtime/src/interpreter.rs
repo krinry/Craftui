@@ -37,6 +37,9 @@ pub(crate) struct DynEnv {
 impl DynEnv {
     fn find_prop_signal(&self, expr: &Expr) -> Option<Signal<DynValue>> {
         if let Expr::Ident(name) = expr {
+            if self.locals.contains_key(name) {
+                return None;
+            }
             self.signal_locals
                 .get(name)
                 .copied()

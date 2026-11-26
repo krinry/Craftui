@@ -23,6 +23,18 @@ impl WidgetTree {
         for (id, flags) in dirty_updates {
             if let Some(node) = self.nodes.get_mut(id) {
                 node.dirty |= flags;
+                if flags.contains(DirtyFlags::A11Y)
+                    && let WidgetKind::DatePicker {
+                        value,
+                        view_year,
+                        view_month,
+                        ..
+                    } = &mut node.kind
+                {
+                    let (y, m, _) = crate::pickers::parse_iso_date(&value.get_untracked());
+                    *view_year = y;
+                    *view_month = m;
+                }
                 drained_masks
                     .entry(id)
                     .and_modify(|f| *f |= flags)
